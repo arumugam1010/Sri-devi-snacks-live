@@ -3,6 +3,9 @@
  * Main index.php Entry Point and API Router
  */
 
+// Set default timezone to Indian Standard Time (IST)
+date_default_timezone_set('Asia/Kolkata');
+
 // Global CORS Headers
 $allowedOrigins = [
     'http://localhost:5173',
@@ -99,6 +102,10 @@ switch ($module) {
         require_once __DIR__ . '/controllers/auth.php';
         handleAuthRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'employees':
+        require_once __DIR__ . '/controllers/employees.php';
+        handleEmployeesRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'users':
         require_once __DIR__ . '/controllers/users.php';
         handleUsersRoute($parts, $_SERVER['REQUEST_METHOD']);
@@ -130,6 +137,48 @@ switch ($module) {
     case 'settings':
         require_once __DIR__ . '/controllers/settings.php';
         handleSettingsRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
+    case 'debug-db':
+        try {
+            $db = getDatabaseConnection();
+            $phpTimezone = date_default_timezone_get();
+            $phpTime = date('Y-m-d H:i:s');
+            $dbTime = $db->query("SELECT NOW()")->fetchColumn();
+            $dbTimezone = $db->query("SELECT @@session.time_zone")->fetchColumn();
+            
+            $recentBills = $db->query("SELECT id, bill_number, total_amount, received_amount, pending_amount, bill_date, status FROM bills ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            $recentPayments = $db->query("SELECT * FROM bill_payments ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            
+            $startOfDay = date('Y-m-d 00:00:00');
+            $endOfDay = date('Y-m-d 23:59:59');
+            
+            $stmt = $db->prepare("SELECT COUNT(*), SUM(total_amount) FROM bills WHERE bill_date >= :start AND bill_date <= :end");
+            $stmt->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+            $todaysBills = $stmt->fetch(PDO::FETCH_NUM);
+            
+            $stmt2 = $db->prepare("SELECT COUNT(*), SUM(amount) FROM bill_payments WHERE payment_date >= :start AND payment_date <= :end");
+            $stmt2->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+            $todaysPayments = $stmt2->fetch(PDO::FETCH_NUM);
+
+            sendResponse(true, 'Debug info', [
+                'diagnostics' => [
+                    'php_timezone' => $phpTimezone,
+                    'php_time' => $phpTime,
+                    'db_time' => $dbTime,
+                    'db_timezone' => $dbTimezone,
+                    'query_start' => $startOfDay,
+                    'query_end' => $endOfDay
+                ],
+                'todays_bills_count' => (int)$todaysBills[0],
+                'todays_bills_sum' => (float)$todaysBills[1],
+                'todays_payments_count' => (int)$todaysPayments[0],
+                'todays_payments_sum' => (float)$todaysPayments[1],
+                'recent_bills' => $recentBills,
+                'recent_payments' => $recentPayments
+            ]);
+        } catch (Exception $e) {
+            sendResponse(false, $e->getMessage());
+        }
         break;
     case 'health':
         sendResponse(true, 'Billing System API (PHP) is running', [

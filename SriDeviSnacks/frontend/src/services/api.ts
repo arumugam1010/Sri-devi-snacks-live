@@ -118,6 +118,7 @@ export const billsAPI = {
     billDate?: string;
     receivedAmount?: number;
     notes?: string;
+    paymentMode?: string;
     applyToPending?: boolean;
     items: Array<{
       productId: number;
@@ -133,7 +134,7 @@ export const billsAPI = {
     });
   },
 
-  updateBill: async (id: number, updateData: { receivedAmount?: number; notes?: string }) => {
+  updateBill: async (id: number, updateData: { receivedAmount?: number; notes?: string; paymentMode?: string }) => {
     return authenticatedFetch(`${API_BASE_URL}/bills/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updateData),
@@ -293,6 +294,10 @@ export const shopsAPI = {
   getShopProducts: async (shopId: number) => {
     return authenticatedFetch(`${API_BASE_URL}/shops/${shopId}/products`);
   },
+
+  getAllShopProducts: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/shops/all-products`);
+  },
 };
 
 // Stocks API
@@ -359,5 +364,99 @@ export const settingsAPI = {
       method: 'PUT',
       body: JSON.stringify({ settings }),
     });
+  },
+};
+
+// Employees API
+export const employeesAPI = {
+  getEmployees: async (params?: { status?: string }) => {
+    const statusVal = params?.status ?? '';
+    const query = statusVal ? `?status=${statusVal}` : '';
+    return authenticatedFetch(`${API_BASE_URL}/employees${query}`);
+  },
+
+  createEmployee: async (employeeData: { name: string; contact: string; monthly_salary: number; joining_date: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees`, {
+      method: 'POST',
+      body: JSON.stringify(employeeData),
+    });
+  },
+
+  updateEmployee: async (id: number, employeeData: { name: string; contact: string; monthly_salary: number; joining_date: string; status: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(employeeData),
+    });
+  },
+
+  getAttendance: async (date?: string) => {
+    const query = date ? `?date=${date}` : '';
+    return authenticatedFetch(`${API_BASE_URL}/employees/attendance${query}`);
+  },
+
+  saveAttendance: async (attendanceData: { date: string; attendance: Array<{ employee_id: number; status: string; remarks?: string }> }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/attendance`, {
+      method: 'POST',
+      body: JSON.stringify(attendanceData),
+    });
+  },
+
+  getSalarySummary: async (month: string) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/salary-summary?month=${month}`);
+  },
+
+  saveMonthlySalary: async (salaryData: { employee_id: number; month: string; salary_amount: number }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/salary`, {
+      method: 'POST',
+      body: JSON.stringify(salaryData),
+    });
+  },
+
+  addPayment: async (paymentData: { employee_id: number; amount: number; payment_date: string; month: string; remarks?: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/payments`, {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    });
+  },
+
+  getPayments: async (employeeId: number, month?: string) => {
+    const monthQuery = month ? `&month=${month}` : '';
+    return authenticatedFetch(`${API_BASE_URL}/employees/payments?employee_id=${employeeId}${monthQuery}`);
+  },
+
+  checkBiometricsRegistered: async (employeeId: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/check?employee_id=${employeeId}`);
+  },
+
+  getRegisterChallenge: async (employeeId: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/register-challenge`, {
+      method: 'POST',
+      body: JSON.stringify({ employee_id: employeeId }),
+    });
+  },
+
+  registerBiometrics: async (biometricData: { employee_id: number; credential_id: string; public_key: string; device_name?: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/register`, {
+      method: 'POST',
+      body: JSON.stringify(biometricData),
+    });
+  },
+
+  getVerifyChallenge: async (employeeId: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/verify-challenge`, {
+      method: 'POST',
+      body: JSON.stringify({ employee_id: employeeId }),
+    });
+  },
+
+  verifyBiometrics: async (biometricData: { employee_id: number; authenticator_data: string; client_data_json: string; signature: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/verify`, {
+      method: 'POST',
+      body: JSON.stringify(biometricData),
+    });
+  },
+
+  getPublicActiveEmployees: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/biometric/list-active`);
   },
 };

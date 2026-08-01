@@ -20,6 +20,15 @@ function handleShopsRoute($parts, $method) {
         return;
     }
     
+    if ($action === 'all-products') {
+        if ($method === 'GET') {
+            getAllShopProducts();
+        } else {
+            sendResponse(false, 'Method not allowed', null, 405);
+        }
+        return;
+    }
+    
     if (is_numeric($action)) {
         $shopId = (int)$action;
         $subAction = $parts[2] ?? '';
@@ -540,6 +549,66 @@ function getShopProducts($shopId) {
                 'price' => (float)$row['price'],
                 'createdAt' => $row['createdAt'],
                 'updatedAt' => $row['updatedAt'],
+                'product' => [
+                    'id' => (int)$row['productId'],
+                    'productName' => $row['productName'],
+                    'unit' => $row['unit'],
+                    'hsnCode' => $row['hsnCode'],
+                    'gst' => (float)$row['gst'],
+                    'price' => (float)$row['defaultPrice'],
+                    'createdAt' => $row['p_createdAt'],
+                    'updatedAt' => $row['p_updatedAt'],
+                    'stocks' => $stocks
+                ]
+            ];
+        }
+        
+        sendResponse(true, '', $formatted);
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Handle GET /api/shops/all-products
+ */
+function getAllShopProducts() {
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("SELECT sp.id, sp.shop_id as shopId, sp.product_id as productId, sp.price, sp.createdAt, sp.updatedAt,
+                                     p.product_name as productName, p.unit, p.hsn_code as hsnCode, p.gst, p.price as defaultPrice, p.createdAt as p_createdAt, p.updatedAt as p_updatedAt,
+                                     s.id as stockId, s.quantity as stockQuantity, s.rate as stockRate,
+                                     sh.shop_name as shopName
+                              FROM shop_products sp
+                              JOIN products p ON sp.product_id = p.id
+                              JOIN shops sh ON sp.shop_id = sh.id
+                              LEFT JOIN stocks s ON p.id = s.product_id");
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+        
+        $formatted = [];
+        foreach ($rows as $row) {
+            $stocks = [];
+            if ($row['stockId'] !== null) {
+                $stocks[] = [
+                    'id' => (int)$row['stockId'],
+                    'productId' => (int)$row['productId'],
+                    'quantity' => (int)$row['stockQuantity'],
+                    'rate' => (float)$row['stockRate']
+                ];
+            }
+            
+            $formatted[] = [
+                'id' => (int)$row['id'],
+                'shopId' => (int)$row['shopId'],
+                'productId' => (int)$row['productId'],
+                'price' => (float)$row['price'],
+                'createdAt' => $row['createdAt'],
+                'updatedAt' => $row['updatedAt'],
+                'shop' => [
+                    'id' => (int)$row['shopId'],
+                    'shopName' => $row['shopName']
+                ],
                 'product' => [
                     'id' => (int)$row['productId'],
                     'productName' => $row['productName'],

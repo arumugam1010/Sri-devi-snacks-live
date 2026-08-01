@@ -1,12 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange } from 'lucide-react';
+import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Pagination } from './Pagination';
 
 const Reports: React.FC = () => {
   const { bills, products, shops } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending'>('daily');
   const [pageStates, setPageStates] = useState<Record<string, number>>({});
+  const [returnsSubTab, setReturnsSubTab] = useState<'today' | 'all'>('today');
+  const [productsSubTab, setProductsSubTab] = useState<'today' | 'all'>('today');
+
+  const isToday = (dateString: string) => {
+    if (!dateString) return false;
+    const d = new Date(dateString);
+    const today = new Date();
+    return d.getDate() === today.getDate() &&
+           d.getMonth() === today.getMonth() &&
+           d.getFullYear() === today.getFullYear();
+  };
 
   // Helper functions for weekly reports
   const getWeekNumber = (date: Date): number => {
@@ -52,11 +63,22 @@ const Reports: React.FC = () => {
           'Pending Bills': shop.pending_bills.map((b: any) => `Bill #${b.billNumber} (${new Date(b.date).toLocaleDateString()}): Total ₹${b.totalAmount}, Pending ₹${b.pendingAmount}`).join('; ')
         }));
         break;
+      case 'pending-shops':
+        dataToExport = pendingShopsReport.map(shop => ({
+          'Shop Name': shop.shop_name,
+          'Total Bills': shop.bills,
+          'Total Amount': shop.total_amount,
+          'Avg Bill Value': shop.avg_bill,
+          'Last Order': shop.last_order,
+          'Total Pending': shop.total_pending,
+          'Pending Bills': shop.pending_bills.map((b: any) => `Bill #${b.billNumber} (${new Date(b.date).toLocaleDateString()}): Total ₹${b.totalAmount}, Pending ₹${b.pendingAmount}`).join('; ')
+        }));
+        break;
       case 'returns-history':
-        dataToExport = returnHistory;
+        dataToExport = returnsSubTab === 'today' ? todayReturns : returnHistory;
         break;
       case 'product-performance':
-        dataToExport = productPerformance;
+        dataToExport = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
         break;
       default:
         alert('Unknown report type');
@@ -152,6 +174,10 @@ const Reports: React.FC = () => {
     }));
   }, [bills]);
 
+  const pendingShopsReport = useMemo(() => {
+    return shopWiseReport.filter(shop => shop.total_pending > 0);
+  }, [shopWiseReport]);
+
   const returnHistory = useMemo(() => {
     return (bills as any[]).flatMap((bill: any) => 
       bill.items
@@ -166,6 +192,10 @@ const Reports: React.FC = () => {
         }))
     );
   }, [bills]);
+
+  const todayReturns = useMemo(() => {
+    return returnHistory.filter(item => isToday(item.return_date));
+  }, [returnHistory]);
 
   // Weekly report generation
   const weeklyBillingSummary = useMemo(() => {
@@ -283,6 +313,45 @@ const Reports: React.FC = () => {
     }));
   }, [bills]);
 
+  const todayProductPerformance = useMemo(() => {
+    const todayBills = bills.filter(bill => isToday(bill.bill_date));
+    const productStats = todayBills.reduce((acc, bill) => {
+      bill.items.forEach(item => {
+        if (!acc[item.product_id]) {
+          acc[item.product_id] = {
+            product_name: item.product_name,
+            total_sold: 0,
+            revenue: 0,
+            returns: 0,
+            shops: new Set()
+          };
+        }
+        if (item.quantity > 0) {
+          acc[item.product_id].total_sold += item.quantity;
+          acc[item.product_id].revenue += item.amount + (item.sgst || 0) + (item.cgst || 0);
+        } else {
+          acc[item.product_id].returns += Math.abs(item.quantity);
+        }
+        acc[item.product_id].shops.add(bill.shop_id);
+      });
+      return acc;
+    }, {} as Record<number, { product_name: string; total_sold: number; revenue: number; returns: number; shops: Set<number> }>);
+
+    return Object.values(productStats)
+      .map(product => ({
+        ...product,
+        shops: product.shops.size
+      }))
+      .sort((a, b) => b.total_sold - a.total_sold);
+  }, [bills]);
+
+  const topProductToday = useMemo(() => {
+    if (todayProductPerformance.length === 0) return null;
+    const activeSales = todayProductPerformance.filter(p => p.total_sold > 0);
+    if (activeSales.length === 0) return null;
+    return activeSales[0];
+  }, [todayProductPerformance]);
+
 
   const StatCard = ({ title, value, icon: Icon, change, color = 'blue' }: any) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -356,6 +425,7 @@ const Reports: React.FC = () => {
             { key: 'weekly', label: 'Weekly Reports', icon: CalendarRange },
             { key: 'monthly', label: 'Monthly Reports', icon: Calendar },
             { key: 'shops', label: 'Shop Reports', icon: ShoppingCart },
+            { key: 'pending', label: 'Pending Reports', icon: AlertCircle },
             { key: 'returns', label: 'Returns', icon: Package },
             { key: 'products', label: 'Product Performance', icon: TrendingUp },
           ].map((tab) => (
@@ -729,19 +799,161 @@ const Reports: React.FC = () => {
           </div>
         )}
 
-        {/* Returns Tab */}
-        {activeTab === 'returns' && (
+        {/* Pending Reports Tab */}
+        {activeTab === 'pending' && (
           <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">Return History</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Shops with Pending Balances</h3>
               <button
-                onClick={() => handleExport('returns-history')}
+                onClick={() => handleExport('pending-shops')}
                 className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
               >
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </button>
             </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Shop Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Sales
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Pending Balance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Order
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Pending Bills Details
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(() => {
+                    const totalPages = Math.ceil(pendingShopsReport.length / 5);
+                    const paginatedData = pendingShopsReport.slice((currentPage - 1) * 5, currentPage * 5);
+                    if (paginatedData.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                            No shops have pending balances!
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return paginatedData.map((shop) => (
+                      <tr key={shop.shop_name} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{shop.shop_name}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          ₹{shop.total_amount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">
+                          ₹{shop.total_pending.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(shop.last_order).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          <div className="text-xs text-gray-500 max-h-32 overflow-y-auto space-y-1">
+                            {shop.pending_bills.map((b: any) => (
+                              <div key={b.billNumber} className="border-t border-gray-100 pt-1 first:border-t-0 first:pt-0">
+                                <span className="font-semibold text-gray-700">Bill #{b.billNumber}</span> ({new Date(b.date).toLocaleDateString()})
+                                <div>Purchase: ₹{b.totalAmount.toLocaleString()} | Pending: <span className="font-bold text-red-600">₹{b.pendingAmount.toLocaleString()}</span></div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(pendingShopsReport.length / 5)}
+              onPageChange={(page) => handlePageChange('pending', page)}
+            />
+          </div>
+        )}
+
+        {/* Returns Tab */}
+        {activeTab === 'returns' && (
+          <div className="p-6">
+            {/* Sub-tabs / Toggle */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
+              <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => { setReturnsSubTab('today'); handlePageChange('returns-today', 1); }}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                    returnsSubTab === 'today'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Today's Returns
+                </button>
+                <button
+                  onClick={() => { setReturnsSubTab('all'); handlePageChange('returns-all', 1); }}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                    returnsSubTab === 'all'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All-Time Returns
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between w-full sm:w-auto gap-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {returnsSubTab === 'today' ? "Today's Returns" : "All-Time Returns"}
+                </h3>
+                <button
+                  onClick={() => handleExport('returns-history')}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </button>
+              </div>
+            </div>
+
+            {/* Today's Returns Summary Cards */}
+            {returnsSubTab === 'today' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Today's Returned Quantity</p>
+                    <p className="text-3xl font-extrabold text-red-900 mt-1">
+                      {todayReturns.reduce((sum, item) => sum + item.quantity, 0)} units
+                    </p>
+                  </div>
+                  <div className="p-3 bg-red-100 rounded-full text-red-600">
+                    <Package className="h-6 w-6" />
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-100 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-sm font-medium text-rose-800">Today's Return Value</p>
+                    <p className="text-3xl font-extrabold text-rose-900 mt-1">
+                      ₹{todayReturns.reduce((sum, item) => sum + item.amount, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-rose-100 rounded-full text-rose-600">
+                    <DollarSign className="h-6 w-6" />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -768,8 +980,21 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(returnHistory.length / 5);
-                    const paginatedData = returnHistory.slice((currentPage - 1) * 5, currentPage * 5);
+                    const data = returnsSubTab === 'today' ? todayReturns : returnHistory;
+                    const returnsKey = `returns-${returnsSubTab}`;
+                    const returnsPage = pageStates[returnsKey] || 1;
+                    const paginatedData = data.slice((returnsPage - 1) * 5, returnsPage * 5);
+                    
+                    if (paginatedData.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
+                            No return records found.
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     return paginatedData.map((returnItem: any, index: number) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -798,27 +1023,88 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(returnHistory.length / 5)}
-              onPageChange={(page) => handlePageChange('returns', page)}
-            />
+            {(() => {
+              const data = returnsSubTab === 'today' ? todayReturns : returnHistory;
+              const returnsKey = `returns-${returnsSubTab}`;
+              const returnsPage = pageStates[returnsKey] || 1;
+              return data.length > 0 && (
+                <Pagination
+                  currentPage={returnsPage}
+                  totalPages={Math.ceil(data.length / 5)}
+                  onPageChange={(page) => handlePageChange(`returns-${returnsSubTab}`, page)}
+                />
+              );
+            })()}
           </div>
         )}
 
         {/* Product Performance Tab */}
         {activeTab === 'products' && (
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">Product Performance</h3>
-              <button
-                onClick={() => handleExport('product-performance')}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </button>
+            {/* Sub-tabs / Toggle */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
+              <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => { setProductsSubTab('today'); handlePageChange('products-today', 1); }}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                    productsSubTab === 'today'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Today's Performance
+                </button>
+                <button
+                  onClick={() => { setProductsSubTab('all'); handlePageChange('products-all', 1); }}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                    productsSubTab === 'all'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All-Time Performance
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between w-full sm:w-auto gap-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {productsSubTab === 'today' ? "Today's Product Performance" : "All-Time Product Performance"}
+                </h3>
+                <button
+                  onClick={() => handleExport('product-performance')}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </button>
+              </div>
             </div>
+
+            {/* Top Product Highlight Card */}
+            {productsSubTab === 'today' && topProductToday && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-xl p-6 mb-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <span className="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    Top Selling Today 🏆
+                  </span>
+                  <h4 className="text-xl font-bold text-gray-950 mt-1">{topProductToday.product_name}</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    This product sold the most quantity today.
+                  </p>
+                </div>
+                <div className="flex gap-6">
+                  <div>
+                    <span className="text-xs text-gray-500 block uppercase font-medium">Quantity Sold</span>
+                    <span className="text-2xl font-extrabold text-green-700">{topProductToday.total_sold} units</span>
+                  </div>
+                  <div className="border-l border-green-100 pl-6">
+                    <span className="text-xs text-gray-500 block uppercase font-medium">Revenue</span>
+                    <span className="text-2xl font-extrabold text-emerald-700">₹{topProductToday.revenue.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -845,49 +1131,76 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(productPerformance.length / 5);
-                    const paginatedData = productPerformance.slice((currentPage - 1) * 5, currentPage * 5);
-                    return paginatedData.map((product) => (
-                      <tr key={product.product_name} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {product.total_sold} units
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                          ₹{product.revenue.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                          {product.returns} units
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {product.shops} shops
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                              <div
-                                className="bg-green-600 h-2 rounded-full"
-                                style={{ width: `${Math.min(100, (product.revenue / 20000) * 100)}%` }}
-                              ></div>
+                    const data = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
+                    const productsKey = `products-${productsSubTab}`;
+                    const productsPage = pageStates[productsKey] || 1;
+                    const paginatedData = data.slice((productsPage - 1) * 5, productsPage * 5);
+
+                    if (paginatedData.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
+                            No product sales recorded for this period.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return paginatedData.map((product) => {
+                      const maxRevenue = productsSubTab === 'today'
+                        ? (topProductToday?.revenue || 2000)
+                        : 20000;
+                      const percentage = Math.round((product.revenue / maxRevenue) * 100);
+                      
+                      return (
+                        <tr key={product.product_name} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {product.total_sold} units
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
+                            ₹{product.revenue.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                            {product.returns} units
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {product.shops} shops
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                <div
+                                  className="bg-green-600 h-2 rounded-full"
+                                  style={{ width: `${Math.min(100, percentage)}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {percentage}%
+                              </span>
                             </div>
-                            <span className="text-xs text-gray-500">
-                              {Math.round((product.revenue / 20000) * 100)}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    ));
+                          </td>
+                        </tr>
+                      );
+                    });
                   })()}
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(productPerformance.length / 5)}
-              onPageChange={(page) => handlePageChange('products', page)}
-            />
+            {(() => {
+              const data = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
+              const productsKey = `products-${productsSubTab}`;
+              const productsPage = pageStates[productsKey] || 1;
+              return data.length > 0 && (
+                <Pagination
+                  currentPage={productsPage}
+                  totalPages={Math.ceil(data.length / 5)}
+                  onPageChange={(page) => handlePageChange(`products-${productsSubTab}`, page)}
+                />
+              );
+            })()}
           </div>
         )}
       </div>

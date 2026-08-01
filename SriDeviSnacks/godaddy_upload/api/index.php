@@ -3,6 +3,9 @@
  * Main index.php Entry Point and API Router
  */
 
+// Set default timezone to Indian Standard Time (IST)
+date_default_timezone_set('Asia/Kolkata');
+
 // Global CORS Headers
 $allowedOrigins = [
     'http://localhost:5173',
@@ -99,6 +102,10 @@ switch ($module) {
         require_once __DIR__ . '/controllers/auth.php';
         handleAuthRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'employees':
+        require_once __DIR__ . '/controllers/employees.php';
+        handleEmployeesRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'users':
         require_once __DIR__ . '/controllers/users.php';
         handleUsersRoute($parts, $_SERVER['REQUEST_METHOD']);
@@ -130,6 +137,68 @@ switch ($module) {
     case 'settings':
         require_once __DIR__ . '/controllers/settings.php';
         handleSettingsRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
+    case 'debug-db':
+        try {
+            if (function_exists('opcache_reset')) {
+                opcache_reset();
+            }
+            $db = getDatabaseConnection();
+            $phpTimezone = date_default_timezone_get();
+            $phpTime = date('Y-m-d H:i:s');
+            $dbTime = $db->query("SELECT NOW()")->fetchColumn();
+            $dbTimezone = $db->query("SELECT @@session.time_zone")->fetchColumn();
+            
+            $recentBills = $db->query("SELECT id, bill_number, total_amount, received_amount, pending_amount, bill_date, status FROM bills ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            $recentPayments = $db->query("SELECT * FROM bill_payments ORDER BY id DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            
+            $startOfDay = date('Y-m-d 00:00:00');
+            $endOfDay = date('Y-m-d 23:59:59');
+            
+            $stmt = $db->prepare("SELECT COUNT(*), SUM(total_amount) FROM bills WHERE bill_date >= :start AND bill_date <= :end");
+            $stmt->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+            $todaysBills = $stmt->fetch(PDO::FETCH_NUM);
+            
+            $stmt2 = $db->prepare("SELECT COUNT(*), SUM(amount) FROM bill_payments WHERE payment_date >= :start AND payment_date <= :end");
+            $stmt2->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+            $todaysPayments = $stmt2->fetch(PDO::FETCH_NUM);
+
+            // Run the exact dashboard collections query
+            $stmtDashboard = $db->prepare("
+                SELECT p.id, p.bill_id, p.amount as paidAmount, p.payment_mode as paymentType, p.payment_date,
+                       s.shop_name as shopName, b.bill_number as billNumber, b.pending_amount as remainingPending,
+                       u.name as collectedBy
+                FROM bill_payments p
+                JOIN bills b ON p.bill_id = b.id
+                JOIN shops s ON b.shop_id = s.id
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.payment_date >= :start AND p.payment_date <= :end
+                ORDER BY p.id DESC
+            ");
+            $stmtDashboard->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+            $dashboardPayments = $stmtDashboard->fetchAll(PDO::FETCH_ASSOC);
+
+            sendResponse(true, 'Debug info', [
+                'diagnostics' => [
+                    'php_timezone' => $phpTimezone,
+                    'php_time' => $phpTime,
+                    'db_time' => $dbTime,
+                    'db_timezone' => $dbTimezone,
+                    'query_start' => $startOfDay,
+                    'query_end' => $endOfDay
+                ],
+                'todays_bills_count' => (int)$todaysBills[0],
+                'todays_bills_sum' => (float)$todaysBills[1],
+                'todays_payments_count' => (int)$todaysPayments[0],
+                'todays_payments_sum' => (float)$todaysPayments[1],
+                'dashboard_payments_count' => count($dashboardPayments),
+                'dashboard_payments_list' => $dashboardPayments,
+                'recent_bills' => $recentBills,
+                'recent_payments' => $recentPayments
+            ]);
+        } catch (Exception $e) {
+            sendResponse(false, $e->getMessage());
+        }
         break;
     case 'health':
         sendResponse(true, 'Billing System API (PHP) is running', [

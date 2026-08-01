@@ -49,6 +49,9 @@ function getDatabaseConnection() {
     try {
         $pdo = new PDO($dsn, $user, $pass, $options);
         
+        // Set MySQL timezone to Asia/Kolkata (IST)
+        $pdo->exec("SET time_zone = '+05:30'");
+        
         // Auto-migrate: check and add column 'image' to 'products' table if missing
         static $migrated = false;
         if (!$migrated) {
@@ -59,12 +62,98 @@ function getDatabaseConnection() {
                 if (!$column) {
                     $pdo->exec("ALTER TABLE products ADD COLUMN image LONGTEXT NULL");
                 }
+
+                // Check and add column 'payment_mode' to 'bills' table if missing
+                $stmt = $pdo->query("SHOW COLUMNS FROM bills LIKE 'payment_mode'");
+                $column = $stmt->fetch();
+                if (!$column) {
+                    $pdo->exec("ALTER TABLE bills ADD COLUMN payment_mode VARCHAR(50) NULL");
+                }
                 
                 // Check and create settings table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
                     setting_key VARCHAR(100) PRIMARY KEY,
                     setting_value TEXT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create employees table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS employees (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    contact VARCHAR(20) NOT NULL,
+                    monthly_salary DECIMAL(10, 2) NOT NULL,
+                    joining_date DATE NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create employee_attendance table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS employee_attendance (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    date DATE NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'present',
+                    remarks VARCHAR(255) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY emp_date_unique (employee_id, date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create employee_salaries table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS employee_salaries (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    month VARCHAR(7) NOT NULL,
+                    salary_amount DECIMAL(10, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY emp_month_unique (employee_id, month)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create employee_payments table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS employee_payments (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    payment_date DATE NOT NULL,
+                    month VARCHAR(7) NOT NULL,
+                    remarks VARCHAR(255) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create employee_biometrics table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS employee_biometrics (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    credential_id VARCHAR(255) NOT NULL,
+                    public_key TEXT NOT NULL,
+                    device_name VARCHAR(100) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY emp_biometric_unique (employee_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and create bill_payments table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS bill_payments (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bill_id INT NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    payment_mode VARCHAR(50) NULL,
+                    payment_date DATETIME NOT NULL,
+                    user_id INT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Initialize/Sync bill_payments for existing bills if missing
+                try {
+                    $pdo->exec("
+                        INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
+                        SELECT b.id, b.received_amount, COALESCE(b.payment_mode, 'CASH'), b.bill_date, b.user_id, b.createdAt
+                        FROM bills b
+                        LEFT JOIN bill_payments p ON b.id = p.bill_id
+                        WHERE b.received_amount > 0 AND p.id IS NULL
+                    ");
+                } catch (\Exception $e) {
+                    // Ignore migration issues
+                }
 
                 // Ensure settings table actually has a PRIMARY KEY (migration for older tables)
                 try {

@@ -9,7 +9,9 @@ import {
   LogOut,
   Menu,
   X,
-  Warehouse
+  Warehouse,
+  MapPin,
+  Users
 } from 'lucide-react';
 import Logo from '../assets/Logo.png';
 import { useAppContext } from '../context/AppContext';
@@ -31,11 +33,16 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { name: 'Products', href: '/products', icon: Package },
     { name: 'Stock', href: '/stock', icon: Warehouse },
     { name: 'Billing', href: '/billing', icon: Receipt },
+    { name: 'Employees', href: '/employees', icon: Users },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
+    { name: 'VTS GPS', href: '/gps-tracking', icon: MapPin },
   ];
 
   // Filter navigation based on user role
   const navigation = allNavigation.filter(item => {
+    if (item.name === 'VTS GPS' || item.name === 'Employees') {
+      return userRole === 'SUPER_ADMIN';
+    }
     if (userRole === 'STAFF') {
       return item.name !== 'Reports';
     }

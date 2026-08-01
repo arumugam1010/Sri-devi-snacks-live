@@ -44,6 +44,7 @@ interface Bill {
   updated_at?: string;
   created_at?: string;
   user_name?: string;
+  payment_mode?: string;
 }
 
 interface Shop {
@@ -75,7 +76,7 @@ interface AppContextType {
   setWeeklySchedule: (schedule: DaySchedule[]) => void;
   updateProductStock: (productId: number, quantity: number) => void;
   addBill: (bill: Bill) => Promise<any>;
-  updateBill: (id: string, updateData: { receivedAmount?: number; notes?: string }) => Promise<void>;
+  updateBill: (id: string, updateData: { receivedAmount?: number; notes?: string; paymentMode?: string }) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -256,6 +257,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           received_amount: b.receivedAmount,
           pending_amount: b.pendingAmount,
           status: b.status,
+          payment_mode: b.payment_mode,
           updated_at: b.updatedAt,
           created_at: b.createdAt,
           user_name: b.user?.name,
@@ -273,31 +275,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
         })));
       }
 
-      // Fetch shop products for each shop to ensure shopPricing is preloaded on all pages (like Billing)
-      if (fetchedShops.length > 0) {
-        let allShopProducts: ShopProduct[] = [];
-        for (const shop of fetchedShops) {
-          try {
-            const response = await shopsAPI.getShopProducts(shop.id);
-            if (response.success) {
-              const fetchedShopProducts: ShopProduct[] = response.data.map((sp: any) => ({
-                id: sp.id,
-                shop_id: sp.shopId,
-                product_id: sp.productId,
-                price: sp.price,
-                shop_name: sp.shop?.shopName || '',
-                product_name: sp.product?.productName || '',
-                unit: sp.product?.unit || '',
-                gst: sp.product?.gst || 0,
-                hsn_code: sp.product?.hsnCode || ''
-              }));
-              allShopProducts = [...allShopProducts, ...fetchedShopProducts];
-            }
-          } catch (shopErr) {
-            console.error(`Failed to fetch products for shop ${shop.id}:`, shopErr);
-          }
+      // Fetch shop products in a single call to ensure shopPricing is preloaded on all pages (like Billing)
+      try {
+        const response = await shopsAPI.getAllShopProducts();
+        if (response.success) {
+          const fetchedShopProducts: ShopProduct[] = response.data.map((sp: any) => ({
+            id: sp.id,
+            shop_id: sp.shopId,
+            product_id: sp.productId,
+            price: sp.price,
+            shop_name: sp.shop?.shopName || '',
+            product_name: sp.product?.productName || '',
+            unit: sp.product?.unit || '',
+            gst: sp.product?.gst || 0,
+            hsn_code: sp.product?.hsnCode || ''
+          }));
+          setShopProducts(fetchedShopProducts);
         }
-        setShopProducts(allShopProducts);
+      } catch (shopProductsErr) {
+        console.error('Failed to fetch shop products:', shopProductsErr);
       }
 
       // Fetch settings
@@ -388,6 +384,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
         billDate: bill.bill_date,
         receivedAmount: bill.received_amount,
         notes: '',
+        paymentMode: bill.payment_mode,
         items: bill.items.map(item => ({
           productId: item.product_id,
           quantity: item.quantity,
@@ -413,6 +410,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           received_amount: createdBill.receivedAmount,
           pending_amount: createdBill.pendingAmount,
           status: createdBill.status,
+          payment_mode: createdBill.payment_mode,
           updated_at: createdBill.updatedAt,
           created_at: createdBill.createdAt,
           user_name: createdBill.user?.name || bill.user_name,
@@ -446,7 +444,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
     }
   };
 
-  const updateBill = async (id: string, updateData: { receivedAmount?: number; notes?: string }) => {
+  const updateBill = async (id: string, updateData: { receivedAmount?: number; notes?: string; paymentMode?: string }) => {
     try {
       const response = await billsAPI.updateBill(parseInt(id), updateData);
       if (response.success) {
@@ -459,6 +457,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
               received_amount: updatedBill.receivedAmount,
               pending_amount: updatedBill.pendingAmount,
               status: updatedBill.status,
+              payment_mode: updatedBill.payment_mode,
               ...updateData // in case there are other fields like notes
             } : bill
           )

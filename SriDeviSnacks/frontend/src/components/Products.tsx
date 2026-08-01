@@ -172,34 +172,25 @@ const Products: React.FC = () => {
     fetchProducts();
   }, [currentPage, searchTerm]);
 
-  // New useEffect to preload shopProducts for all shops in weeklySchedule
+  // New useEffect to preload shopProducts for all shops in weeklySchedule in a single call
   React.useEffect(() => {
     const fetchAllShopProducts = async () => {
       try {
-        const allShops = weeklySchedule.flatMap(day => day.shops);
-        const uniqueShopIds = Array.from(new Set(allShops.map(shop => shop.id)));
-
-        let allShopProducts: ShopProduct[] = [];
-
-        for (const shopId of uniqueShopIds) {
-          const response = await shopsAPI.getShopProducts(shopId);
-          if (response.success) {
-            const fetchedShopProducts: ShopProduct[] = response.data.map((sp: any) => ({
-              id: sp.id,
-              shop_id: sp.shopId,
-              product_id: sp.productId,
-              price: sp.price,
-              shop_name: sp.shop?.shopName || '',
-              product_name: sp.product?.productName || '',
-              unit: sp.product?.unit || '',
-              gst: sp.product?.gst || 0,
-              hsn_code: sp.product?.hsnCode || ''
-            }));
-            allShopProducts = [...allShopProducts, ...fetchedShopProducts];
-          }
+        const response = await shopsAPI.getAllShopProducts();
+        if (response.success) {
+          const fetchedShopProducts: ShopProduct[] = response.data.map((sp: any) => ({
+            id: sp.id,
+            shop_id: sp.shopId,
+            product_id: sp.productId,
+            price: sp.price,
+            shop_name: sp.shop?.shopName || '',
+            product_name: sp.product?.productName || '',
+            unit: sp.product?.unit || '',
+            gst: sp.product?.gst || 0,
+            hsn_code: sp.product?.hsnCode || ''
+          }));
+          setShopProducts(fetchedShopProducts);
         }
-
-        setShopProducts(allShopProducts);
       } catch (error) {
         console.error('Error preloading shop products:', error);
       }
@@ -566,7 +557,10 @@ const Products: React.FC = () => {
             gst: sp.product?.gst || 0,
             hsn_code: sp.product?.hsnCode || ''
           }));
-          setShopProducts(fetchedShopProducts);
+          setShopProducts([
+            ...shopProducts.filter(sp => sp.shop_id !== selectedShop),
+            ...fetchedShopProducts
+          ]);
         }
         setEditingPriceId(response.data.id);
         setPriceEditValue(productPrice.toString());

@@ -13,6 +13,8 @@ import { AppProvider } from './context/AppContext';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import DayScheduleDetails from './components/DayScheduleDetails';
+import VtsGps from './components/VtsGps';
+import Employees from './components/Employees';
 
 
 const getBasename = () => {
@@ -179,6 +181,22 @@ interface UserData {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Reports />
+                </Layout>
+              } 
+            />
+            <Route 
+              path="/gps-tracking" 
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <VtsGps />
+                </Layout>
+              } 
+            />
+            <Route 
+              path="/employees" 
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <Employees />
                 </Layout>
               } 
             />

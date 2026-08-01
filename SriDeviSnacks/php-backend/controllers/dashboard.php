@@ -94,6 +94,47 @@ function getDashboardStats() {
         // 10. Total Stock items
         $totalStock = (float)$db->query("SELECT SUM(quantity) FROM stocks")->fetchColumn();
         
+        // 11. Today's collections from bill_payments
+        $stmt = $db->prepare("
+            SELECT p.id, p.bill_id, p.amount as paidAmount, p.payment_mode as paymentType, p.payment_date,
+                   s.shop_name as shopName, b.bill_number as billNumber, b.pending_amount as remainingPending,
+                   u.name as collectedBy
+            FROM bill_payments p
+            JOIN bills b ON p.bill_id = b.id
+            JOIN shops s ON b.shop_id = s.id
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.payment_date >= :start AND p.payment_date <= :end
+            ORDER BY p.id DESC
+        ");
+        $stmt->execute(['start' => $startOfDay, 'end' => $endOfDay]);
+        $todayPaymentsList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $totalCollectedToday = 0.0;
+        foreach ($todayPaymentsList as &$payment) {
+            $payment['id'] = (int)$payment['id'];
+            $payment['bill_id'] = (int)$payment['bill_id'];
+            $payment['paidAmount'] = (float)$payment['paidAmount'];
+            
+            $stmtBill = $db->prepare("SELECT total_amount FROM bills WHERE id = :id");
+            $stmtBill->execute(['id' => $payment['bill_id']]);
+            $billTotal = (float)($stmtBill->fetchColumn() ?: 0.0);
+            
+            $isPaymentBill = ($billTotal == 0);
+            if ($payment['paymentType'] === 'GPAY') {
+                $payment['paymentType'] = 'GPAY';
+            } else {
+                $payment['paymentType'] = $isPaymentBill ? 'Pending Collection' : 'Bill Payment';
+            }
+            
+            if ($isPaymentBill) {
+                $payment['remainingPending'] = '-';
+            } else {
+                $payment['remainingPending'] = '₹' . number_format((float)$payment['remainingPending'], 2);
+            }
+            
+            $totalCollectedToday += $payment['paidAmount'];
+        }
+
         // Percentage Changes
         $billsChange = $yesterdaysBills > 0 
           ? (($todaysBills - $yesterdaysBills) / $yesterdaysBills * 100) 
@@ -129,6 +170,10 @@ function getDashboardStats() {
             'stock' => [
                 'lowStockItems' => $lowStockItems,
                 'totalItems' => $totalStock
+            ],
+            'collections' => [
+                'today_total' => $totalCollectedToday,
+                'today_list' => $todayPaymentsList
             ]
         ];
         

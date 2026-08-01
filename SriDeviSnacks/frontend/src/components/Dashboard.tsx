@@ -110,11 +110,17 @@ const Dashboard: React.FC = () => {
     return bills
       .filter(bill => bill.bill_date && isToday(bill.bill_date) && bill.received_amount > 0)
       .map(bill => {
-        const isPaymentBill = bill.items.length === 0 && bill.total_amount === 0;
+        const isPaymentBill = bill.items && bill.items.length === 0 && bill.total_amount === 0;
+        let paymentType = 'Bill Payment';
+        if (bill.payment_mode === 'GPAY') {
+          paymentType = 'GPAY';
+        } else if (isPaymentBill) {
+          paymentType = 'Pending Collection';
+        }
         return {
           shopName: bill.shop_name,
           billNumber: bill.id,
-          paymentType: isPaymentBill ? 'Pending Collection' : 'New Bill Payment',
+          paymentType,
           paidAmount: bill.received_amount,
           remainingPending: isPaymentBill ? '-' : `₹${bill.pending_amount.toLocaleString()}`,
           collectedBy: bill.user_name || 'System',
@@ -127,8 +133,26 @@ const Dashboard: React.FC = () => {
     return todayCollections.reduce((sum, item) => sum + item.paidAmount, 0);
   }, [todayCollections]);
 
+  const totalGPayToday = React.useMemo(() => {
+    return todayCollections
+      .filter((item: any) => item.paymentType === 'GPAY')
+      .reduce((sum: number, item: any) => {
+        const val = typeof item.paidAmount === 'string' ? parseFloat(item.paidAmount) : item.paidAmount;
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
+  }, [todayCollections]);
+
+  const totalBillSaveToday = React.useMemo(() => {
+    return todayCollections
+      .filter((item: any) => item.paymentType !== 'GPAY')
+      .reduce((sum: number, item: any) => {
+        const val = typeof item.paidAmount === 'string' ? parseFloat(item.paidAmount) : item.paidAmount;
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
+  }, [todayCollections]);
+
   const totalPendingBalanceToday = React.useMemo(() => {
-    return todayCollections.reduce((sum, item) => {
+    return todayCollections.reduce((sum: number, item: any) => {
       if (item.remainingPending === '-') return sum;
       const num = parseFloat(item.remainingPending.replace(/[^0-9.]/g, ''));
       return sum + (isNaN(num) ? 0 : num);
@@ -166,12 +190,13 @@ const Dashboard: React.FC = () => {
     return todayPendingIssued.reduce((sum, item) => sum + item.paidAmount, 0);
   }, [todayPendingIssued]);
 
-  const StatCard = ({ title, value, icon: Icon, change, color = 'blue' }: any) => (
+  const StatCard = ({ title, value, icon: Icon, change, color = 'blue', children }: any) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+          {children}
           {/* {change && (
             <div className="flex items-center mt-2">
               <ArrowUp className="h-4 w-4 text-green-500 mr-1" />
@@ -238,7 +263,18 @@ const Dashboard: React.FC = () => {
           value={`₹${totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={DollarSign}
           color="indigo"
-        />
+        >
+          <div className="mt-3 pt-2 border-t border-gray-100 flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-500 font-medium">Bill Save (Cash):</span>
+              <span className="text-green-700 font-bold">₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-500 font-medium">GPay:</span>
+              <span className="text-indigo-700 font-bold">₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        </StatCard>
         {/* <StatCard
           title="Active Orders"
           value={stats.activeOrders}
@@ -296,9 +332,14 @@ const Dashboard: React.FC = () => {
             </h3>
             <p className="mt-1 text-sm font-bold text-gray-500">
               {activeView === 'received' ? (
-                <span className="text-green-700">Total Collected Today: ₹{totalCollectedToday.toLocaleString()}</span>
+                <span className="text-green-700 flex flex-wrap items-center gap-x-2">
+                  <span>Total Collected Today: ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-gray-300 font-normal">|</span>
+                  <span className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded">Bill Save (Cash): ₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </span>
               ) : (
-                <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString()}</span>
+                <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               )}
             </p>
           </div>
@@ -364,7 +405,7 @@ const Dashboard: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  todayCollections.map((item, idx) => (
+                  todayCollections.map((item: any, idx: number) => (
                     <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {item.shopName}
@@ -374,7 +415,9 @@ const Dashboard: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.paymentType === 'Pending Collection'
+                          item.paymentType === 'GPAY'
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : item.paymentType === 'Pending Collection'
                             ? 'bg-orange-100 text-orange-800'
                             : 'bg-green-100 text-green-800'
                         }`}>

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit, Trash2, Package, IndianRupee, Warehouse, FileText, Printer, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { stocksAPI } from '../services/api';
-import { Pagination } from './Pagination';
+import { stocksAPI, settingsAPI } from '../services/api';
 import Logo from '../assets/Logo.png';
 
 interface Product {
@@ -107,9 +106,7 @@ const Stock: React.FC = () => {
     Sunday: 'Custom Route',
   };
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const itemsPerPage = 5;
+
 
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -153,24 +150,8 @@ const Stock: React.FC = () => {
     return matchesSearch;
   });
 
-  // Calculate pagination
-  const totalItems = filteredProducts.length;
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-  // Update total pages when filtered products change
-  React.useEffect(() => {
-    setTotalPages(Math.ceil(totalItems / itemsPerPage));
-    // Reset to first page if current page exceeds total pages
-    if (currentPage > Math.ceil(totalItems / itemsPerPage) && Math.ceil(totalItems / itemsPerPage) > 0) {
-      setCurrentPage(1);
-    }
-  }, [filteredProducts.length, currentPage, itemsPerPage]);
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
+  // Display all products in a scrollable list
+  const paginatedProducts = filteredProducts;
 
   const totalStockValue = products.reduce((total, product) => {
     return total + (product.quantity * getProductRate(product.id));
@@ -511,7 +492,7 @@ const Stock: React.FC = () => {
 
       {/* Products Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[650px]">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -635,11 +616,6 @@ const Stock: React.FC = () => {
             </tbody>
           </table>
         </div>
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-        />
       </div>
 
       {/* Product Modal */}

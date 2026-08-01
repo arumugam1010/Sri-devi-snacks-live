@@ -155,6 +155,7 @@
             'pendingAmount' => (float)$billRow['pending_amount'],
             'status' => $billRow['status'],
             'notes' => $billRow['notes'],
+            'payment_mode' => $billRow['payment_mode'] ?? null,
             'signature' => $billRow['signature'],
             'createdAt' => $billRow['createdAt'],
             'updatedAt' => $billRow['updatedAt'],
@@ -279,6 +280,7 @@
         $receivedAmount = isset($body['receivedAmount']) ? round((float)$body['receivedAmount'], 2) : 0.00;
         $applyToPending = isset($body['applyToPending']) && $body['applyToPending'] === true;
         $notes = $body['notes'] ?? null;
+        $paymentMode = $body['paymentMode'] ?? null;
         $items = $body['items'] ?? [];
         
         if ($shopId <= 0) {
@@ -356,8 +358,8 @@
             $status = $pendingAmount <= 0 ? 'COMPLETED' : 'PENDING';
             
             // Insert Bill
-            $stmt = $db->prepare("INSERT INTO bills (bill_number, shop_id, user_id, bill_date, total_amount, received_amount, pending_amount, status, notes, createdAt, updatedAt) 
-                                VALUES (:bill_number, :shop_id, :user_id, :bill_date, :total_amount, :received_amount, :pending_amount, :status, :notes, NOW(), NOW())");
+            $stmt = $db->prepare("INSERT INTO bills (bill_number, shop_id, user_id, bill_date, total_amount, received_amount, pending_amount, status, notes, payment_mode, createdAt, updatedAt) 
+                                VALUES (:bill_number, :shop_id, :user_id, :bill_date, :total_amount, :received_amount, :pending_amount, :status, :notes, :payment_mode, NOW(), NOW())");
             $stmt->execute([
                 'bill_number' => $billNumber,
                 'shop_id' => $shopId,
@@ -367,10 +369,24 @@
                 'received_amount' => $billReceivedAmount,
                 'pending_amount' => $pendingAmount,
                 'status' => $status,
-                'notes' => $notes
+                'notes' => $notes,
+                'payment_mode' => $paymentMode
             ]);
             
             $billId = (int)$db->lastInsertId();
+            
+            // Record payment transaction
+            if ($billReceivedAmount > 0) {
+                $payStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
+                                         VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
+                $payStmt->execute([
+                    'bill_id' => $billId,
+                    'amount' => $billReceivedAmount,
+                    'payment_mode' => $paymentMode,
+                    'payment_date' => $billDate,
+                    'user_id' => $userId
+                ]);
+            }
             
             // Insert Items & Update Stocks
             if (!$isPaymentBill) {
@@ -469,6 +485,19 @@
                         'id' => $pBillId
                     ]);
                     
+                    // Record applied payment on pending bill
+                    if ($apply > 0) {
+                        $payPendingStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
+                                                        VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
+                        $payPendingStmt->execute([
+                            'bill_id' => $pBillId,
+                            'amount' => $apply,
+                            'payment_mode' => $paymentMode,
+                            'payment_date' => $billDate,
+                            'user_id' => $userId
+                        ]);
+                    }
+                    
                     $paymentToApply = round($paymentToApply - $apply, 2);
                 }
             }
@@ -538,6 +567,11 @@
                 $params['notes'] = $body['notes'];
             }
             
+            if (isset($body['paymentMode'])) {
+                $updates[] = "payment_mode = :payment_mode";
+                $params['payment_mode'] = $body['paymentMode'];
+            }
+            
             if (empty($updates)) {
                 sendResponse(false, 'No fields to update', null, 400);
             }
@@ -547,6 +581,24 @@
             
             $stmt = $db->prepare("UPDATE bills SET {$updatesStr} WHERE id = :id");
             $stmt->execute($params);
+
+            // Record transaction if receivedAmount was increased
+            if (isset($body['receivedAmount'])) {
+                $oldReceived = (float)$currentBill['received_amount'];
+                $newReceived = (float)$params['received_amount'];
+                $diff = round($newReceived - $oldReceived, 2);
+                
+                if ($diff > 0) {
+                    $payUpdateStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
+                                                   VALUES (:bill_id, :amount, :payment_mode, NOW(), :user_id, NOW())");
+                    $payUpdateStmt->execute([
+                        'bill_id' => $billId,
+                        'amount' => $diff,
+                        'payment_mode' => $body['paymentMode'] ?? $currentBill['payment_mode'] ?? 'CASH',
+                        'user_id' => $user['id'] ?? null
+                    ]);
+                }
+            }
             
             // Fetch updated bill
             $stmt = $db->prepare("SELECT * FROM bills WHERE id = :id");

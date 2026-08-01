@@ -418,7 +418,14 @@
     }, []);
 
     // State for selected day to filter shops
-    const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
+    const [selectedDay, setSelectedDay] = React.useState<string | null>(() => {
+      const draftBill = localStorage.getItem('draft_currentBill');
+      const hasDraftBill = draftBill ? JSON.parse(draftBill).length > 0 : false;
+      if (hasDraftBill) {
+        return localStorage.getItem('draft_selectedDay') || null;
+      }
+      return null;
+    });
 
     // Shops filtered by selected day
     const shops = React.useMemo(() => {
@@ -446,8 +453,19 @@
 
 
 
-    const [selectedShop, setSelectedShop] = useState<number | null>(null);
-    const [currentBill, setCurrentBill] = useState<BillItem[]>([]);
+    const [selectedShop, setSelectedShop] = useState<number | null>(() => {
+      const draftBill = localStorage.getItem('draft_currentBill');
+      const hasDraftBill = draftBill ? JSON.parse(draftBill).length > 0 : false;
+      if (hasDraftBill) {
+        const val = localStorage.getItem('draft_selectedShop');
+        return val ? parseInt(val, 10) : null;
+      }
+      return null;
+    });
+    const [currentBill, setCurrentBill] = useState<BillItem[]>(() => {
+      const val = localStorage.getItem('draft_currentBill');
+      return val ? JSON.parse(val) : [];
+    });
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [returnItems, setReturnItems] = useState<ReturnItem[]>([]);
     // Removed local savedBills state to use context bills instead
@@ -465,8 +483,19 @@
     };
     const [returnQuantities, setReturnQuantities] = useState<{ [key: number]: string }>({});
     const [selectedBillForView, setSelectedBillForView] = useState<Bill | null>(null);
-    const [showBillingInterface, setShowBillingInterface] = useState(false);
-    const [receivedAmount, setReceivedAmount] = useState<string>("");
+    const [showBillingInterface, setShowBillingInterface] = useState<boolean>(() => {
+      const draftBill = localStorage.getItem('draft_currentBill');
+      const hasDraftBill = draftBill ? JSON.parse(draftBill).length > 0 : false;
+      return hasDraftBill;
+    });
+    const [receivedAmount, setReceivedAmount] = useState<string>(() => {
+      const draftBill = localStorage.getItem('draft_currentBill');
+      const hasDraftBill = draftBill ? JSON.parse(draftBill).length > 0 : false;
+      if (hasDraftBill) {
+        return localStorage.getItem('draft_receivedAmount') || "";
+      }
+      return "";
+    });
     const [showPendingBillAlert, setShowPendingBillAlert] = useState(false);
     const [pendingBills, setPendingBills] = useState<Bill[]>([]);
     const [isPayPendingMode, setIsPayPendingMode] = useState(false);
@@ -478,6 +507,51 @@
     const [saving, setSaving] = useState(false);
     const [selectedBillIds, setSelectedBillIds] = useState<string[]>([]);
 
+    // Sync draft state to localStorage only if there are items in the bill
+    React.useEffect(() => {
+      if (currentBill.length > 0) {
+        localStorage.setItem('draft_currentBill', JSON.stringify(currentBill));
+        if (selectedDay) {
+          localStorage.setItem('draft_selectedDay', selectedDay);
+        } else {
+          localStorage.removeItem('draft_selectedDay');
+        }
+        if (selectedShop !== null) {
+          localStorage.setItem('draft_selectedShop', selectedShop.toString());
+        } else {
+          localStorage.removeItem('draft_selectedShop');
+        }
+        localStorage.setItem('draft_receivedAmount', receivedAmount);
+      } else {
+        localStorage.removeItem('draft_currentBill');
+        localStorage.removeItem('draft_selectedDay');
+        localStorage.removeItem('draft_selectedShop');
+        localStorage.removeItem('draft_receivedAmount');
+      }
+    }, [currentBill, selectedDay, selectedShop, receivedAmount]);
+
+    // Recalculate pending bills automatically when shop or global bills list updates
+    React.useEffect(() => {
+      if (selectedShop !== null && bills.length > 0) {
+        const shopPendingBills = bills.filter(bill =>
+          bill.shop_id === selectedShop && bill.status === 'PENDING'
+        );
+        if (shopPendingBills.length > 0) {
+          const sortedPendingBills = [...shopPendingBills].sort((a, b) =>
+            new Date(a.bill_date).getTime() - new Date(b.bill_date).getTime()
+          );
+          setPendingBills(sortedPendingBills);
+          setShowPendingBillAlert(true);
+        } else {
+          setPendingBills([]);
+          setShowPendingBillAlert(false);
+        }
+      } else if (selectedShop === null) {
+        setPendingBills([]);
+        setShowPendingBillAlert(false);
+      }
+    }, [selectedShop, bills]);
+
     // Reset month pagination when month changes
     React.useEffect(() => {
       setMonthCurrentPage(1);
@@ -486,6 +560,9 @@
 
     // State for selected bill for returns
     const [selectedBillForReturn, setSelectedBillForReturn] = useState<Bill | null>(null);
+
+    // State for payment mode
+    const [paymentMode, setPaymentMode] = useState<string>('CASH');
 
     // State for payment bill mode
     const [isPaymentBillMode, setIsPaymentBillMode] = useState(false);
@@ -503,6 +580,44 @@
     const [showSignatureModal, setShowSignatureModal] = useState(false);
     const [signatureTargetBillId, setSignatureTargetBillId] = useState<string | null>(null);
     const [signatureData, setSignatureData] = useState<{ [billId: string]: string }>({});
+
+    // Draft state
+    const [drafts, setDrafts] = useState<Record<number, any>>(() => {
+      const saved = localStorage.getItem('billing_drafts');
+      return saved ? JSON.parse(saved) : {};
+    });
+    const [showDraftsModal, setShowDraftsModal] = useState(false);
+
+    const handleSaveDraft = () => {
+      if (!selectedShop) {
+        alert('Please select a shop first');
+        return;
+      }
+      if (currentBill.length === 0) {
+        alert('Cannot save empty bill as draft');
+        return;
+      }
+
+      const updatedDrafts = { ...drafts };
+      updatedDrafts[selectedShop] = {
+        shopId: selectedShop,
+        shopName: currentShop?.shop_name || '',
+        day: selectedDay || '',
+        items: currentBill,
+        receivedAmount: receivedAmount,
+        date: new Date().toISOString()
+      };
+
+      setDrafts(updatedDrafts);
+      localStorage.setItem('billing_drafts', JSON.stringify(updatedDrafts));
+
+      setCurrentBill([]);
+      setReceivedAmount("0");
+      setSelectedShop(null);
+      setShowBillingInterface(false);
+      setShowSaveOptionsModal(false);
+      alert('Bill saved to drafts successfully!');
+    };
     const canvasRef = React.useRef<HTMLCanvasElement>(null);
     const daySelectRef = React.useRef<HTMLSelectElement>(null);
     const quantityInputRef = React.useRef<HTMLInputElement>(null);
@@ -555,8 +670,8 @@
               hsn_code: sp.product?.hsnCode || ''
             }));
             
-            setShopProducts((prev: any[]) => [
-              ...prev.filter(sp => sp.shop_id !== selectedShop),
+            setShopProducts([
+              ...shopProducts.filter(sp => sp.shop_id !== selectedShop),
               ...fetchedShopProducts
             ]);
           }
@@ -568,9 +683,49 @@
       fetchLatestShopProducts();
     }, [selectedShop]);
 
+    // Keep currentBill prices in sync with latest shopProducts/products pricing
+    React.useEffect(() => {
+      if (selectedShop && currentBill.length > 0) {
+        let changed = false;
+        const updatedBill = currentBill.map(item => {
+          // Find the latest price for this product in this shop
+          const shopPricing = shopProducts.find(sp =>
+            Number(sp.shop_id) === Number(selectedShop) && Number(sp.product_id) === Number(item.product_id)
+          );
+          const baseProduct = products.find(p => Number(p.id) === Number(item.product_id));
+          const latestPrice = shopPricing ? shopPricing.price : (baseProduct ? baseProduct.price : item.price);
+          
+          if (latestPrice !== item.price && !item.isReturn) {
+            changed = true;
+            const newAmount = item.quantity * latestPrice;
+            let newSgst = 0;
+            let newCgst = 0;
+            const gstPercent = item.gst !== undefined ? item.gst : (baseProduct ? baseProduct.gst : 0);
+            if (gstPercent && item.quantity > 0) {
+              const gstAmount = (newAmount * gstPercent) / 100;
+              newSgst = gstAmount / 2;
+              newCgst = gstAmount / 2;
+            }
+            return {
+              ...item,
+              price: latestPrice,
+              amount: newAmount,
+              sgst: newSgst,
+              cgst: newCgst
+            };
+          }
+          return item;
+        });
+
+        if (changed) {
+          setCurrentBill(updatedBill);
+        }
+      }
+    }, [shopProducts, products, selectedShop]);
+
     // Get all products for the selected shop, or all products if none are priced for the shop
     const selectedShopProducts = selectedShop
-      ? shopProducts.filter(sp => sp.shop_id === selectedShop)
+      ? shopProducts.filter(sp => Number(sp.shop_id) === Number(selectedShop))
       : [];
 
     // Get all available products for dropdown (only products with stock > 0)
@@ -579,7 +734,7 @@
         .filter(product => product.quantity > 0) // Only show products with stock
         .map(product => {
           const shopPricing = shopProducts.find(sp =>
-            sp.shop_id === selectedShop && sp.product_id === product.id
+            Number(sp.shop_id) === Number(selectedShop) && Number(sp.product_id) === Number(product.id)
           );
           const productData = {
             id: Date.now() + product.id, // temporary ID
@@ -597,12 +752,12 @@
         })
       : [];
     const selectedProductDetails = productForm.product_id
-      ? allProductsForShop.find(p => p.product_id === parseInt(productForm.product_id))
+      ? allProductsForShop.find(p => Number(p.product_id) === Number(productForm.product_id))
       : null;
     const filteredProductsForDropdown = allProductsForShop.filter(p =>
       p.product_name.toLowerCase().includes(dropdownSearch.toLowerCase())
     );
-    const currentShop = shops.find(shop => shop.id === selectedShop);
+    const currentShop = shops.find(shop => Number(shop.id) === Number(selectedShop));
     const totalAmount = currentBill.reduce((sum, item) => sum + item.amount, 0);
 
     const handleDaySelect = (day: string | null) => {
@@ -852,6 +1007,7 @@
           // Update the bill via backend API (this will update global bills state with correct pending_amount and status)
           await updateBill(bill.id, {
             receivedAmount: newReceivedAmount,
+            paymentMode: paymentMode,
           });
 
           remainingPayment -= paymentAmount;
@@ -973,6 +1129,7 @@
         received_amount: currentReceived,
         pending_amount: pendingAmount,
         status: billStatus,
+        payment_mode: paymentMode,
         items: currentBill.map(item => ({
           ...item,
           rate: item.price,
@@ -1015,6 +1172,16 @@
           setShowPendingBillAlert(shopPendingBills.length > 0);
         }
 
+        // Clean up draft if one exists for this shop
+        if (selectedShop) {
+          const updatedDrafts = { ...drafts };
+          if (updatedDrafts[selectedShop]) {
+            delete updatedDrafts[selectedShop];
+            setDrafts(updatedDrafts);
+            localStorage.setItem('billing_drafts', JSON.stringify(updatedDrafts));
+          }
+        }
+
         setCurrentBill([]);
         setReturnItems([]);
         setReceivedAmount("0");
@@ -1027,6 +1194,7 @@
         setPendingPaymentAmount(0);
         setHasPrinted(false); // Reset print status when bill is saved
         setSelectedMonth(null); // Reset to show financial year overview
+        setPaymentMode('CASH'); // Reset payment mode
         alert(`Bill ${newBill.id} saved successfully!\nFinal Amount: ₹${finalTotal.toFixed(2)}\nStatus: ${billStatus}`);
       } catch (error: any) {
         console.error('Failed to save bill:', error);
@@ -1125,12 +1293,12 @@
           return !isNaN(quantity) && quantity > 0;
         })
         .map(([productId, quantityStr]) => {
-          const baseProduct = products.find(p => p.id === parseInt(productId));
+          const baseProduct = products.find(p => Number(p.id) === Number(productId));
           if (!baseProduct) {
             return { product: null, quantity: 0 };
           }
           const shopPricing = shopProducts.find(sp =>
-            sp.shop_id === selectedShop && sp.product_id === baseProduct.id
+            Number(sp.shop_id) === Number(selectedShop) && Number(sp.product_id) === Number(baseProduct.id)
           );
           const product = {
             id: Date.now() + baseProduct.id,
@@ -1288,13 +1456,16 @@
     const handlePaymentSuccess = async (transactionId: string, paidAmount: number) => {
       if (!currentBillForPayment) return;
 
+      const wasFromModal = gpayFromModal;
+      setGpayFromModal(false);
+
       setSaving(true);
       try {
         const newReceivedAmount = currentBillForPayment.received_amount + paidAmount;
         const pendingAmount = Math.max(0, currentBillForPayment.total_amount - newReceivedAmount);
         const billStatus = pendingAmount > 0 ? 'PENDING' : 'COMPLETED';
 
-        if (gpayFromModal) {
+        if (wasFromModal) {
           // If triggered from the after-print options modal, save the new bill to backend
           const finalBill: Bill = {
             ...currentBillForPayment,
@@ -1311,6 +1482,7 @@
           // If triggered from the saved bills list, update the existing bill via backend API
           await updateBill(currentBillForPayment.id, {
             receivedAmount: newReceivedAmount,
+            paymentMode: 'GPAY',
           });
           
           // Get the updated bill status
@@ -1329,6 +1501,16 @@
           setShowPendingBillAlert(shopPendingBills.length > 0);
         }
 
+        // Clean up draft if one exists for this shop
+        if (selectedShop) {
+          const updatedDrafts = { ...drafts };
+          if (updatedDrafts[selectedShop]) {
+            delete updatedDrafts[selectedShop];
+            setDrafts(updatedDrafts);
+            localStorage.setItem('billing_drafts', JSON.stringify(updatedDrafts));
+          }
+        }
+
         // Reset states
         setCurrentBill([]);
         setReceivedAmount("0");
@@ -1337,7 +1519,7 @@
         setIsPayPendingMode(false);
         setPendingPaymentAmount(0);
         setCurrentBillForPayment(null);
-        setGpayFromModal(false);
+        setShowSaveOptionsModal(false);
       } catch (error: any) {
         console.error('Failed to process bill payment:', error);
         alert(`Failed to process bill payment: ${error.message || 'Unknown error occurred'}`);
@@ -1964,6 +2146,13 @@
               <RotateCcw className="h-5 w-5 mr-2" />
               Returns
             </button>
+            <button
+              onClick={() => setShowDraftsModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition"
+            >
+              <ShoppingCart className="h-5 w-5 mr-2" />
+              Drafts ({Object.keys(drafts).length})
+            </button>
             { /* Remove Pay with GPay button here as per feedback */}
 
 
@@ -2181,10 +2370,12 @@
                                 </span>
                               </div>
 
-                              <div className="text-sm text-gray-600">
-                                <p>Total: ₹{monthBills.reduce((sum, bill) => sum + bill.total_amount, 0).toFixed(2)}</p>
-                                <p>Pending: ₹{monthBills.reduce((sum, bill) => sum + bill.pending_amount, 0).toFixed(2)}</p>
-                              </div>
+                              {userRole !== 'STAFF' && (
+                                <div className="text-sm text-gray-600">
+                                  <p>Total: ₹{monthBills.reduce((sum, bill) => sum + bill.total_amount, 0).toFixed(2)}</p>
+                                  <p>Pending: ₹{monthBills.reduce((sum, bill) => sum + bill.pending_amount, 0).toFixed(2)}</p>
+                                </div>
+                              )}
 
                               <div className="mt-3 text-xs text-gray-500">
                                 Click to view all bills
@@ -2644,6 +2835,8 @@
                           onClick={() => {
                             if (confirm('Clear current bill?')) {
                               setCurrentBill([]);
+                              setSelectedShop(null);
+                              setReceivedAmount("0");
                               setHasPrinted(false); // Reset print status when bill is cleared
                             }
                           }}
@@ -4122,7 +4315,7 @@
                   </h3>
                   <button
                     onClick={() => setShowSaveOptionsModal(false)}
-                    className="text-gray-400 hover:text-gray-600 text-2xl font-semibold transition"
+                    className="text-gray-800 hover:text-black hover:bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center text-2xl font-bold transition"
                   >
                     &times;
                   </button>
@@ -4199,12 +4392,97 @@
                     Pay with GPay (GPay மூலம் செலுத்த)
                   </button>
 
+                  {/* Draft Button */}
+                  <button
+                    onClick={handleSaveDraft}
+                    className="w-full inline-flex items-center justify-center px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-xl shadow transition"
+                  >
+                    Draft (வரைவு பில்)
+                  </button>
+
                   {/* Cancel Button */}
                   <button
                     onClick={() => setShowSaveOptionsModal(false)}
                     className="w-full inline-flex items-center justify-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition"
                   >
                     Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Drafts Modal */}
+        {showDraftsModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+            <div className="relative mx-auto p-6 border w-11/12 max-w-lg shadow-2xl rounded-2xl bg-white animate-fade-in-up">
+              <div className="mt-3">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                    <ShoppingCart className="h-6 w-6 mr-2 text-blue-600" />
+                    Draft Bills (வரைவு பில்கள்)
+                  </h3>
+                  <button
+                    onClick={() => setShowDraftsModal(false)}
+                    className="text-gray-800 hover:text-black hover:bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center text-2xl font-bold transition"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                <div className="mb-6 max-h-[60vh] overflow-y-auto space-y-3">
+                  {Object.keys(drafts).length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No draft bills found.
+                    </div>
+                  ) : (
+                    Object.values(drafts).map((draft: any) => {
+                      const draftTotal = draft.items.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+                      return (
+                        <div key={draft.shopId} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center hover:bg-gray-100 transition">
+                          <div className="flex-1 cursor-pointer" onClick={() => {
+                            setSelectedDay(draft.day);
+                            setSelectedShop(draft.shopId);
+                            setCurrentBill(draft.items);
+                            setReceivedAmount(draft.receivedAmount || "0");
+                            setShowBillingInterface(true);
+                            setShowDraftsModal(false);
+                            setShowSaveOptionsModal(true);
+                          }}>
+                            <h4 className="font-bold text-gray-900">{draft.shopName}</h4>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Day: {draft.day} • Items: {draft.items.length} • Total: ₹{Math.round(draftTotal).toFixed(2)}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              Saved on: {new Date(draft.date).toLocaleString()}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete the draft for ${draft.shopName}?`)) {
+                                const updatedDrafts = { ...drafts };
+                                delete updatedDrafts[draft.shopId];
+                                setDrafts(updatedDrafts);
+                                localStorage.setItem('billing_drafts', JSON.stringify(updatedDrafts));
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowDraftsModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                  >
+                    Close
                   </button>
                 </div>
               </div>
