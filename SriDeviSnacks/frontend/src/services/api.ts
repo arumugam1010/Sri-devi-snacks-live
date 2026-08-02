@@ -375,17 +375,23 @@ export const employeesAPI = {
     return authenticatedFetch(`${API_BASE_URL}/employees${query}`);
   },
 
-  createEmployee: async (employeeData: { name: string; contact: string; monthly_salary: number; joining_date: string }) => {
+  createEmployee: async (employeeData: { name: string; contact: string; monthly_salary: number; salary_type: 'monthly' | 'daily'; joining_date: string }) => {
     return authenticatedFetch(`${API_BASE_URL}/employees`, {
       method: 'POST',
       body: JSON.stringify(employeeData),
     });
   },
 
-  updateEmployee: async (id: number, employeeData: { name: string; contact: string; monthly_salary: number; joining_date: string; status: string }) => {
+  updateEmployee: async (id: number, employeeData: { name: string; contact: string; monthly_salary: number; salary_type: 'monthly' | 'daily'; joining_date: string; status: string }) => {
     return authenticatedFetch(`${API_BASE_URL}/employees/${id}`, {
       method: 'PUT',
       body: JSON.stringify(employeeData),
+    });
+  },
+
+  deleteEmployee: async (id: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/${id}`, {
+      method: 'DELETE',
     });
   },
 

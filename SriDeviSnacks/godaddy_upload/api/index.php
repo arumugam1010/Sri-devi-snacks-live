@@ -140,9 +140,6 @@ switch ($module) {
         break;
     case 'debug-db':
         try {
-            if (function_exists('opcache_reset')) {
-                opcache_reset();
-            }
             $db = getDatabaseConnection();
             $phpTimezone = date_default_timezone_get();
             $phpTime = date('Y-m-d H:i:s');
@@ -163,21 +160,6 @@ switch ($module) {
             $stmt2->execute(['start' => $startOfDay, 'end' => $endOfDay]);
             $todaysPayments = $stmt2->fetch(PDO::FETCH_NUM);
 
-            // Run the exact dashboard collections query
-            $stmtDashboard = $db->prepare("
-                SELECT p.id, p.bill_id, p.amount as paidAmount, p.payment_mode as paymentType, p.payment_date,
-                       s.shop_name as shopName, b.bill_number as billNumber, b.pending_amount as remainingPending,
-                       u.name as collectedBy
-                FROM bill_payments p
-                JOIN bills b ON p.bill_id = b.id
-                JOIN shops s ON b.shop_id = s.id
-                LEFT JOIN users u ON p.user_id = u.id
-                WHERE p.payment_date >= :start AND p.payment_date <= :end
-                ORDER BY p.id DESC
-            ");
-            $stmtDashboard->execute(['start' => $startOfDay, 'end' => $endOfDay]);
-            $dashboardPayments = $stmtDashboard->fetchAll(PDO::FETCH_ASSOC);
-
             sendResponse(true, 'Debug info', [
                 'diagnostics' => [
                     'php_timezone' => $phpTimezone,
@@ -191,8 +173,6 @@ switch ($module) {
                 'todays_bills_sum' => (float)$todaysBills[1],
                 'todays_payments_count' => (int)$todaysPayments[0],
                 'todays_payments_sum' => (float)$todaysPayments[1],
-                'dashboard_payments_count' => count($dashboardPayments),
-                'dashboard_payments_list' => $dashboardPayments,
                 'recent_bills' => $recentBills,
                 'recent_payments' => $recentPayments
             ]);

@@ -94,13 +94,15 @@ function handleEmployeesRoute($parts, $method) {
         return;
     }
 
-    // Route: GET /employees/:id or PUT /employees/:id
+    // Route: GET /employees/:id, PUT /employees/:id, or DELETE /employees/:id
     if (is_numeric($action)) {
         $employeeId = (int)$action;
         if ($method === 'GET') {
             getEmployeeById($employeeId);
         } elseif ($method === 'PUT') {
             updateEmployee($employeeId);
+        } elseif ($method === 'DELETE') {
+            deleteEmployee($employeeId);
         } else {
             sendResponse(false, 'Method not allowed', null, 405);
         }
@@ -118,7 +120,7 @@ function getEmployeesList() {
     $status = $_GET['status'] ?? '';
 
     try {
-        $query = "SELECT e.id, e.name, e.contact, e.monthly_salary, e.joining_date, e.status, e.created_at, e.updated_at, 
+        $query = "SELECT e.id, e.name, e.contact, e.monthly_salary, e.salary_type, e.joining_date, e.status, e.created_at, e.updated_at, 
                   (SELECT COUNT(*) FROM employee_biometrics b WHERE b.employee_id = e.id) > 0 AS is_biometric_registered 
                   FROM employees e";
         $params = [];
@@ -137,6 +139,7 @@ function getEmployeesList() {
         foreach ($employees as &$emp) {
             $emp['id'] = (int)$emp['id'];
             $emp['monthly_salary'] = (float)$emp['monthly_salary'];
+            $emp['salary_type'] = $emp['salary_type'] ?? 'monthly';
             $emp['is_biometric_registered'] = (bool)$emp['is_biometric_registered'];
         }
 
@@ -152,7 +155,7 @@ function getEmployeesList() {
 function getEmployeeById($id) {
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("SELECT id, name, contact, monthly_salary, joining_date, status, created_at FROM employees WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id, name, contact, monthly_salary, salary_type, joining_date, status, created_at FROM employees WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $id]);
         $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -162,6 +165,7 @@ function getEmployeeById($id) {
 
         $employee['id'] = (int)$employee['id'];
         $employee['monthly_salary'] = (float)$employee['monthly_salary'];
+        $employee['salary_type'] = $employee['salary_type'] ?? 'monthly';
 
         sendResponse(true, '', $employee);
     } catch (PDOException $e) {
@@ -177,6 +181,7 @@ function createEmployee() {
     $name = trim($data['name'] ?? '');
     $contact = trim($data['contact'] ?? '');
     $monthlySalary = isset($data['monthly_salary']) ? (float)$data['monthly_salary'] : 0.0;
+    $salaryType = trim($data['salary_type'] ?? 'monthly');
     $joiningDate = trim($data['joining_date'] ?? '');
 
     if ($name === '' || $contact === '' || $monthlySalary <= 0 || $joiningDate === '') {
@@ -185,11 +190,12 @@ function createEmployee() {
 
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("INSERT INTO employees (name, contact, monthly_salary, joining_date, status) VALUES (:name, :contact, :monthly_salary, :joining_date, 'active')");
+        $stmt = $db->prepare("INSERT INTO employees (name, contact, monthly_salary, salary_type, joining_date, status) VALUES (:name, :contact, :monthly_salary, :salary_type, :joining_date, 'active')");
         $stmt->execute([
             'name' => $name,
             'contact' => $contact,
             'monthly_salary' => $monthlySalary,
+            'salary_type' => $salaryType,
             'joining_date' => $joiningDate
         ]);
 
@@ -208,6 +214,7 @@ function updateEmployee($id) {
     $name = trim($data['name'] ?? '');
     $contact = trim($data['contact'] ?? '');
     $monthlySalary = isset($data['monthly_salary']) ? (float)$data['monthly_salary'] : 0.0;
+    $salaryType = trim($data['salary_type'] ?? 'monthly');
     $joiningDate = trim($data['joining_date'] ?? '');
     $status = trim($data['status'] ?? 'active');
 
@@ -217,11 +224,12 @@ function updateEmployee($id) {
 
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("UPDATE employees SET name = :name, contact = :contact, monthly_salary = :monthly_salary, joining_date = :joining_date, status = :status WHERE id = :id");
+        $stmt = $db->prepare("UPDATE employees SET name = :name, contact = :contact, monthly_salary = :monthly_salary, salary_type = :salary_type, joining_date = :joining_date, status = :status WHERE id = :id");
         $stmt->execute([
             'name' => $name,
             'contact' => $contact,
             'monthly_salary' => $monthlySalary,
+            'salary_type' => $salaryType,
             'joining_date' => $joiningDate,
             'status' => $status,
             'id' => $id
@@ -229,6 +237,42 @@ function updateEmployee($id) {
 
         sendResponse(true, 'Employee updated successfully');
     } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * DELETE /api/employees/:id
+ */
+function deleteEmployee($id) {
+    $db = getDatabaseConnection();
+    try {
+        $db->beginTransaction();
+
+        // 1. Delete biometric registration if exists
+        $stmt = $db->prepare("DELETE FROM employee_biometrics WHERE employee_id = :id");
+        $stmt->execute(['id' => $id]);
+
+        // 2. Delete attendance records
+        $stmt = $db->prepare("DELETE FROM employee_attendance WHERE employee_id = :id");
+        $stmt->execute(['id' => $id]);
+
+        // 3. Delete salary records
+        $stmt = $db->prepare("DELETE FROM employee_salaries WHERE employee_id = :id");
+        $stmt->execute(['id' => $id]);
+
+        // 4. Delete payments
+        $stmt = $db->prepare("DELETE FROM employee_payments WHERE employee_id = :id");
+        $stmt->execute(['id' => $id]);
+
+        // 5. Delete employee
+        $stmt = $db->prepare("DELETE FROM employees WHERE id = :id");
+        $stmt->execute(['id' => $id]);
+
+        $db->commit();
+        sendResponse(true, 'Employee deleted successfully');
+    } catch (PDOException $e) {
+        $db->rollBack();
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }
 }
@@ -254,9 +298,41 @@ function getAttendanceRecords() {
             ];
         }
 
+        // Get monthly attendance counts
+        $month = date('Y-m', strtotime($date));
+        $startDate = $month . "-01";
+        $endDate = date("Y-m-t", strtotime($date));
+
+        $stmtStats = $db->prepare("
+            SELECT employee_id, status, COUNT(*) as count 
+            FROM employee_attendance 
+            WHERE date BETWEEN :start AND :end 
+            GROUP BY employee_id, status
+        ");
+        $stmtStats->execute(['start' => $startDate, 'end' => $endDate]);
+        $statsRecords = $stmtStats->fetchAll(PDO::FETCH_ASSOC);
+
+        $statsMap = [];
+        foreach ($statsRecords as $stat) {
+            $empId = (int)$stat['employee_id'];
+            if (!isset($statsMap[$empId])) {
+                $statsMap[$empId] = [
+                    'present' => 0,
+                    'absent' => 0,
+                    'half_day' => 0,
+                    'leave' => 0
+                ];
+            }
+            $statusKey = strtolower($stat['status']);
+            if (isset($statsMap[$empId][$statusKey])) {
+                $statsMap[$empId][$statusKey] = (int)$stat['count'];
+            }
+        }
+
         sendResponse(true, '', [
             'date' => $date,
-            'attendance' => $attendanceMap
+            'attendance' => $attendanceMap,
+            'monthly_stats' => $statsMap
         ]);
     } catch (PDOException $e) {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
@@ -327,7 +403,7 @@ function getSalarySummary() {
 
     try {
         // Only fetch employees who joined on or before the end of the selected month
-        $stmt = $db->prepare("SELECT id, name, contact, monthly_salary, joining_date, status FROM employees WHERE joining_date <= :end_date AND (status = 'active' OR (status = 'inactive' AND updated_at >= :start_date)) ORDER BY name ASC");
+        $stmt = $db->prepare("SELECT id, name, contact, monthly_salary, salary_type, joining_date, status FROM employees WHERE joining_date <= :end_date AND (status = 'active' OR (status = 'inactive' AND updated_at >= :start_date)) ORDER BY name ASC");
         $stmt->execute([
             'end_date' => $endOfMonth,
             'start_date' => $month . "-01"
@@ -355,6 +431,7 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
     $empId = (int)$employee['id'];
     $joiningDate = $employee['joining_date'];
     $baseSalary = (float)$employee['monthly_salary'];
+    $salaryType = $employee['salary_type'] ?? 'monthly';
 
     // Parse selected month
     $selectedTime = strtotime($selectedMonth . "-01");
@@ -362,46 +439,6 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
 
     // Parse joining month
     $joiningTime = strtotime(date('Y-m-01', strtotime($joiningDate)));
-    $joiningYearMonth = date('Y-m', $joiningTime);
-
-    // 1. Get current month's actual salary record if exists
-    $stmt = $db->prepare("SELECT salary_amount FROM employee_salaries WHERE employee_id = :emp_id AND month = :month");
-    $stmt->execute(['emp_id' => $empId, 'month' => $selectedYearMonth]);
-    $salaryRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-    $currentMonthSalary = $salaryRecord ? (float)$salaryRecord['salary_amount'] : $baseSalary;
-
-    // 2. Get current month's payments
-    $stmt = $db->prepare("SELECT SUM(amount) FROM employee_payments WHERE employee_id = :emp_id AND month = :month");
-    $stmt->execute(['emp_id' => $empId, 'month' => $selectedYearMonth]);
-    $currentMonthPaid = (float)$stmt->fetchColumn() ?: 0.0;
-
-    // 3. Get previous pending
-    // Loop through all months starting from joining month up to the month before selected month
-    $previousPending = 0.0;
-    $currentTime = $joiningTime;
-
-    while ($currentTime < $selectedTime) {
-        $prevMonth = date('Y-m', $currentTime);
-
-        // Get salary due for this prevMonth
-        $stmt = $db->prepare("SELECT salary_amount FROM employee_salaries WHERE employee_id = :emp_id AND month = :month");
-        $stmt->execute(['emp_id' => $empId, 'month' => $prevMonth]);
-        $prevSalaryRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-        $prevSalaryDue = $prevSalaryRecord ? (float)$prevSalaryRecord['salary_amount'] : $baseSalary;
-
-        // Get paid amount for this prevMonth
-        $stmt = $db->prepare("SELECT SUM(amount) FROM employee_payments WHERE employee_id = :emp_id AND month = :month");
-        $stmt->execute(['emp_id' => $empId, 'month' => $prevMonth]);
-        $prevPaid = (float)$stmt->fetchColumn() ?: 0.0;
-
-        $previousPending += ($prevSalaryDue - $prevPaid);
-
-        // Advance to next month
-        $currentTime = strtotime("+1 month", $currentTime);
-    }
-
-    $totalOwed = $previousPending + $currentMonthSalary;
-    $netPending = $totalOwed - $currentMonthPaid;
 
     // Fetch attendance stats for this month
     $startDate = $selectedYearMonth . "-01";
@@ -423,12 +460,95 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
         }
     }
 
+    // Determine the calculated salary for this month based on attendance
+    $daysInMonth = (int)date('t', $selectedTime);
+    if ($salaryType === 'daily') {
+        // Daily wage: (present + 0.5 * half_day) * baseSalary
+        $calculatedSalary = ($attendance['present'] + ($attendance['half_day'] * 0.5)) * $baseSalary;
+    } else {
+        // Monthly wage: baseSalary - (absent + leave + 0.5 * half_day) * (baseSalary / daysInMonth)
+        $dailyRate = $baseSalary / $daysInMonth;
+        $deductions = ($attendance['absent'] + $attendance['leave'] + ($attendance['half_day'] * 0.5)) * $dailyRate;
+        $calculatedSalary = max(0.0, $baseSalary - $deductions);
+    }
+
+    // 1. Get current month's actual salary record if exists
+    $stmt = $db->prepare("SELECT salary_amount FROM employee_salaries WHERE employee_id = :emp_id AND month = :month");
+    $stmt->execute(['emp_id' => $empId, 'month' => $selectedYearMonth]);
+    $salaryRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+    $currentMonthSalary = $salaryRecord ? (float)$salaryRecord['salary_amount'] : $calculatedSalary;
+
+    // 2. Get current month's payments
+    $stmt = $db->prepare("SELECT SUM(amount) FROM employee_payments WHERE employee_id = :emp_id AND month = :month");
+    $stmt->execute(['emp_id' => $empId, 'month' => $selectedYearMonth]);
+    $currentMonthPaid = (float)$stmt->fetchColumn() ?: 0.0;
+
+    // 3. Get previous pending
+    // Loop through all months starting from joining month up to the month before selected month
+    $previousPending = 0.0;
+    $currentTime = $joiningTime;
+
+    while ($currentTime < $selectedTime) {
+        $prevMonth = date('Y-m', $currentTime);
+
+        // Get salary due for this prevMonth
+        $stmt = $db->prepare("SELECT salary_amount FROM employee_salaries WHERE employee_id = :emp_id AND month = :month");
+        $stmt->execute(['emp_id' => $empId, 'month' => $prevMonth]);
+        $prevSalaryRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($prevSalaryRecord) {
+            $prevSalaryDue = (float)$prevSalaryRecord['salary_amount'];
+        } else {
+            $prevStartDate = $prevMonth . "-01";
+            $prevEndDate = date("Y-m-t", $currentTime);
+            $stmtAtt = $db->prepare("SELECT status, COUNT(*) as count FROM employee_attendance WHERE employee_id = :emp_id AND date BETWEEN :start AND :end GROUP BY status");
+            $stmtAtt->execute(['emp_id' => $empId, 'start' => $prevStartDate, 'end' => $prevEndDate]);
+            $prevAttStats = $stmtAtt->fetchAll(PDO::FETCH_ASSOC);
+
+            $prevAttendance = [
+                'present' => 0,
+                'absent' => 0,
+                'half_day' => 0,
+                'leave' => 0
+            ];
+            foreach ($prevAttStats as $stat) {
+                $statusKey = strtolower($stat['status']);
+                if (isset($prevAttendance[$statusKey])) {
+                    $prevAttendance[$statusKey] = (int)$stat['count'];
+                }
+            }
+
+            $prevDaysInMonth = (int)date('t', $currentTime);
+            if ($salaryType === 'daily') {
+                $prevSalaryDue = ($prevAttendance['present'] + ($prevAttendance['half_day'] * 0.5)) * $baseSalary;
+            } else {
+                $prevDailyRate = $baseSalary / $prevDaysInMonth;
+                $prevDeductions = ($prevAttendance['absent'] + $prevAttendance['leave'] + ($prevAttendance['half_day'] * 0.5)) * $prevDailyRate;
+                $prevSalaryDue = max(0.0, $baseSalary - $prevDeductions);
+            }
+        }
+
+        // Get paid amount for this prevMonth
+        $stmt = $db->prepare("SELECT SUM(amount) FROM employee_payments WHERE employee_id = :emp_id AND month = :month");
+        $stmt->execute(['emp_id' => $empId, 'month' => $prevMonth]);
+        $prevPaid = (float)$stmt->fetchColumn() ?: 0.0;
+
+        $previousPending += ($prevSalaryDue - $prevPaid);
+
+        // Advance to next month
+        $currentTime = strtotime("+1 month", $currentTime);
+    }
+
+    $totalOwed = $previousPending + $currentMonthSalary;
+    $netPending = $totalOwed - $currentMonthPaid;
+
     return [
         'employee_id' => $empId,
         'name' => $employee['name'],
         'contact' => $employee['contact'],
         'joining_date' => $joiningDate,
         'status' => $employee['status'],
+        'salary_type' => $salaryType,
         'base_salary' => $baseSalary,
         'current_month_salary' => $currentMonthSalary,
         'previous_pending' => $previousPending,

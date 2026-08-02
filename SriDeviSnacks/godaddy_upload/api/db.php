@@ -82,11 +82,18 @@ function getDatabaseConnection() {
                     name VARCHAR(100) NOT NULL,
                     contact VARCHAR(20) NOT NULL,
                     monthly_salary DECIMAL(10, 2) NOT NULL,
+                    salary_type VARCHAR(10) NOT NULL DEFAULT 'monthly',
                     joining_date DATE NOT NULL,
                     status VARCHAR(20) NOT NULL DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check if salary_type column exists, if not add it
+                $checkCol = $pdo->query("SHOW COLUMNS FROM employees LIKE 'salary_type'");
+                if (!$checkCol->fetch()) {
+                    $pdo->exec("ALTER TABLE employees ADD COLUMN salary_type VARCHAR(10) NOT NULL DEFAULT 'monthly'");
+                }
 
                 // Check and create employee_attendance table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS employee_attendance (

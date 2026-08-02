@@ -215,13 +215,18 @@
       }
     };
 
+    const isMobileOrTablet = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
+    };
+
     const [useRawBT, setUseRawBT] = useState<boolean>(() => {
       const saved = localStorage.getItem('useRawBT');
       if (saved !== null) {
         return saved === 'true';
       }
-      // Default to true for all devices to ensure RawBT is used by default
-      return true;
+      // Default to true for mobile/tablet, false for PC/laptop
+      return isMobileOrTablet();
     });
 
     React.useEffect(() => {
@@ -229,7 +234,8 @@
     }, [useRawBT]);
 
     const printHtml = async (htmlContent: string, onPrintComplete?: () => void) => {
-      if (useRawBT) {
+      const isMobile = isMobileOrTablet();
+      if (isMobile && useRawBT) {
         try {
           // Replace absolute millimeter widths with 100% to fill the 800px container
           const optimizedHtml = htmlContent
@@ -1996,7 +2002,7 @@
       const monthTotalItems = sortedMonthBills.length;
       const monthStartIndex = (monthCurrentPage - 1) * monthItemsPerPage;
       const monthEndIndex = monthStartIndex + monthItemsPerPage;
-      const paginatedMonthBills = sortedMonthBills.slice(monthStartIndex, monthEndIndex);
+      const paginatedMonthBills = sortedMonthBills;
 
       // Calculate total bills in the financial year
       const financialYearBills = Object.values(groupedBills[financialYear] || {}).flat();
@@ -2320,7 +2326,7 @@
                       </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                       {paginatedMonthBills.map((bill) => (
                         <div key={bill.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 flex items-start">
                           <div className="pt-1 pr-3">
@@ -2409,17 +2415,6 @@
                         </div>
                       )}
                     </div>
-
-                    {/* Pagination for month bills */}
-                    {monthPaginationData?.financialYearBillCount > 5 && (
-                      <div className="mt-6">
-                        <Pagination
-                          currentPage={monthCurrentPage}
-                          totalPages={monthTotalPages}
-                          onPageChange={handleMonthPageChange}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               }

@@ -713,19 +713,19 @@ const Shops: React.FC = () => {
                         <h3 className="text-lg font-medium text-gray-900 mb-4">
                           Assign Shop to {selectedDay}
                         </h3>
-                        <div>
+                        <div className="max-h-60 overflow-y-auto pr-1">
                           {getAvailableShops(selectedDay).length === 0 ? (
                             <p className="text-sm text-gray-600">No available shops to assign for {selectedDay}.</p>
                           ) : (
                             getAvailableShops(selectedDay).map(shop => (
                               <div key={shop.id} className="flex justify-between items-center mb-2">
-                                <span>{shop.shop_name}</span>
+                                <span className="font-medium text-sm text-gray-800">{shop.shop_name}</span>
                                 <button
                                   onClick={() => {
                                     assignShopToDay(selectedDay, shop);
                                     setShowShopSelector(false);
                                   }}
-                                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition"
                                 >
                                   Assign
                                 </button>

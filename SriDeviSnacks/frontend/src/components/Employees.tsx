@@ -5,6 +5,7 @@ import {
   IndianRupee,
   Plus,
   Edit,
+  Trash2,
   Search,
   Calendar,
   ChevronLeft,
@@ -28,6 +29,7 @@ interface Employee {
   name: string;
   contact: string;
   monthly_salary: number;
+  salary_type: 'monthly' | 'daily';
   joining_date: string;
   status: 'active' | 'inactive';
   is_biometric_registered: boolean;
@@ -46,6 +48,7 @@ interface SalarySummaryItem {
   contact: string;
   joining_date: string;
   status: 'active' | 'inactive';
+  salary_type: 'monthly' | 'daily';
   base_salary: number;
   current_month_salary: number;
   previous_pending: number;
@@ -135,6 +138,7 @@ const Employees: React.FC = () => {
     name: '',
     contact: '',
     monthly_salary: '',
+    salary_type: 'monthly' as 'monthly' | 'daily',
     joining_date: new Date().toISOString().split('T')[0],
     status: 'active' as 'active' | 'inactive'
   });
@@ -154,6 +158,7 @@ const Employees: React.FC = () => {
   // Attendance states
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceMap, setAttendanceMap] = useState<Record<number, AttendanceRecord>>({});
+  const [monthlyAttendanceStats, setMonthlyAttendanceStats] = useState<Record<number, { present: number; absent: number; half_day: number; leave: number }>>({});
 
   // Salary summary states
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -222,6 +227,7 @@ const Employees: React.FC = () => {
         });
 
         setAttendanceMap(newMap);
+        setMonthlyAttendanceStats(res.data.monthly_stats || {});
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch attendance');
@@ -456,13 +462,14 @@ const Employees: React.FC = () => {
     try {
       const salary = parseFloat(employeeForm.monthly_salary);
       if (isNaN(salary) || salary <= 0) {
-        throw new Error('Please enter a valid monthly salary');
+        throw new Error('Please enter a valid salary/wage');
       }
 
       const res = await employeesAPI.createEmployee({
         name: employeeForm.name,
         contact: employeeForm.contact,
         monthly_salary: salary,
+        salary_type: employeeForm.salary_type,
         joining_date: employeeForm.joining_date
       });
 
@@ -476,6 +483,7 @@ const Employees: React.FC = () => {
           name: '',
           contact: '',
           monthly_salary: '',
+          salary_type: 'monthly',
           joining_date: new Date().toISOString().split('T')[0],
           status: 'active'
         });
@@ -566,13 +574,14 @@ const Employees: React.FC = () => {
     try {
       const salary = parseFloat(employeeForm.monthly_salary);
       if (isNaN(salary) || salary <= 0) {
-        throw new Error('Please enter a valid monthly salary');
+        throw new Error('Please enter a valid salary/wage');
       }
 
       const res = await employeesAPI.updateEmployee(selectedEmployee.id, {
         name: employeeForm.name,
         contact: employeeForm.contact,
         monthly_salary: salary,
+        salary_type: employeeForm.salary_type,
         joining_date: employeeForm.joining_date,
         status: employeeForm.status
       });
@@ -588,12 +597,32 @@ const Employees: React.FC = () => {
     }
   };
 
+  const handleDeleteEmployee = async (empId: number, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${name}? This will permanently delete their attendance, salary records, and payments.`)) {
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await employeesAPI.deleteEmployee(empId);
+      if (res.success) {
+        showNotification(`${name} deleted successfully`);
+        fetchEmployees();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete employee');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openEditModal = (emp: Employee) => {
     setSelectedEmployee(emp);
     setEmployeeForm({
       name: emp.name,
       contact: emp.contact,
       monthly_salary: emp.monthly_salary.toString(),
+      salary_type: emp.salary_type || 'monthly',
       joining_date: emp.joining_date,
       status: emp.status
     });
@@ -631,6 +660,7 @@ const Employees: React.FC = () => {
       });
       if (res.success) {
         showNotification('Attendance saved successfully');
+        fetchAttendance();
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save attendance');
@@ -870,7 +900,12 @@ const Employees: React.FC = () => {
                       <td className="py-4 px-6 font-semibold text-gray-900">{emp.name}</td>
                       <td className="py-4 px-6">{emp.contact}</td>
                       <td className="py-4 px-6">{new Date(emp.joining_date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</td>
-                      <td className="py-4 px-6 font-medium text-gray-900">₹{emp.monthly_salary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      <td className="py-4 px-6 font-medium text-gray-900">
+                        ₹{emp.monthly_salary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        <span className="text-xs text-gray-500 block">
+                          {emp.salary_type === 'daily' ? 'Daily Wage' : 'Monthly Wage'}
+                        </span>
+                      </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center space-x-2">
                           <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
@@ -900,13 +935,22 @@ const Employees: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-center">
-                        <button
-                          onClick={() => openEditModal(emp)}
-                          className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          <Edit className="h-4 w-4 mr-1.5" />
-                          Edit
-                        </button>
+                        <div className="flex justify-center space-x-3">
+                          <button
+                            onClick={() => openEditModal(emp)}
+                            className="inline-flex items-center text-blue-600 hover:text-blue-800 font-semibold transition"
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEmployee(emp.id, emp.name)}
+                            className="inline-flex items-center text-red-600 hover:text-red-800 font-semibold transition"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -984,8 +1028,19 @@ const Employees: React.FC = () => {
                         <tr key={record.employee_id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-4 px-6 font-semibold text-gray-900">
                             <div>{emp.name}</div>
+                            {(() => {
+                              const stats = monthlyAttendanceStats[emp.id] || { present: 0, absent: 0, half_day: 0, leave: 0 };
+                              const totalLeaves = stats.absent + stats.leave;
+                              return (
+                                <div className="text-xs text-gray-500 mt-1.5 flex flex-wrap items-center gap-1.5 font-normal">
+                                  <span className="font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">This Month:</span>
+                                  <span className="text-rose-700 font-bold bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded">Leaves/Absent: {totalLeaves}</span>
+                                  <span className="text-amber-700 font-bold bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">Half Days: {stats.half_day}</span>
+                                </div>
+                              );
+                            })()}
                             {record.remarks === 'Biometric Check-In' && (
-                              <div className="text-xs text-emerald-600 font-medium flex items-center mt-0.5">
+                              <div className="text-xs text-emerald-600 font-medium flex items-center mt-1">
                                 <Fingerprint className="h-3 w-3 mr-0.5" />
                                 Checked in via fingerprint
                               </div>
@@ -1154,7 +1209,12 @@ const Employees: React.FC = () => {
                             <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-medium" title="Leave">{item.attendance_summary.leave}L</span>
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-gray-500">₹{item.base_salary.toLocaleString('en-IN')}</td>
+                        <td className="py-4 px-4 text-gray-500">
+                          ₹{item.base_salary.toLocaleString('en-IN')}
+                          <span className="text-xs text-gray-400 block font-normal">
+                            {item.salary_type === 'daily' ? 'Daily' : 'Monthly'}
+                          </span>
+                        </td>
                         <td className="py-4 px-4">
                           <div className="flex items-center space-x-1.5">
                             <span className="font-semibold text-gray-900">₹{item.current_month_salary.toLocaleString('en-IN')}</span>
@@ -1349,12 +1409,41 @@ const Employees: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Base Monthly Salary (₹)</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
+                <div className="flex space-x-4 mb-2">
+                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="add_salary_type"
+                      value="monthly"
+                      checked={employeeForm.salary_type === 'monthly'}
+                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Monthly Wage</span>
+                  </label>
+                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="add_salary_type"
+                      value="daily"
+                      checked={employeeForm.salary_type === 'daily'}
+                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Daily Wage</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                  {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹)' : 'Base Monthly Salary (₹)'}
+                </label>
                 <input
                   type="number"
                   required
                   min="0"
-                  placeholder="e.g. 15000"
+                  placeholder={employeeForm.salary_type === 'daily' ? "e.g. 500" : "e.g. 15000"}
                   value={employeeForm.monthly_salary}
                   onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1446,11 +1535,41 @@ const Employees: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Base Monthly Salary (₹)</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
+                <div className="flex space-x-4 mb-2">
+                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="edit_salary_type"
+                      value="monthly"
+                      checked={employeeForm.salary_type === 'monthly'}
+                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Monthly Wage</span>
+                  </label>
+                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="edit_salary_type"
+                      value="daily"
+                      checked={employeeForm.salary_type === 'daily'}
+                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Daily Wage</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                  {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹)' : 'Base Monthly Salary (₹)'}
+                </label>
                 <input
                   type="number"
                   required
                   min="0"
+                  placeholder={employeeForm.salary_type === 'daily' ? "e.g. 500" : "e.g. 15000"}
                   value={employeeForm.monthly_salary}
                   onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
