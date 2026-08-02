@@ -143,7 +143,7 @@ const Products: React.FC = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const response = await productsAPI.getProducts({ page: currentPage, limit: 5, search: searchTerm });
+        const response = await productsAPI.getProducts({ page: 1, limit: 1000, search: searchTerm });
         if (response.success) {
           const fetchedProducts: Product[] = response.data.map((product: any) => ({
             id: product.id,
@@ -613,7 +613,7 @@ const Products: React.FC = () => {
   const shopProductsList = getShopProducts();
   const pricingItemsPerPage = 5;
   const totalPricingPages = Math.ceil(shopProductsList.length / pricingItemsPerPage) || 1;
-  const paginatedShopProductsList = shopProductsList.slice((pricingPage - 1) * pricingItemsPerPage, pricingPage * pricingItemsPerPage);
+  const paginatedShopProductsList = shopProductsList;
   const selectedShopData = allShops.find((s: any) => s.id === selectedShop);
 
   return (
@@ -678,7 +678,7 @@ const Products: React.FC = () => {
       {/* Products Tab */}
       {activeTab === 'products' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -772,11 +772,6 @@ const Products: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-          />
         </div>
       )}
 
@@ -888,7 +883,7 @@ const Products: React.FC = () => {
 
               {/* Products Table */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -1024,11 +1019,6 @@ const Products: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
-                <Pagination
-                  currentPage={pricingPage}
-                  totalPages={totalPricingPages}
-                  onPageChange={setPricingPage}
-                />
               </div>
             </div>
           )}

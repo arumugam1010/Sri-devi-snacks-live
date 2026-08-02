@@ -149,6 +149,27 @@
   const Billing: React.FC = () => {
     const { products, addBill, shopProducts, setShopProducts, updateBill, refreshData, deleteBill, userRole, shops: allShops } = useAppContext();
 
+    const formatDateWithDay = (dateInput: any) => {
+      if (!dateInput) return '';
+      const d = new Date(dateInput);
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const dayOfWeek = dayNames[d.getDay()];
+      
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
+      
+      return `${day}/${month}/${year} (${dayOfWeek}) ${timeStr}`;
+    };
+
     const [printUrl, setPrintUrl] = React.useState('');
     const [showPrintModal, setShowPrintModal] = React.useState(false);
 
@@ -227,7 +248,7 @@
           container.innerHTML = optimizedHtml + `
             <style>
               * {
-                font-family: 'Courier New', Courier, monospace !important;
+                font-family: Arial, Helvetica, sans-serif !important;
                 font-weight: bold !important;
               }
               body {
@@ -264,13 +285,28 @@
                 font-size: 38px !important; 
                 margin-bottom: 8px !important;
               }
+              .bill-items {
+                width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+              }
               .bill-items th {
-                font-size: 38px !important;
-                padding: 10px 4px !important;
+                font-size: 26px !important;
+                padding: 10px 2px !important;
+                border: 2px solid #888 !important;
+                word-wrap: break-word !important;
+                white-space: normal !important;
               }
               .bill-items td { 
-                font-size: 38px !important; 
-                padding: 10px 4px !important; 
+                font-size: 30px !important; 
+                padding: 10px 2px !important; 
+                border: 2px solid #888 !important;
+                word-wrap: break-word !important;
+                white-space: normal !important;
+              }
+              .product-name-cell {
+                font-size: 36px !important;
+                font-weight: bold !important;
               }
               .total-row { 
                 font-size: 32px !important; 
@@ -1580,7 +1616,7 @@
               margin: 0;
             }
             body {
-              font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+              font-family: Arial, Helvetica, sans-serif;
               margin: 0;
               padding: 0;
               line-height: 1.3;
@@ -1623,16 +1659,24 @@
               width: 100%;
               border-collapse: collapse;
               margin-bottom: 15px;
-              font-size: 15px;
-            }
-            .bill-items th, .bill-items td {
-              padding: 4px 2px;
-              text-align: left;
-              border-bottom: 1px dashed #ccc;
             }
             .bill-items th {
+              font-size: 15px !important;
+              padding: 5px 3px;
+              text-align: left;
+              border: 1px solid #ccc;
               background-color: #f8f9fa;
               font-weight: bold;
+            }
+            .bill-items td {
+              font-size: 17px !important;
+              padding: 5px 3px;
+              text-align: left;
+              border: 1px solid #ccc;
+            }
+            .product-name-cell {
+              font-size: 20px !important;
+              font-weight: bold !important;
             }
             .bill-totals {
               width: 100%;
@@ -1706,8 +1750,12 @@
         const itemTotal = bill.items.reduce((sum: number, item: any) => sum + item.amount, 0);
         const sgst = bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const cgst = bill.items.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const currentBillTotal = Math.round(itemTotal + sgst + cgst);
-        const previousPending = bill.total_amount - currentBillTotal;
+        const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
+        
+        const rawTotal = bill.total_amount;
+        const finalTotal = Math.floor(rawTotal);
+        const discount = rawTotal - finalTotal;
+        const previousPending = finalTotal - currentBillTotal;
 
         const viewShop = allShops.find(s => s.id === bill.shop_id);
         const hasGst = true;
@@ -1736,17 +1784,19 @@
             <div class="bill-no"><strong>Bill No:</strong> ${bill.id}</div>
             <div class="shop-info"><strong>Shop:</strong> ${bill.shop_name}</div>
             <div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo || 'N/A'}</div>
-            <div class="bill-date"><strong>Date:</strong> ${new Date(bill.bill_date).toLocaleString()}</div>
+            <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(bill.bill_date)}</div>
             <div class="dashed-line"></div>
 
             <table class="bill-items">
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th class="hsn-col" style="text-align: right;">HSN Code</th>
-                  <th class="qty-col" style="text-align: right;">Qty</th>
-                  <th class="price-col" style="text-align: right;">Price</th>
-                  <th style="text-align: right;">Total</th>
+                  <th style="text-align: left; width: 26%;">Product Name</th>
+                  <th style="text-align: right; width: 9%;">QTY</th>
+                  <th style="text-align: right; width: 13%;">Price</th>
+                  <th style="text-align: right; width: 11%;">SGST</th>
+                  <th style="text-align: right; width: 11%;">CGST</th>
+                  <th style="text-align: right; width: 16%;">Price+GST</th>
+                  <th style="text-align: right; width: 14%;">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -1754,13 +1804,20 @@
 
         // Regular items
         bill.items.filter((item: any) => item.quantity > 0).forEach((item: any) => {
+          const qty = item.quantity;
+          const sgstVal = item.sgst || 0;
+          const cgstVal = item.cgst || 0;
+          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
+          const totalInclGst = item.amount + sgstVal + cgstVal;
           win.document.write(`
             <tr>
-              <td>${item.product_name}</td>
-              <td class="hsn-col" style="text-align: right;">${item.hsnCode || 'N/A'}</td>
-              <td class="qty-col" style="text-align: right;">${item.quantity}</td>
-              <td class="price-col" style="text-align: right;">₹${item.price.toFixed(2)}</td>
-              <td style="text-align: right;">₹${item.amount.toFixed(2)}</td>
+              <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+              <td style="text-align: right;">${qty}</td>
+              <td style="text-align: right;">${item.price.toFixed(2)}</td>
+              <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
+              <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
+              <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+              <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
             </tr>
           `);
         });
@@ -1770,43 +1827,63 @@
         if (returnItems.length > 0) {
           win.document.write(`
             <tr style="font-weight: bold; background-color: #f8f9fa;">
-              <td colspan="5">Return Items</td>
+              <td colspan="7">Return Items</td>
             </tr>
           `);
           returnItems.forEach((item: any) => {
+            const qty = Math.abs(item.quantity);
+            const sgstVal = item.sgst || 0;
+            const cgstVal = item.cgst || 0;
+            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
+            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
             win.document.write(`
               <tr style="color: #dc2626;">
-                <td>${item.product_name} (Return)</td>
-                <td class="hsn-col" style="text-align: right;">${item.hsnCode || 'N/A'}</td>
-                <td class="qty-col" style="text-align: right;">${Math.abs(item.quantity)}</td>
-                <td class="price-col" style="text-align: right;">₹${item.price.toFixed(2)}</td>
-                <td style="text-align: right;">-₹${Math.abs(item.amount).toFixed(2)}</td>
+                <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                <td style="text-align: right;">-${qty}</td>
+                <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
               </tr>
             `);
           });
         }
 
+        // Calculate table totals
+        const totalQty = bill.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        const totalSgst = bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
+        const totalCgst = bill.items.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
+
         win.document.write(`
+              <tr style="border: none !important;">
+                <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+              </tr>
+              <tr style="font-weight: bold; background-color: #f8f9fa;">
+                <td class="product-name-cell" style="text-align: left;">Total</td>
+                <td style="text-align: right;">${totalQty}</td>
+                <td style="text-align: right;"></td>
+                <td style="text-align: right;">${totalSgst.toFixed(2)}</td>
+                <td style="text-align: right;">${totalCgst.toFixed(2)}</td>
+                <td style="text-align: right;"></td>
+                <td style="text-align: right;"></td>
+              </tr>
               </tbody>
             </table>
 
             <div class="bill-totals">
               <div class="double-dark-line"></div>
               <div class="total-row">
-                <div>Item Total:</div>
-                <div>₹${itemTotal.toFixed(2)}</div>
+                <div>Item Total (Without GST):</div>
+                <div>${itemTotal.toFixed(2)}</div>
               </div>
               <div class="total-row">
-                <div>SGST:</div>
-                <div>${hasGst ? `₹${sgst.toFixed(2)}` : '-'}</div>
-              </div>
-              <div class="total-row">
-                <div>CGST:</div>
-                <div>${hasGst ? `₹${cgst.toFixed(2)}` : '-'}</div>
+                <div>GST:</div>
+                <div>${(sgst + cgst).toFixed(2)}</div>
               </div>
               <div class="total-row">
                 <div>Today Total Amount:</div>
-                <div>₹${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
               </div>
         `);
 
@@ -1814,26 +1891,30 @@
           win.document.write(`
             <div class="total-row">
               <div>Previous Pending:</div>
-              <div>₹${previousPending.toFixed(2)}</div>
+              <div>${previousPending.toFixed(2)}</div>
             </div>
           `);
         }
 
         win.document.write(`
+              <div class="total-row">
+                <div>Discount:</div>
+                <div>${discount.toFixed(2)}</div>
+              </div>
               <div class="dark-line"></div>
               <div class="total-row final-total-row">
                 <div>Final Total:</div>
-                <div>₹${bill.total_amount.toFixed(2)}</div>
+                <div>${finalTotal.toFixed(2)}</div>
               </div>
               
               <div class="payment-details">
                 <div class="total-row">
                   <div>Received Amount:</div>
-                  <div>₹${bill.received_amount.toFixed(2)}</div>
+                  <div>${bill.received_amount.toFixed(2)}</div>
                 </div>
                 <div class="total-row">
                   <div>Pending Amount:</div>
-                  <div class="${bill.pending_amount > 0 ? 'status-pending' : ''}">₹${bill.pending_amount.toFixed(2)}</div>
+                  <div class="${bill.pending_amount > 0 ? 'status-pending' : ''}">${bill.pending_amount.toFixed(2)}</div>
                 </div>
                 <div class="total-row">
                   <div>Status:</div>
@@ -2475,7 +2556,7 @@
                         const value = e.target.value;
                         handleDaySelect(value || null);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border-2 border-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="">Select a day...</option>
                       {daysOfWeek.map(day => {
@@ -2514,7 +2595,7 @@
                           type="button"
                           disabled={!selectedDay}
                           onClick={() => setIsShopDropdownOpen(!isShopDropdownOpen)}
-                          className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left relative z-10 text-lg md:text-sm disabled:opacity-50"
+                          className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-900 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left relative z-10 text-lg md:text-sm disabled:opacity-50"
                         >
                           <span className={currentShop ? "text-gray-900 font-medium" : "text-gray-500"}>
                             {currentShop ? currentShop.shop_name : "Select a shop..."}
@@ -2723,7 +2804,7 @@
                         <button
                           type="button"
                           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                          className="w-full flex items-center justify-between px-6 py-5 md:px-3 md:py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left relative z-10 text-xl md:text-sm"
+                          className="w-full flex items-center justify-between px-6 py-5 md:px-3 md:py-2 border-2 border-gray-900 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left relative z-10 text-xl md:text-sm"
                         >
                           <div className="flex items-center space-x-3">
                             {selectedProductDetails ? (
@@ -2805,7 +2886,7 @@
                         placeholder="1"
                         value={productForm.quantity}
                         onChange={(e) => setProductForm({ ...productForm, quantity: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border-2 border-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         required
                       />
                     </div>
@@ -2879,7 +2960,7 @@
                                           margin: 0;
                                         }
                                         body {
-                                          font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+                                          font-family: Arial, Helvetica, sans-serif;
                                           margin: 0;
                                           padding: 2mm 0mm;
                                           width: 80mm;
@@ -2932,19 +3013,33 @@
                                         }
                                         .bill-items {
                                           width: 100%;
+                                          table-layout: fixed;
                                           border-collapse: collapse;
                                           margin-bottom: 15px;
-                                          font-size: 15px;
-                                        }
-                                        .bill-items th,
-                                        .bill-items td {
-                                          padding: 4px 2px;
-                                          text-align: left;
-                                          border-bottom: 1px dashed #ccc;
                                         }
                                         .bill-items th {
+                                          font-size: 13px !important;
+                                          padding: 4px 1px;
+                                          text-align: left;
+                                          border: 1px solid #ccc;
                                           background-color: #f8f9fa;
                                           font-weight: bold;
+                                          word-wrap: break-word;
+                                          overflow-wrap: break-word;
+                                          white-space: normal;
+                                        }
+                                        .bill-items td {
+                                          font-size: 15px !important;
+                                          padding: 4px 1px;
+                                          text-align: left;
+                                          border: 1px solid #ccc;
+                                          word-wrap: break-word;
+                                          overflow-wrap: break-word;
+                                          white-space: normal;
+                                        }
+                                        .product-name-cell {
+                                          font-size: 18px !important;
+                                          font-weight: bold !important;
                                         }
                                         .bill-totals {
                                           width: 100%;
@@ -3012,7 +3107,7 @@
                                         <div class="bill-no"><strong>Bill No:</strong> ${`B${String(bills.length + 1).padStart(3, '0')}`}</div>
                                         <div class="shop-info"><strong>Shop:</strong> ${shopName}</div>
                                         <div class="shop-gst"><strong>Shop GST No:</strong> ${currentShop?.gst || ''}</div>
-                                        <div class="bill-date"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+                                        <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(new Date())}</div>
                                         <div class="dashed-line"></div>
                                       </div>
                                   `);
@@ -3022,11 +3117,13 @@
                                     <table class="bill-items">
                                       <thead>
                                         <tr>
-                                          <th>Item</th>
-                                          <th class="hsn-col" style="text-align: right;">HSN Code</th>
-                                          <th class="qty-col" style="text-align: right;">Qty</th>
-                                          <th class="price-col" style="text-align: right;">Price</th>
-                                          <th style="text-align: right;">Total</th>
+                                          <th style="text-align: left; width: 26%;">Product Name</th>
+                                          <th style="text-align: right; width: 9%;">QTY</th>
+                                          <th style="text-align: right; width: 13%;">Price</th>
+                                          <th style="text-align: right; width: 11%;">SGST</th>
+                                          <th style="text-align: right; width: 11%;">CGST</th>
+                                          <th style="text-align: right; width: 16%;">Price+GST</th>
+                                          <th style="text-align: right; width: 14%;">Total</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -3034,13 +3131,20 @@
 
                                 // Regular items
                                 currentBill.filter(item => item.quantity > 0).forEach(item => {
+                                  const qty = item.quantity;
+                                  const sgstVal = item.sgst || 0;
+                                  const cgstVal = item.cgst || 0;
+                                  const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
+                                  const totalInclGst = item.amount + sgstVal + cgstVal;
                                   win.document.write(`
                                       <tr>
-                                        <td>${item.product_name}</td>
-                                        <td class="hsn-col" style="text-align: right;">${item.hsnCode || 'N/A'}</td>
-                                        <td class="qty-col" style="text-align: right;">${item.quantity}</td>
-                                        <td class="price-col" style="text-align: right;">₹${item.price.toFixed(2)}</td>
-                                        <td style="text-align: right;">₹${item.amount.toFixed(2)}</td>
+                                        <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                        <td style="text-align: right;">${qty}</td>
+                                        <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                        <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
+                                        <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
+                                        <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                        <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
                                       </tr>
                                     `);
                                 });
@@ -3048,20 +3152,47 @@
                                 // Return items
                                 if (currentBill.filter(item => item.quantity < 0).length > 0) {
                                   win.document.write(`
-                              <tr><td colspan="5" style="padding-top: 15px; font-weight: bold;">Return Items</td></tr>
+                              <tr><td colspan="7" style="padding-top: 15px; font-weight: bold;">Return Items</td></tr>
                             `);
                                   currentBill.filter(item => item.quantity < 0).forEach(item => {
+                                    const qty = Math.abs(item.quantity);
+                                    const sgstVal = item.sgst || 0;
+                                    const cgstVal = item.cgst || 0;
+                                    const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
+                                    const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
                                     win.document.write(`
                                 <tr>
-                                  <td>${item.product_name}</td>
-                                  <td class="hsn-col" style="text-align: right;">${item.hsnCode || 'N/A'}</td>
-                                  <td style="text-align: right;">${item.quantity}</td>
-                                  <td style="text-align: right;">₹${item.price}</td>
-                                  <td style="text-align: right;">₹${item.amount}</td>
+                                  <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                  <td style="text-align: right;">-${qty}</td>
+                                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                  <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                                  <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                  <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
                                 </tr>
                               `);
                                   });
                                 }
+
+                                // Calculate table totals
+                                const totalQty = currentBill.reduce((sum, item) => sum + item.quantity, 0);
+                                const totalSgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                                const totalCgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
+
+                                win.document.write(`
+                                  <tr style="border: none !important;">
+                                    <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                                  </tr>
+                                  <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                    <td class="product-name-cell" style="text-align: left;">Total</td>
+                                    <td style="text-align: right;">${totalQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;">${totalSgst.toFixed(2)}</td>
+                                    <td style="text-align: right;">${totalCgst.toFixed(2)}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                `);
 
                                 win.document.write('</tbody></table>');
 
@@ -3070,27 +3201,26 @@
                                 const sgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
                                 const cgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
                                 const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
-                                const finalTotal = Math.round(itemTotal + sgst + cgst + pendingAmount);
-                                const hasGst = true;
+                                
+                                const rawTotal = itemTotal + sgst + cgst + pendingAmount;
+                                const finalTotal = Math.floor(rawTotal);
+                                const discount = rawTotal - finalTotal;
 
+                                const gstTotal = sgst + cgst;
                                 win.document.write(`
                                     <div class="bill-totals">
                                       <div class="double-dark-line"></div>
                                       <div class="total-row">
-                                        <div>Item Total:</div>
-                                        <div>₹${itemTotal.toFixed(2)}</div>
+                                        <div>Item Total (Without GST):</div>
+                                        <div>${itemTotal.toFixed(2)}</div>
                                       </div>
                                       <div class="total-row">
-                                        <div>SGST:</div>
-                                        <div>${hasGst ? `₹${sgst.toFixed(2)}` : '-'}</div>
-                                      </div>
-                                      <div class="total-row">
-                                        <div>CGST:</div>
-                                        <div>${hasGst ? `₹${cgst.toFixed(2)}` : '-'}</div>
+                                        <div>GST:</div>
+                                        <div>${gstTotal.toFixed(2)}</div>
                                       </div>
                                       <div class="total-row">
                                         <div>Today Total Amount:</div>
-                                        <div>₹${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                                        <div>${(itemTotal + gstTotal).toFixed(2)}</div>
                                       </div>
                                   `);
 
@@ -3098,16 +3228,20 @@
                                   win.document.write(`
                                       <div class="total-row">
                                         <div>Previous Pending:</div>
-                                        <div>₹${pendingAmount.toFixed(2)}</div>
+                                        <div>${pendingAmount.toFixed(2)}</div>
                                       </div>
                                     `);
                                 }
 
                                 win.document.write(`
+                                      <div class="total-row">
+                                        <div>Discount:</div>
+                                        <div>${discount.toFixed(2)}</div>
+                                      </div>
                                       <div class="dark-line"></div>
                                       <div class="total-row final-total-row">
                                         <div>Final Total:</div>
-                                        <div>₹${finalTotal.toFixed(2)}</div>
+                                        <div>${finalTotal.toFixed(2)}</div>
                                       </div>
                                     </div>
                                     
@@ -3259,7 +3393,7 @@
                           </p>
 
                           <p className="text-sm text-gray-700">
-                            <span className="font-bold">Date:</span> <span className="font-bold">{new Date().toLocaleDateString()}</span>
+                            <span className="font-bold">Date:</span> <span className="font-bold">{formatDateWithDay(new Date())}</span>
                           </p>
                         </div>
                       )}
@@ -3268,154 +3402,194 @@
                     </div>
 
                     {/* Bill Items */}
-                    <div className="mb-4">
-                      <div className="grid grid-cols-6 gap-4 py-2 font-bold border-b">
-                        <div>Item</div>
-                        <div className="text-right">HSN Code</div>
-                        <div className="text-right">Qty</div>
-                        <div className="text-right">Price</div>
-                        <div className="text-right">Total</div>
-                        <div className="text-center">Actions</div>
-                      </div>
-                      <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+                    <div className="mb-6 overflow-x-auto">
+                      <table className="w-full text-sm border-collapse border border-gray-300">
+                        <thead>
+                          <tr className="bg-gray-100 font-bold border-b border-gray-300">
+                            <th className="p-2 text-left border-r border-gray-300">Product Name</th>
+                            <th className="p-2 text-right border-r border-gray-300">QTY</th>
+                            <th className="p-2 text-right border-r border-gray-300">Price</th>
+                            <th className="p-2 text-right border-r border-gray-300">SGST</th>
+                            <th className="p-2 text-right border-r border-gray-300">CGST</th>
+                            <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
+                            <th className="p-2 text-right border-r border-gray-300">Total</th>
+                            <th className="p-2 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* Regular Items */}
+                          {currentBill.filter(item => !item.isReturn).map((item) => {
+                            const sgstVal = item.sgst || 0;
+                            const cgstVal = item.cgst || 0;
+                            const unitPriceInclGst = item.quantity > 0 ? (item.price + (sgstVal + cgstVal) / item.quantity) : item.price;
+                            const totalInclGst = item.amount + sgstVal + cgstVal;
 
-                      {/* Regular Items */}
-                      {currentBill.filter(item => !item.isReturn).map((item) => {
-                        return (
-                          <div key={`item-${item.id}`} className="grid grid-cols-6 gap-4 py-2 items-center">
-                            <div>{item.product_name}</div>
-                            <div className="text-right">{item.hsnCode || 'N/A'}</div>
-                            <div className="text-right">
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.quantity === 0 ? '' : item.quantity}
-                                onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                                className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
-                                disabled={isPayPendingMode}
-                              />
-                            </div>
-                            <div className="text-right">₹{item.price}</div>
-                            <div className="text-right">₹{item.amount.toFixed(2)}</div>
-                            <div className="flex justify-center">
-                              <button
-                                onClick={() => handleRemoveItem(item.id)}
-                                className="text-red-600 hover:text-red-800 p-1"
-                                title="Remove item"
-                                disabled={isPayPendingMode}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Return Items */}
-                    {currentBill.filter(item => item.isReturn).length > 0 && (
-                      <>
-                        <div className="mb-4">
-                          <div className="font-bold mb-2">Return Items</div>
-                          <div className="grid grid-cols-6 gap-4 py-2 font-bold border-b">
-                            <div>Item</div>
-                            <div className="text-right">HSN Code</div>
-                            <div className="text-right">Qty</div>
-                            <div className="text-right">Price</div>
-                            <div className="text-right">Total</div>
-                            <div className="text-center">Actions</div>
-                          </div>
-                          <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-
-                          {currentBill.filter(item => item.isReturn).map((item) => {
                             return (
-                              <div key={`return-${item.id}`} className="grid grid-cols-6 gap-4 py-2 items-center">
-                                <div>{item.product_name}</div>
-                                <div className="text-right">{item.hsnCode || 'N/A'}</div>
-                                <div className="text-right">
+                              <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
+                                <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                                <td className="p-2 text-right border-r border-gray-300">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity === 0 ? '' : item.quantity}
+                                    onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                                    disabled={isPayPendingMode}
+                                  />
+                                </td>
+                                <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{totalInclGst.toFixed(2)}</td>
+                                <td className="p-2 text-center">
+                                  <button
+                                    onClick={() => handleRemoveItem(item.id)}
+                                    className="text-red-600 hover:text-red-800 p-1"
+                                    title="Remove item"
+                                    disabled={isPayPendingMode}
+                                  >
+                                    <Trash2 className="h-4 w-4 mx-auto" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Return Items Section Separator */}
+                          {currentBill.filter(item => item.isReturn).length > 0 && (
+                            <tr className="bg-gray-50 font-bold border-b border-gray-300">
+                              <td colSpan={8} className="p-2 text-left text-red-600">Return Items</td>
+                            </tr>
+                          )}
+
+                          {/* Return Items */}
+                          {currentBill.filter(item => item.isReturn).map((item) => {
+                            const qty = Math.abs(item.quantity);
+                            const sgstVal = item.sgst || 0;
+                            const cgstVal = item.cgst || 0;
+                            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
+                            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
+
+                            return (
+                              <tr key={`return-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50 text-red-600">
+                                <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                                <td className="p-2 text-right border-r border-gray-300">
                                   <input
                                     type="number"
                                     min="1"
                                     value={item.quantity === 0 ? '' : Math.abs(item.quantity)}
                                     onChange={(e) => handleReturnItemQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right text-red-600"
                                     disabled={isPayPendingMode}
                                   />
-                                </div>
-                                <div className="text-right">₹{item.price}</div>
-                                <div className="text-right">₹{item.amount.toFixed(2)}</div>
-                                <div className="flex justify-center">
+                                </td>
+                                <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">-{totalInclGst.toFixed(2)}</td>
+                                <td className="p-2 text-center">
                                   <button
                                     onClick={() => handleRemoveItem(item.id)}
                                     className="text-red-600 hover:text-red-800 p-1"
                                     title="Remove return item"
                                     disabled={isPayPendingMode}
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 className="h-4 w-4 mx-auto" />
                                   </button>
-                                </div>
-                              </div>
+                                </td>
+                              </tr>
                             );
                           })}
-                        </div>
-                        <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-                      </>
-                    )}
+
+                          {/* Table Totals Row inside table */}
+                          {(() => {
+                            const totalQty = currentBill.reduce((sum, item) => sum + item.quantity, 0);
+                            const totalSgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                            const totalCgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
+
+                            return (
+                              <>
+                                <tr style={{ border: 'none' }}>
+                                  <td colSpan={8} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                                </tr>
+                                <tr className="font-bold bg-gray-100 border-t border-b border-gray-300">
+                                  <td className="p-2 text-left border-r border-gray-300">Total</td>
+                                  <td className="p-2 text-right border-r border-gray-300">{totalQty}</td>
+                                  <td className="p-2 text-right border-r border-gray-300"></td>
+                                  <td className="p-2 text-right border-r border-gray-300">{totalSgst.toFixed(2)}</td>
+                                  <td className="p-2 text-right border-r border-gray-300">{totalCgst.toFixed(2)}</td>
+                                  <td className="p-2 text-right border-r border-gray-300"></td>
+                                  <td className="p-2 text-right border-r border-gray-300"></td>
+                                  <td className="p-2 border-l border-gray-300"></td>
+                                </tr>
+                              </>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
 
                     {/* Calculations */}
                     <div className="ml-auto w-64">
-                      <div className="flex justify-between py-1">
-                        <div>Item Total:</div>
-                        <div>₹{
-                          currentBill
-                            .reduce((sum, item) => sum + item.amount, 0).toFixed(2)
-                        }</div>
-                      </div>
+                      {(() => {
+                        const itemTotal = currentBill.reduce((sum, item) => sum + item.amount, 0);
+                        const sgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                        const cgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                        const gstTotal = sgst + cgst;
+                        const todayTotalAmount = itemTotal + gstTotal;
+                        const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
+                        
+                        const rawTotal = todayTotalAmount + pendingAmount;
+                        const finalTotal = Math.floor(rawTotal);
+                        const discount = rawTotal - finalTotal;
 
-                      <div className="flex justify-between py-1">
-                        <div>SGST:</div>
-                        <div>₹{currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0).toFixed(2)}</div>
-                      </div>
+                        return (
+                          <>
+                            <div className="flex justify-between py-1">
+                              <div>Item Total (Without GST):</div>
+                              <div>{itemTotal.toFixed(2)}</div>
+                            </div>
 
-                      <div className="flex justify-between py-1">
-                        <div>CGST:</div>
-                        <div>₹{currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0).toFixed(2)}</div>
-                      </div>
+                            <div className="flex justify-between py-1">
+                              <div>GST:</div>
+                              <div>{gstTotal.toFixed(2)}</div>
+                            </div>
 
-                      <div className="flex justify-between py-1">
-                        <div>Today Total Amount:</div>
-                        <div>₹{(
-                          currentBill.reduce((sum, item) => sum + item.amount, 0) +
-                          currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0) +
-                          currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0)
-                        ).toFixed(2)}</div>
-                      </div>
+                            <div className="flex justify-between py-1 font-semibold">
+                              <div>Today Total Amount:</div>
+                              <div>{todayTotalAmount.toFixed(2)}</div>
+                            </div>
 
-                      {/* Previous Pending Amount */}
-                      {pendingBills.length > 0 && (
-                        <>
-                          <div className="flex justify-between py-1">
-                            <div>Previous Pending:</div>
-                            <div>₹{pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0).toFixed(2)}</div>
-                          </div>
-                          <div className="flex justify-between py-1 text-xs text-gray-500">
-                            <div>({pendingBills.length} pending bill{pendingBills.length > 1 ? 's' : ''})</div>
-                            <div></div>
-                          </div>
-                        </>
-                      )}
+                            {/* Previous Pending Amount */}
+                            {pendingAmount > 0 && (
+                              <>
+                                <div className="flex justify-between py-1">
+                                  <div>Previous Pending:</div>
+                                  <div>{pendingAmount.toFixed(2)}</div>
+                                </div>
+                                <div className="flex justify-between py-1 text-xs text-gray-500">
+                                  <div>({pendingBills.length} pending bill{pendingBills.length > 1 ? 's' : ''})</div>
+                                  <div></div>
+                                </div>
+                              </>
+                            )}
 
-                      <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+                            <div className="flex justify-between py-1">
+                              <div>Discount:</div>
+                              <div>{discount.toFixed(2)}</div>
+                            </div>
 
-                      <div className="flex justify-between py-1 font-bold">
-                        <div>Final Total:</div>
-                        <div>₹{
-                          Math.round(
-                            currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
-                            pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
-                          ).toFixed(2)
-                        }</div>
-                      </div>
+                            <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+
+                            <div className="flex justify-between py-1 font-bold text-lg">
+                              <div>Final Total:</div>
+                              <div>{finalTotal.toFixed(2)}</div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Thank You Message */}
@@ -3621,7 +3795,7 @@
                           )}
                         </p>
                         <p className="text-sm text-gray-700">
-                          <span className="font-bold">Date:</span> <span className="font-bold">{selectedBillForView ? new Date(selectedBillForView.bill_date).toLocaleString() : new Date().toLocaleDateString()}</span>
+                          <span className="font-bold">Date:</span> <span className="font-bold">{selectedBillForView ? formatDateWithDay(selectedBillForView.bill_date) : formatDateWithDay(new Date())}</span>
                         </p>
                       </div>
                     )}
@@ -3633,7 +3807,7 @@
                   <div className="mb-4">
                     <div className="flex justify-between">
                       <div>Bill ID: {selectedBillForView.id}</div>
-                      <div>Date: {new Date(selectedBillForView.bill_date).toLocaleString()}</div>
+                      <div>Date: {formatDateWithDay(selectedBillForView.bill_date)}</div>
                     </div>
                     <div className="flex justify-between">
                       <div>Shop: {selectedBillForView.shop_name}</div>
@@ -3641,134 +3815,176 @@
                   </div>
 
                   {/* Bill Items */}
-                  <div className="mb-4">
-                    <div className="grid grid-cols-5 gap-4 py-2 font-bold border-b">
-                      <div>Item</div>
-                      <div className="text-right">HSN Code</div>
-                      <div className="text-right">Qty</div>
-                      <div className="text-right">Price</div>
-                      <div className="text-right">Total</div>
-                    </div>
-                    <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+                  <div className="mb-6 overflow-x-auto">
+                    <table className="w-full text-sm border-collapse border border-gray-300">
+                      <thead>
+                        <tr className="bg-gray-100 font-bold border-b border-gray-300">
+                          <th className="p-2 text-left border-r border-gray-300">Product Name</th>
+                          <th className="p-2 text-right border-r border-gray-300">QTY</th>
+                          <th className="p-2 text-right border-r border-gray-300">Price</th>
+                          <th className="p-2 text-right border-r border-gray-300">SGST</th>
+                          <th className="p-2 text-right border-r border-gray-300">CGST</th>
+                          <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
+                          <th className="p-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Regular Items */}
+                        {selectedBillForView.items.filter(item => item.quantity > 0).map((item) => {
+                          const qty = item.quantity;
+                          const sgstVal = item.sgst || 0;
+                          const cgstVal = item.cgst || 0;
+                          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
+                          const totalInclGst = item.amount + sgstVal + cgstVal;
 
-                    {/* Regular Items */}
-                    {selectedBillForView.items.filter(item => item.quantity > 0).map((item) => (
-                      <div key={`view-item-${item.id}`} className="grid grid-cols-5 gap-4 py-2">
-                        <div>{item.product_name}</div>
-                        <div className="text-right">{item.hsnCode || (item as any).product?.hsn_code || 'N/A'}</div>
-                        <div className="text-right">{item.quantity}</div>
-                        <div className="text-right">₹{item.price}</div>
-                        <div className="text-right">₹{item.amount.toFixed(2)}</div>
-                      </div>
-                    ))}
+                          return (
+                            <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
+                              <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{qty}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                              <td className="p-2 text-right">{totalInclGst.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+
+                        {/* Return Items Section Separator */}
+                        {selectedBillForView.items.filter(item => item.quantity < 0).length > 0 && (
+                          <tr className="bg-gray-50 font-bold border-b border-gray-300">
+                            <td colSpan={7} className="p-2 text-left text-red-600">Return Items</td>
+                          </tr>
+                        )}
+
+                        {/* Return Items */}
+                        {selectedBillForView.items.filter(item => item.quantity < 0).map((item) => {
+                          const qty = Math.abs(item.quantity);
+                          const sgstVal = item.sgst || 0;
+                          const cgstVal = item.cgst || 0;
+                          const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
+                          const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
+
+                          return (
+                            <tr key={`return-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50 text-red-600">
+                              <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                              <td className="p-2 text-right border-r border-gray-300">-{qty}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
+                              <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                              <td className="p-2 text-right">-{totalInclGst.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+
+                        {/* Table Totals Row inside table */}
+                        {(() => {
+                          const totalQty = selectedBillForView.items.reduce((sum, item) => sum + item.quantity, 0);
+                          const totalSgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                          const totalCgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
+
+                          return (
+                            <>
+                              <tr style={{ border: 'none' }}>
+                                <td colSpan={7} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                              </tr>
+                              <tr className="font-bold bg-gray-100 border-t border-b border-gray-300">
+                                <td className="p-2 text-left border-r border-gray-300">Total</td>
+                                <td className="p-2 text-right border-r border-gray-300">{totalQty}</td>
+                                <td className="p-2 text-right border-r border-gray-300"></td>
+                                <td className="p-2 text-right border-r border-gray-300">{totalSgst.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300">{totalCgst.toFixed(2)}</td>
+                                <td className="p-2 text-right border-r border-gray-300"></td>
+                                <td className="p-2 text-right"></td>
+                              </tr>
+                            </>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
                   </div>
-
-                  {/* Return Items */}
-                  {selectedBillForView.items.filter(item => item.quantity < 0).length > 0 && (
-                    <>
-                      <div className="mb-4">
-                        <div className="font-bold mb-2">Return Items</div>
-                        <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-
-                        {selectedBillForView.items.filter(item => item.quantity < 0).map((item) => (
-                          <div key={`view-return-${item.id}`} className="grid grid-cols-5 gap-4 py-2">
-                            <div>{item.product_name}</div>
-                            <div className="text-right">{item.hsnCode || (item as any).product?.hsn_code || 'N/A'}</div>
-                            <div className="text-right">{item.quantity}</div>
-                            <div className="text-right">₹{item.price}</div>
-                            <div className="text-right">₹{item.amount.toFixed(2)}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-                    </>
-                  )}
 
                   {/* Calculations */}
                   <div className="w-64 ml-auto">
-                    <div className="flex justify-between py-1">
-                      <div>Item Total:</div>
-                      <div>₹{
-                        selectedBillForView.items
-                          .reduce((sum, item) => sum + item.amount, 0).toFixed(2)
-                      }</div>
-                    </div>
-
-                    <div className="flex justify-between py-1">
-                      <div>SGST:</div>
-                      <div>₹{selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0).toFixed(2)}</div>
-                    </div>
-
-                    <div className="flex justify-between py-1">
-                      <div>CGST:</div>
-                      <div>₹{selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0).toFixed(2)}</div>
-                    </div>
-
-                    <div className="flex justify-between py-1">
-                      <div>Today Total Amount:</div>
-                      <div>₹{(
-                        selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0) +
-                        selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0) +
-                        selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0)
-                      ).toFixed(2)}</div>
-                    </div>
-
-                    {/* Previous Pending Amount - Only show if there is actual previous pending */}
                     {(() => {
-                      // Calculate if this bill has previous pending (total_amount > items total + taxes)
                       const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
-                      const sgstTotal = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
-                      const cgstTotal = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                      const currentBillTotal = Math.round(itemTotal + sgstTotal + cgstTotal);
-                      const previousPending = selectedBillForView.total_amount - currentBillTotal;
+                      const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                      const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                      const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
 
-                      return previousPending > 0 ? (
+                      const rawTotal = selectedBillForView.total_amount;
+                      const finalTotal = Math.floor(rawTotal);
+                      const discount = rawTotal - finalTotal;
+                      const previousPending = finalTotal - currentBillTotal;
+                      const gstTotal = sgst + cgst;
+
+                      return (
                         <>
                           <div className="flex justify-between py-1">
-                            <div>Previous Pending:</div>
-                            <div>₹{previousPending.toFixed(2)}</div>
+                            <div>Item Total (Without GST):</div>
+                            <div>{itemTotal.toFixed(2)}</div>
                           </div>
-                          <div className="flex justify-between py-1 text-xs text-gray-500">
-                            <div>(From previous bill)</div>
-                            <div></div>
+
+                          <div className="flex justify-between py-1">
+                            <div>GST:</div>
+                            <div>{gstTotal.toFixed(2)}</div>
+                          </div>
+
+                          <div className="flex justify-between py-1 font-semibold">
+                            <div>Today Total Amount:</div>
+                            <div>{(itemTotal + gstTotal).toFixed(2)}</div>
+                          </div>
+
+                          {previousPending > 0 && (
+                            <>
+                              <div className="flex justify-between py-1">
+                                <div>Previous Pending:</div>
+                                <div>{previousPending.toFixed(2)}</div>
+                              </div>
+                              <div className="flex justify-between py-1 text-xs text-gray-500">
+                                <div>(From previous bill)</div>
+                                <div></div>
+                              </div>
+                            </>
+                          )}
+
+                          <div className="flex justify-between py-1">
+                            <div>Discount:</div>
+                            <div>{discount.toFixed(2)}</div>
+                          </div>
+
+                          <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+
+                          <div className="flex justify-between py-1 font-bold text-lg">
+                            <div>Final Total:</div>
+                            <div>{finalTotal.toFixed(2)}</div>
+                          </div>
+
+                          {/* Payment Details */}
+                          <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+
+                          <div className="flex justify-between py-1">
+                            <div>Received Amount:</div>
+                            <div>{selectedBillForView.received_amount.toFixed(2)}</div>
+                          </div>
+
+                          <div className="flex justify-between py-1">
+                            <div>Pending Amount:</div>
+                            <div className={selectedBillForView.pending_amount > 0 ? "text-red-600 font-medium" : ""}>
+                              {selectedBillForView.pending_amount.toFixed(2)}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between py-1">
+                            <div>Status:</div>
+                            <div className={selectedBillForView.status === 'COMPLETED' ? "text-green-600 font-bold" : "text-yellow-600 font-bold"}>
+                              {selectedBillForView.status.toUpperCase()}
+                            </div>
                           </div>
                         </>
-                      ) : null;
+                      );
                     })()}
-
-                    <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-
-                    <div className="flex justify-between py-1 font-bold">
-                      <div>Final Total:</div>
-                      <div>₹{selectedBillForView.total_amount.toFixed(2)}</div>
-                    </div>
-
-                    {/* Payment Details */}
-                    <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-
-                    <div className="flex justify-between py-1">
-                      <div>Received Amount:</div>
-                      <div>₹{selectedBillForView.received_amount.toFixed(2)}</div>
-                    </div>
-
-                    <div className="flex justify-between py-1">
-                      <div>Pending Amount:</div>
-                      <div className={selectedBillForView.pending_amount > 0 ? "text-red-600 font-medium" : ""}>
-                        ₹{selectedBillForView.pending_amount.toFixed(2)}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between py-1">
-                    </div>
-
-                    <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
-
-                    <div className="flex justify-between py-1 font-bold">
-                      <div>Status:</div>
-                      <div className={selectedBillForView.status === 'COMPLETED' ? "text-green-600" : "text-yellow-600"}>
-                        {selectedBillForView.status.toUpperCase()}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Signature Display - Below Status */}
@@ -3841,7 +4057,7 @@
                                   margin: 0;
                                 }
                                 body {
-                                  font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+                                  font-family: Arial, Helvetica, sans-serif;
                                   margin: 0;
                                   padding: 2mm 0mm;
                                   width: 80mm;
@@ -3883,17 +4099,24 @@
                                   width: 100%;
                                   border-collapse: collapse;
                                   margin-bottom: 15px;
-                                  font-size: 15px;
-                                }
-                                .bill-items th,
-                                .bill-items td {
-                                  padding: 4px 2px;
-                                  text-align: left;
-                                  border-bottom: 1px dashed #ccc;
                                 }
                                 .bill-items th {
+                                  font-size: 15px !important;
+                                  padding: 5px 3px;
+                                  text-align: left;
+                                  border: 1px solid #ccc;
                                   background-color: #f8f9fa;
                                   font-weight: bold;
+                                }
+                                .bill-items td {
+                                  font-size: 17px !important;
+                                  padding: 5px 3px;
+                                  text-align: left;
+                                  border: 1px solid #ccc;
+                                }
+                                .product-name-cell {
+                                  font-size: 20px !important;
+                                  font-weight: bold !important;
                                 }
                                 .bill-totals {
                                   width: 100%;
@@ -3968,7 +4191,7 @@
                                 <div class="bill-no"><strong>Bill No:</strong> ${billId}</div>
                                 <div class="shop-info"><strong>Shop:</strong> ${shopName}</div>
                                 <div class="shop-gst"><strong>Shop GST No:</strong> ${selectedBillForView.shop_id === 1 ? '33BBBBB5678B2Y6' : selectedBillForView.shop_id === 2 ? '33CCCCC9012C3Z7' : selectedBillForView.shop_id === 3 ? '33DDDDD3456D4A8' : ''}</div>
-                                <div class="bill-date"><strong>Date:</strong> ${selectedBillForView ? new Date(selectedBillForView.bill_date).toLocaleString() : new Date().toLocaleDateString()}</div>
+                                <div class="bill-date"><strong>Date:</strong> ${selectedBillForView ? formatDateWithDay(selectedBillForView.bill_date) : formatDateWithDay(new Date())}</div>
                                 <div class="dashed-line"></div>
                               </div>
                           `);
@@ -3978,11 +4201,13 @@
                             <table class="bill-items">
                               <thead>
                                 <tr>
-                                  <th>Item</th>
-                                  <th class="hsn-col" style="text-align: right;">HSN Code</th>
-                                  <th class="qty-col" style="text-align: right;">Qty</th>
-                                  <th class="price-col" style="text-align: right;">Price</th>
-                                  <th style="text-align: right;">Total</th>
+                                  <th style="text-align: left; width: 26%;">Product Name</th>
+                                  <th style="text-align: right; width: 9%;">QTY</th>
+                                  <th style="text-align: right; width: 13%;">Price</th>
+                                  <th style="text-align: right; width: 11%;">SGST</th>
+                                  <th style="text-align: right; width: 11%;">CGST</th>
+                                  <th style="text-align: right; width: 16%;">Price+GST</th>
+                                  <th style="text-align: right; width: 14%;">Total</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -3990,13 +4215,20 @@
 
                           // Regular items
                           selectedBillForView.items.filter(item => item.quantity > 0).forEach(item => {
+                            const qty = item.quantity;
+                            const sgstVal = item.sgst || 0;
+                            const cgstVal = item.cgst || 0;
+                            const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
+                            const totalInclGst = item.amount + sgstVal + cgstVal;
                             win.document.write(`
                               <tr>
-                                <td>${item.product_name}</td>
-                                <td class="hsn-col" style="text-align: right;">${item.hsnCode || (item as any).product?.hsn_code || 'N/A'}</td>
-                                <td class="qty-col" style="text-align: right;">${item.quantity}</td>
-                                <td class="price-col" style="text-align: right;">₹${item.price}</td>
-                                <td style="text-align: right;">₹${item.amount}</td>
+                                <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                <td style="text-align: right;">${qty}</td>
+                                <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
+                                <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
+                                <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
                               </tr>
                             `);
                           });
@@ -4004,20 +4236,47 @@
                           // Return items
                           if (selectedBillForView.items.filter(item => item.quantity < 0).length > 0) {
                             win.document.write(`
-                              <tr><td colspan="5" style="padding-top: 15px; font-weight: bold;">Return Items</td></tr>
+                              <tr><td colspan="7" style="padding-top: 15px; font-weight: bold;">Return Items</td></tr>
                             `);
                             selectedBillForView.items.filter(item => item.quantity < 0).forEach(item => {
+                              const qty = Math.abs(item.quantity);
+                              const sgstVal = item.sgst || 0;
+                              const cgstVal = item.cgst || 0;
+                              const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
+                              const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
                               win.document.write(`
                                 <tr>
-                                  <td>${item.product_name}</td>
-                                  <td class="hsn-col" style="text-align: right;">${item.hsnCode || (item as any).product?.hsn_code || 'N/A'}</td>
-                                  <td class="qty-col" style="text-align: right;">${item.quantity}</td>
-                                  <td class="price-col" style="text-align: right;">₹${item.price}</td>
-                                  <td style="text-align: right;">₹${item.amount}</td>
+                                  <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                  <td style="text-align: right;">-${qty}</td>
+                                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                  <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                                  <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                  <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
                                 </tr>
                               `);
                             });
                           }
+
+                          // Calculate table totals
+                          const totalQty = selectedBillForView.items.reduce((sum, item) => sum + item.quantity, 0);
+                          const totalSgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                          const totalCgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
+
+                          win.document.write(`
+                            <tr style="border: none !important;">
+                              <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                            </tr>
+                            <tr style="font-weight: bold; background-color: #f8f9fa;">
+                              <td class="product-name-cell" style="text-align: left;">Total</td>
+                              <td style="text-align: right;">${totalQty}</td>
+                              <td style="text-align: right;"></td>
+                              <td style="text-align: right;">${totalSgst.toFixed(2)}</td>
+                              <td style="text-align: right;">${totalCgst.toFixed(2)}</td>
+                              <td style="text-align: right;"></td>
+                              <td style="text-align: right;"></td>
+                            </tr>
+                          `);
 
                           win.document.write('</tbody></table>');
 
@@ -4025,28 +4284,27 @@
                           const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
                           const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
                           const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                          const currentBillTotal = Math.round(itemTotal + sgst + cgst);
-                          const previousPending = selectedBillForView.total_amount - currentBillTotal;
-                          const hasGst = true;
+                          const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
+                          
+                          const rawTotal = selectedBillForView.total_amount;
+                          const finalTotal = Math.floor(rawTotal);
+                          const discount = rawTotal - finalTotal;
+                          const previousPending = finalTotal - currentBillTotal;
 
                           win.document.write(`
-                            <div style="margin-top: 20px; margin-left: auto; width: 250px;">
+                            <div class="bill-totals">
                                 <div class="double-dark-line"></div>
                                 <div class="total-row">
-                                  <div>Item Total:</div>
-                                  <div>₹${itemTotal.toFixed(2)}</div>
+                                  <div>Item Total (Without GST):</div>
+                                  <div>${itemTotal.toFixed(2)}</div>
                                 </div>
                                 <div class="total-row">
-                                  <div>SGST:</div>
-                                  <div>${hasGst ? `₹${sgst.toFixed(2)}` : '-'}</div>
-                                </div>
-                                <div class="total-row">
-                                  <div>CGST:</div>
-                                  <div>₹${cgst.toFixed(2)}</div>
+                                  <div>GST:</div>
+                                  <div>${(sgst + cgst).toFixed(2)}</div>
                                 </div>
                                 <div class="total-row">
                                   <div>Today Total Amount:</div>
-                                  <div>₹${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                                  <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
                                 </div>
                           `);
 
@@ -4054,26 +4312,30 @@
                             win.document.write(`
                               <div class="total-row">
                                 <div>Previous Pending:</div>
-                                <div>₹${previousPending.toFixed(2)}</div>
+                                <div>${previousPending.toFixed(2)}</div>
                               </div>
                             `);
                           }
 
                           win.document.write(`
+                              <div class="total-row">
+                                <div>Discount:</div>
+                                <div>${discount.toFixed(2)}</div>
+                              </div>
                               <div class="dark-line"></div>
                               <div class="total-row final-total-row">
                                 <div>Final Total:</div>
-                                <div>₹${selectedBillForView.total_amount.toFixed(2)}</div>
+                                <div>${finalTotal.toFixed(2)}</div>
                               </div>
                             
                               <div class="payment-details">
                                 <div class="total-row">
                                   <div>Received Amount:</div>
-                                  <div>₹${selectedBillForView.received_amount}</div>
+                                  <div>${selectedBillForView.received_amount}</div>
                                 </div>
                                 <div class="total-row">
                                   <div>Pending Amount:</div>
-                                  <div class="${selectedBillForView.pending_amount > 0 ? 'status-pending' : ''}">₹${selectedBillForView.pending_amount}</div>
+                                  <div class="${selectedBillForView.pending_amount > 0 ? 'status-pending' : ''}">${selectedBillForView.pending_amount}</div>
                                 </div>
                                 <div class="dashed-line"></div>
                                 <div class="total-row" style="font-weight: bold;">

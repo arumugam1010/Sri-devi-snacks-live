@@ -6,7 +6,7 @@ import { dashboardAPI } from '../services/api';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { products, bills, shops, weeklySchedule, lowStockThreshold, loading: contextLoading } = useAppContext();
+  const { products, bills, shops, weeklySchedule, lowStockThreshold, loading: contextLoading, userRole } = useAppContext();
   const lowStockProducts = products.filter(p => p.quantity <= (lowStockThreshold || 20));
 
   // State for dashboard stats from backend
@@ -112,10 +112,10 @@ const Dashboard: React.FC = () => {
       .map(bill => {
         const isPaymentBill = bill.items && bill.items.length === 0 && bill.total_amount === 0;
         let paymentType = 'Bill Payment';
-        if (bill.payment_mode === 'GPAY') {
-          paymentType = 'GPAY';
-        } else if (isPaymentBill) {
+        if (isPaymentBill) {
           paymentType = 'Pending Collection';
+        } else if (bill.payment_mode === 'GPAY') {
+          paymentType = 'GPAY';
         }
         return {
           shopName: bill.shop_name,
@@ -142,9 +142,18 @@ const Dashboard: React.FC = () => {
       }, 0);
   }, [todayCollections]);
 
+  const totalOldPendingToday = React.useMemo(() => {
+    return todayCollections
+      .filter((item: any) => item.paymentType === 'Pending Collection')
+      .reduce((sum: number, item: any) => {
+        const val = typeof item.paidAmount === 'string' ? parseFloat(item.paidAmount) : item.paidAmount;
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
+  }, [todayCollections]);
+
   const totalBillSaveToday = React.useMemo(() => {
     return todayCollections
-      .filter((item: any) => item.paymentType !== 'GPAY')
+      .filter((item: any) => item.paymentType === 'Bill Payment')
       .reduce((sum: number, item: any) => {
         const val = typeof item.paidAmount === 'string' ? parseFloat(item.paidAmount) : item.paidAmount;
         return sum + (isNaN(val) ? 0 : val);
@@ -245,36 +254,44 @@ const Dashboard: React.FC = () => {
           change={12.5}
           color="purple"
         />
-        <StatCard
-          title="Today's Revenue"
-          value={`₹${stats.todaysRevenue.toLocaleString()}`}
-          icon={DollarSign}
-          change={8.3}
-          color="yellow"
-        />
+        {userRole !== 'STAFF' && (
+          <StatCard
+            title="Today's Revenue"
+            value={`₹${stats.todaysRevenue.toLocaleString()}`}
+            icon={DollarSign}
+            change={8.3}
+            color="yellow"
+          />
+        )}
         <StatCard
           title="Pending Returns"
           value={stats.pendingReturns}
           icon={TrendingUp}
           color="red"
         />
-        <StatCard
-          title="Today's Collected Amount"
-          value={`₹${totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          icon={DollarSign}
-          color="indigo"
-        >
-          <div className="mt-3 pt-2 border-t border-gray-100 flex flex-col gap-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-500 font-medium">Bill Save (Cash):</span>
-              <span className="text-green-700 font-bold">₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        {userRole !== 'STAFF' && (
+          <StatCard
+            title="Today's Collected Amount"
+            value={`₹${totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={DollarSign}
+            color="indigo"
+          >
+            <div className="mt-3 pt-2 border-t border-gray-100 flex flex-col gap-1.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">Bill Save (Cash):</span>
+                <span className="text-green-700 font-bold">₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">GPay:</span>
+                <span className="text-indigo-700 font-bold">₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">Old Pending Collected:</span>
+                <span className="text-orange-700 font-bold">₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
             </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-500 font-medium">GPay:</span>
-              <span className="text-indigo-700 font-bold">₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-        </StatCard>
+          </StatCard>
+        )}
         {/* <StatCard
           title="Active Orders"
           value={stats.activeOrders}
@@ -324,217 +341,220 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Today's Payments & Collections Summary */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="sm:flex sm:items-center sm:justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-medium leading-6 text-gray-900 font-semibold">
-              {activeView === 'received' ? "Today's Received Payments" : "Today's Pending Bills Issued"}
-            </h3>
-            <p className="mt-1 text-sm font-bold text-gray-500">
-              {activeView === 'received' ? (
-                <span className="text-green-700 flex flex-wrap items-center gap-x-2">
-                  <span>Total Collected Today: ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="text-gray-300 font-normal">|</span>
-                  <span className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded">Bill Save (Cash): ₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </span>
-              ) : (
-                <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              )}
-            </p>
-          </div>
-          <div className="mt-3 sm:mt-0 sm:ml-4">
-            <div className="flex rounded-md shadow-sm">
-              <button
-                type="button"
-                onClick={() => setActiveView('received')}
-                className={`relative inline-flex items-center px-4 py-2 rounded-l-md border text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                  activeView === 'received'
-                    ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Payments Received ({todayCollections.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView('pending_issued')}
-                className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                  activeView === 'pending_issued'
-                    ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Today Pending Given Shop ({todayPendingIssued.length})
-              </button>
+      {userRole !== 'STAFF' && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="sm:flex sm:items-center sm:justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-medium leading-6 text-gray-900 font-semibold">
+                {activeView === 'received' ? "Today's Received Payments" : "Today's Pending Bills Issued"}
+              </h3>
+              <p className="mt-1 text-sm font-bold text-gray-500">
+                {activeView === 'received' ? (
+                  <span className="text-green-700 flex flex-wrap items-center gap-x-2">
+                    <span>Total Collected Today: ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-gray-300 font-normal">|</span>
+                    <span className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded">Bill Save (Cash): ₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded">Old Pending Collected: ₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </span>
+                ) : (
+                  <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                )}
+              </p>
+            </div>
+            <div className="mt-3 sm:mt-0 sm:ml-4">
+              <div className="flex rounded-md shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('received')}
+                  className={`relative inline-flex items-center px-4 py-2 rounded-l-md border text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                    activeView === 'received'
+                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Payments Received ({todayCollections.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('pending_issued')}
+                  className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                    activeView === 'pending_issued'
+                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Today Pending Given Shop ({todayPendingIssued.length})
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
-          {activeView === 'received' ? (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shop Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bill ID
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Payment Type
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Paid Amount Today
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bill Pending Balance
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Collected By
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {todayCollections.length === 0 ? (
+          {/* Table */}
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            {activeView === 'received' ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
-                      No payments received today.
-                    </td>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Shop Name
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Bill ID
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Payment Type
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Paid Amount Today
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Bill Pending Balance
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Collected By
+                    </th>
                   </tr>
-                ) : (
-                  todayCollections.map((item: any, idx: number) => (
-                    <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.shopName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                        {item.billNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.paymentType === 'GPAY'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : item.paymentType === 'Pending Collection'
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {item.paymentType}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold text-green-600">
-                        ₹{item.paidAmount.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-red-600">
-                        {item.remainingPending}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-sans">
-                        {item.collectedBy}
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {todayCollections.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                        No payments received today.
                       </td>
                     </tr>
-                  ))
+                  ) : (
+                    todayCollections.map((item: any, idx: number) => (
+                      <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.shopName}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                          {item.billNumber}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            item.paymentType === 'GPAY'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : item.paymentType === 'Pending Collection'
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {item.paymentType}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold text-green-600">
+                          ₹{item.paidAmount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-red-600">
+                          {item.remainingPending}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-sans">
+                          {item.collectedBy}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {todayCollections.length > 0 && (
+                  <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                        Total
+                      </td>
+                      <td colSpan={2} className="px-6 py-4"></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 font-bold text-left">
+                        ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
+                        ₹{totalPendingBalanceToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4"></td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {todayCollections.length > 0 && (
-                <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+              </table>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                      Total
-                    </td>
-                    <td colSpan={2} className="px-6 py-4"></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 font-bold text-left">
-                      ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
-                      ₹{totalPendingBalanceToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4"></td>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Shop Name
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Bill ID
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Bill Amount
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Paid Amount Today
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Pending Given Today
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Issued By
+                    </th>
                   </tr>
-                </tfoot>
-              )}
-            </table>
-          ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shop Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bill ID
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Bill Amount
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Paid Amount Today
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pending Given Today
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Issued By
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {todayPendingIssued.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
-                      No pending bills issued today.
-                    </td>
-                  </tr>
-                ) : (
-                  todayPendingIssued.map((item, idx) => (
-                    <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.shopName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                        {item.billNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-blue-600">
-                        ₹{item.totalAmount.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-green-600">
-                        ₹{item.paidAmount.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold text-red-600">
-                        ₹{item.pendingAmount.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-sans">
-                        {item.issuedBy}
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {todayPendingIssued.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
+                        No pending bills issued today.
                       </td>
                     </tr>
-                  ))
+                  ) : (
+                    todayPendingIssued.map((item, idx) => (
+                      <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.shopName}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                          {item.billNumber}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-blue-600">
+                          ₹{item.totalAmount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold text-green-600">
+                          ₹{item.paidAmount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold text-red-600">
+                          ₹{item.pendingAmount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-sans">
+                          {item.issuedBy}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {todayPendingIssued.length > 0 && (
+                  <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                        Total
+                      </td>
+                      <td className="px-6 py-4"></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700 font-bold text-left">
+                        ₹{totalBillAmountIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 font-bold text-left">
+                        ₹{totalPaidAmountIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
+                        ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4"></td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {todayPendingIssued.length > 0 && (
-                <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
-                  <tr>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                      Total
-                    </td>
-                    <td className="px-6 py-4"></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700 font-bold text-left">
-                      ₹{totalBillAmountIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 font-bold text-left">
-                      ₹{totalPaidAmountIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
-                      ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4"></td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          )}
+              </table>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

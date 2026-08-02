@@ -139,6 +139,8 @@ const Employees: React.FC = () => {
     status: 'active' as 'active' | 'inactive'
   });
 
+  const [registerBioImmediately, setRegisterBioImmediately] = useState<boolean>(true);
+
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
@@ -465,6 +467,9 @@ const Employees: React.FC = () => {
       });
 
       if (res.success) {
+        const newId = res.data?.id;
+        const employeeName = employeeForm.name;
+
         showNotification('Employee added successfully');
         setIsAddModalOpen(false);
         setEmployeeForm({
@@ -475,6 +480,79 @@ const Employees: React.FC = () => {
           status: 'active'
         });
         fetchEmployees();
+
+        if (registerBioImmediately && newId && window.PublicKeyCredential) {
+          try {
+            showNotification(`Preparing fingerprint registry for ${employeeName}...`);
+            
+            // 1. Get registration challenge from server
+            const chalRes = await employeesAPI.getRegisterChallenge(newId);
+            if (!chalRes.success) throw new Error(chalRes.message);
+            
+            const hexChallenge = chalRes.data.challenge;
+            const challengeBuffer = hexToBytes(hexChallenge);
+            
+            // Generate a user ID buffer
+            const userIdBuffer = new TextEncoder().encode(`SDS-EMP-${newId}`);
+
+            // 2. Configure WebAuthn creation options
+            const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
+              challenge: challengeBuffer as any,
+              rp: {
+                name: "Sri Devi Snacks Portal",
+                id: window.location.hostname
+              },
+              user: {
+                id: userIdBuffer as any,
+                name: employeeName,
+                displayName: employeeName
+              },
+              pubKeyCredParams: [
+                { type: "public-key", alg: -7 },  // ES256
+                { type: "public-key", alg: -257 } // RS256
+              ],
+              authenticatorSelection: {
+                authenticatorAttachment: "platform",
+                userVerification: "required"
+              },
+              timeout: 60000
+            };
+
+            // 3. Request credential creation (prompts fingerprint dialog)
+            const credential = await navigator.credentials.create({
+              publicKey: publicKeyCredentialCreationOptions
+            }) as PublicKeyCredential;
+
+            if (!credential) {
+              throw new Error("Registry cancelled or failed.");
+            }
+
+            // 4. Extract public key and credential id
+            const attestationResponse = credential.response as AuthenticatorAttestationResponse;
+            const publicKeyDer = attestationResponse.getPublicKey();
+            if (!publicKeyDer) throw new Error("Could not retrieve public key from fingerprint hardware");
+            const publicKeyBase64 = bytesToBase64(new Uint8Array(publicKeyDer));
+            const credentialId = credential.id;
+
+            // 5. Send key to server
+            const regRes = await employeesAPI.registerBiometrics({
+              employee_id: newId,
+              credential_id: credentialId,
+              public_key: publicKeyBase64,
+              device_name: `${navigator.platform} (${navigator.userAgent.substring(0, 30)})`
+            });
+
+            if (regRes.success) {
+              showNotification(`Successfully registered fingerprint for ${employeeName}!`);
+              fetchEmployees();
+            } else {
+              throw new Error(regRes.message);
+            }
+          } catch (bioErr: any) {
+            console.error(bioErr);
+            setError(`Employee was added, but fingerprint registration was skipped: ${bioErr.message || 'Make sure biometrics are set up on your device.'}`);
+          }
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to add employee');
@@ -1291,6 +1369,27 @@ const Employees: React.FC = () => {
                   onChange={e => setEmployeeForm(prev => ({ ...prev, joining_date: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
                 />
+              </div>
+              <div className="pt-2 border-t border-gray-100 mt-2">
+                {window.PublicKeyCredential ? (
+                  <label className="flex items-center space-x-2.5 cursor-pointer p-1.5 rounded hover:bg-gray-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={registerBioImmediately}
+                      onChange={e => setRegisterBioImmediately(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-sm font-semibold text-gray-700 flex items-center select-none">
+                      <Fingerprint className="h-4 w-4 mr-1.5 text-emerald-600 animate-pulse" />
+                      Register Fingerprint Now
+                    </span>
+                  </label>
+                ) : (
+                  <div className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-xl border border-amber-100 flex items-center">
+                    <Fingerprint className="h-4.5 w-4.5 mr-2 text-amber-600 flex-shrink-0" />
+                    <span>Fingerprint setup requires a secure connection (HTTPS).</span>
+                  </div>
+                )}
               </div>
               <div className="pt-2 flex justify-end space-x-2">
                 <button

@@ -49,9 +49,9 @@ const Shops: React.FC = () => {
     const fetchData = async () => {
       if (activeTab === 'schedule') setScheduleLoading(true);
       try {
-        // For schedule tab, fetch all shops; for shops tab, use pagination
-        const limit = activeTab === 'schedule' ? 1000 : 5; // Large limit for schedule to get all shops
-        const page = activeTab === 'schedule' ? 1 : currentPage; // Always use page 1 for schedule to get all shops
+        // Fetch all shops to allow scrollable list
+        const limit = 1000;
+        const page = 1;
         const shopsResponse = await shopsAPI.getShops({ page, limit, search: searchTerm });
         if (shopsResponse.success) {
           const fetchedShops: Shop[] = shopsResponse.data.map((shop: any) => ({
@@ -426,7 +426,7 @@ const Shops: React.FC = () => {
                 <span className="ml-2 text-gray-600">Loading shops...</span>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -435,6 +435,9 @@ const Shops: React.FC = () => {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Contact Info
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Assigned Day
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
@@ -478,6 +481,25 @@ const Shops: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        {(() => {
+                          const assignedDays: string[] = [];
+                          weeklySchedule.forEach((sch: any) => {
+                            if (sch.shops && sch.shops.some((s: any) => s.id === shop.id)) {
+                              assignedDays.push(sch.day);
+                            }
+                          });
+                          return assignedDays.length > 0 ? (
+                            <span className="inline-flex px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-md">
+                              {assignedDays.join(', ')}
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-md">
+                              Not Assigned
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                           shop.status === 'active'
                             ? 'bg-green-100 text-green-800'
@@ -493,7 +515,7 @@ const Shops: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">
                             <button
-                              onClick={() => handleEdit(shop)}
+                               onClick={() => handleEdit(shop)}
                               className="text-blue-600 hover:text-blue-900 p-1 rounded transition"
                             >
                               <Edit className="h-4 w-4" />
@@ -513,11 +535,6 @@ const Shops: React.FC = () => {
               </table>
             </div>
             )}
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={handlePageChange}
-            />
           </div>
 
           {/* Modal */}
