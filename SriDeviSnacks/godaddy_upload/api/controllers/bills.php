@@ -26,6 +26,15 @@
             }
         }
         
+        // GET /bills/payments/received
+        if ($action === 'payments') {
+            $subAction = $parts[2] ?? '';
+            if ($subAction === 'received' && $method === 'GET') {
+                getPendingReceivedPayments();
+                return;
+            }
+        }
+        
         // GET /bills or POST /bills
         if (empty($action)) {
             if ($method === 'GET') {
@@ -144,6 +153,22 @@
             ];
         }
         
+        // Fetch Cash and GPay amounts from bill_payments
+        $cashAmount = 0;
+        $gpayAmount = 0;
+        
+        $payStmt = $db->prepare("SELECT amount, payment_mode FROM bill_payments WHERE bill_id = :bill_id");
+        $payStmt->execute(['bill_id' => $billId]);
+        $payments = $payStmt->fetchAll();
+        
+        foreach ($payments as $pay) {
+            if ($pay['payment_mode'] === 'CASH') {
+                $cashAmount += (float)$pay['amount'];
+            } else if ($pay['payment_mode'] === 'GPAY') {
+                $gpayAmount += (float)$pay['amount'];
+            }
+        }
+        
         return [
             'id' => $billId,
             'billNumber' => $billRow['bill_number'],
@@ -156,6 +181,8 @@
             'status' => $billRow['status'],
             'notes' => $billRow['notes'],
             'payment_mode' => $billRow['payment_mode'] ?? null,
+            'cash_amount' => $cashAmount,
+            'gpay_amount' => $gpayAmount,
             'signature' => $billRow['signature'],
             'createdAt' => $billRow['createdAt'],
             'updatedAt' => $billRow['updatedAt'],
@@ -280,7 +307,22 @@
         $receivedAmount = isset($body['receivedAmount']) ? round((float)$body['receivedAmount'], 2) : 0.00;
         $applyToPending = isset($body['applyToPending']) && $body['applyToPending'] === true;
         $notes = $body['notes'] ?? null;
+        $cashAmount = isset($body['cashAmount']) ? round((float)$body['cashAmount'], 2) : 0.00;
+        $gpayAmount = isset($body['gpayAmount']) ? round((float)$body['gpayAmount'], 2) : 0.00;
+        
         $paymentMode = $body['paymentMode'] ?? null;
+        
+        if ($cashAmount > 0 || $gpayAmount > 0) {
+            $receivedAmount = $cashAmount + $gpayAmount;
+            if ($cashAmount > 0 && $gpayAmount > 0) {
+                $paymentMode = 'SPLIT';
+            } else if ($cashAmount > 0) {
+                $paymentMode = 'CASH';
+            } else {
+                $paymentMode = 'GPAY';
+            }
+        }
+        
         $items = $body['items'] ?? [];
         
         if ($shopId <= 0) {
@@ -346,7 +388,11 @@
             $excessPayment = 0;
             if ($receivedAmount > $totalAmount && !$isPaymentBill) {
                 $excessPayment = round($receivedAmount - $totalAmount, 2);
-                $billReceivedAmount = $totalAmount;
+                // We deliberately do NOT cap $billReceivedAmount to $totalAmount here.
+                // By allowing $billReceivedAmount to be > $totalAmount, the Dashboard will 
+                // correctly see the full amount collected today under Today's Collections.
+                // The bill will get a negative pending_amount and status 'COMPLETED', so 
+                // it won't inflate the shop's pending balance.
             }
             
             $pendingAmount = round($totalAmount - $billReceivedAmount, 2);
@@ -379,13 +425,37 @@
             if ($billReceivedAmount > 0) {
                 $payStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
                                          VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
-                $payStmt->execute([
-                    'bill_id' => $billId,
-                    'amount' => $billReceivedAmount,
-                    'payment_mode' => $paymentMode,
-                    'payment_date' => $billDate,
-                    'user_id' => $userId
-                ]);
+                if ($cashAmount > 0 || $gpayAmount > 0) {
+                    // For split payment, distribute the billReceivedAmount
+                    // Normally billReceivedAmount == receivedAmount unless capped
+                    // Assuming no capping for excess payment as per original code
+                    if ($cashAmount > 0) {
+                        $payStmt->execute([
+                            'bill_id' => $billId,
+                            'amount' => $cashAmount,
+                            'payment_mode' => 'CASH',
+                            'payment_date' => $billDate,
+                            'user_id' => $userId
+                        ]);
+                    }
+                    if ($gpayAmount > 0) {
+                        $payStmt->execute([
+                            'bill_id' => $billId,
+                            'amount' => $gpayAmount,
+                            'payment_mode' => 'GPAY',
+                            'payment_date' => $billDate,
+                            'user_id' => $userId
+                        ]);
+                    }
+                } else {
+                    $payStmt->execute([
+                        'bill_id' => $billId,
+                        'amount' => $billReceivedAmount,
+                        'payment_mode' => $paymentMode,
+                        'payment_date' => $billDate,
+                        'user_id' => $userId
+                    ]);
+                }
             }
             
             // Insert Items & Update Stocks
@@ -768,6 +838,31 @@
             }
             
             sendResponse(true, '', $bills);
+        } catch (PDOException $e) {
+            sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Handle GET /api/bills/payments/received
+     */
+    function getPendingReceivedPayments() {
+        $db = getDatabaseConnection();
+        try {
+            // Fetch all payments made for bills (could be partial or full, but they represent received amounts)
+            // We join with bills and shops to get shop name and bill number
+            $stmt = $db->query("
+                SELECT bp.id, bp.amount, bp.payment_mode, bp.payment_date, bp.created_at,
+                       b.bill_number, b.total_amount, b.pending_amount,
+                       s.shop_name
+                FROM bill_payments bp
+                JOIN bills b ON bp.bill_id = b.id
+                JOIN shops s ON b.shop_id = s.id
+                ORDER BY bp.payment_date DESC, bp.created_at DESC
+            ");
+            $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            sendResponse(true, '', $payments);
         } catch (PDOException $e) {
             sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
         }

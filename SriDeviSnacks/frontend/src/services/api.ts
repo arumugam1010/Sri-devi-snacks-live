@@ -3,9 +3,9 @@ const getBaseApiUrl = (): string => {
     return import.meta.env.VITE_API_BASE_URL;
   }
   if (typeof window !== 'undefined') {
-    // If testing locally on XAMPP (e.g. localhost/sridevisnacks)
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return '/sridevisnacks/api';
+      // If testing locally on XAMPP
+      return '/Sri-devi-snacks-live/SriDeviSnacks/godaddy_upload/api';
     }
     // If hosted on live GoDaddy domain (e.g. sridevisnacks.com)
     return '/api';
@@ -106,7 +106,14 @@ export const billsAPI = {
         if (value !== undefined) queryParams.append(key, value.toString());
       });
     }
-    return authenticatedFetch(`${API_BASE_URL}/bills?${queryParams}`);
+    queryParams.append('_t', Date.now().toString());
+    return authenticatedFetch(`${API_BASE_URL}/bills?${queryParams}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
   },
 
   getBill: async (id: number) => {
@@ -117,6 +124,8 @@ export const billsAPI = {
     shopId: number;
     billDate?: string;
     receivedAmount?: number;
+    cashAmount?: number;
+    gpayAmount?: number;
     notes?: string;
     paymentMode?: string;
     applyToPending?: boolean;
@@ -159,6 +168,10 @@ export const billsAPI = {
 
   getPendingBills: async () => {
     return authenticatedFetch(`${API_BASE_URL}/bills/status/pending`);
+  },
+  
+  getPendingReceivedPayments: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/bills/payments/received`);
   },
 
   updateSignature: async (id: number, signature: string) => {

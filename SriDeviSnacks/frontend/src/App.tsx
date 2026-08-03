@@ -19,6 +19,11 @@ import Employees from './components/Employees';
 
 const getBasename = () => {
   if (typeof window !== 'undefined') {
+    const path = window.location.pathname;
+    // Check if we are running locally in XAMPP deep folder
+    if (path.includes('/godaddy_upload')) {
+       return path.substring(0, path.indexOf('/godaddy_upload') + '/godaddy_upload'.length);
+    }
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return '/sridevisnacks';
     }

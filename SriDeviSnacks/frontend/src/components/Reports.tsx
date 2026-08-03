@@ -1,14 +1,26 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Pagination } from './Pagination';
+import { billsAPI } from '../services/api';
 
 const Reports: React.FC = () => {
   const { bills, products, shops } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received'>('daily');
   const [pageStates, setPageStates] = useState<Record<string, number>>({});
   const [returnsSubTab, setReturnsSubTab] = useState<'today' | 'all'>('today');
   const [productsSubTab, setProductsSubTab] = useState<'today' | 'all'>('today');
+  const [pendingReceivedPayments, setPendingReceivedPayments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (activeTab === 'pending_received') {
+      billsAPI.getPendingReceivedPayments().then(res => {
+        if (res.success) {
+          setPendingReceivedPayments(res.data);
+        }
+      });
+    }
+  }, [activeTab]);
 
   const isToday = (dateString: string) => {
     if (!dateString) return false;
@@ -72,6 +84,17 @@ const Reports: React.FC = () => {
           'Last Order': shop.last_order,
           'Total Pending': shop.total_pending,
           'Pending Bills': shop.pending_bills.map((b: any) => `Bill #${b.billNumber} (${new Date(b.date).toLocaleDateString()}): Total ₹${b.totalAmount}, Pending ₹${b.pendingAmount}`).join('; ')
+        }));
+        break;
+      case 'pending-received-payments':
+        dataToExport = pendingReceivedPayments.map(payment => ({
+          'Date': new Date(payment.payment_date).toLocaleString(),
+          'Shop Name': payment.shop_name,
+          'Bill Number': payment.bill_number,
+          'Total Bill Amount': payment.total_amount,
+          'Remaining Pending': payment.pending_amount,
+          'Received Amount': payment.amount,
+          'Payment Mode': payment.payment_mode || 'CASH'
         }));
         break;
       case 'returns-history':
@@ -426,6 +449,7 @@ const Reports: React.FC = () => {
             { key: 'monthly', label: 'Monthly Reports', icon: Calendar },
             { key: 'shops', label: 'Shop Reports', icon: ShoppingCart },
             { key: 'pending', label: 'Pending Reports', icon: AlertCircle },
+            { key: 'pending_received', label: 'Pending Received', icon: DollarSign },
             { key: 'returns', label: 'Returns', icon: Package },
             { key: 'products', label: 'Product Performance', icon: TrendingUp },
           ].map((tab) => (
@@ -880,6 +904,81 @@ const Reports: React.FC = () => {
               currentPage={currentPage}
               totalPages={Math.ceil(pendingShopsReport.length / 5)}
               onPageChange={(page) => handlePageChange('pending', page)}
+            />
+          </div>
+        )}
+
+        {/* Pending Received Tab */}
+        {activeTab === 'pending_received' && (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Pending Received Collections</h3>
+              <button
+                onClick={() => handleExport('pending-received-payments')}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shop Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill Details</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Received Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Mode</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(() => {
+                    const totalPages = Math.ceil(pendingReceivedPayments.length / 10);
+                    const paginatedData = pendingReceivedPayments.slice((currentPage - 1) * 10, currentPage * 10);
+                    if (paginatedData.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                            No received payments found!
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return paginatedData.map((payment, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(payment.payment_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{payment.shop_name}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">Bill #{payment.bill_number}</div>
+                          <div className="text-xs text-gray-500">
+                            Total: ₹{parseFloat(payment.total_amount).toLocaleString()} | Bal: <span className="text-red-600 font-semibold">₹{parseFloat(payment.pending_amount).toLocaleString()}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">
+                          ₹{parseFloat(payment.amount).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            payment.payment_mode === 'UPI' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {payment.payment_mode || 'CASH'}
+                          </span>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(pendingReceivedPayments.length / 10)}
+              onPageChange={(page) => handlePageChange('pending_received', page)}
             />
           </div>
         )}

@@ -45,6 +45,8 @@ interface Bill {
   created_at?: string;
   user_name?: string;
   payment_mode?: string;
+  cash_amount?: number;
+  gpay_amount?: number;
 }
 
 interface Shop {
@@ -258,6 +260,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           pending_amount: b.pendingAmount,
           status: b.status,
           payment_mode: b.payment_mode,
+          cash_amount: b.cash_amount,
+          gpay_amount: b.gpay_amount,
           updated_at: b.updatedAt,
           created_at: b.createdAt,
           user_name: b.user?.name,
@@ -383,6 +387,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
         shopId: bill.shop_id,
         billDate: bill.bill_date,
         receivedAmount: bill.received_amount,
+        cashAmount: bill.cash_amount,
+        gpayAmount: bill.gpay_amount,
         notes: '',
         paymentMode: bill.payment_mode,
         items: bill.items.map(item => ({
@@ -411,6 +417,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           pending_amount: createdBill.pendingAmount,
           status: createdBill.status,
           payment_mode: createdBill.payment_mode,
+          cash_amount: createdBill.cash_amount,
+          gpay_amount: createdBill.gpay_amount,
           updated_at: createdBill.updatedAt,
           created_at: createdBill.createdAt,
           user_name: createdBill.user?.name || bill.user_name,
@@ -458,6 +466,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
               pending_amount: updatedBill.pendingAmount,
               status: updatedBill.status,
               payment_mode: updatedBill.payment_mode,
+              cash_amount: updatedBill.cash_amount,
+              gpay_amount: updatedBill.gpay_amount,
               ...updateData // in case there are other fields like notes
             } : bill
           )

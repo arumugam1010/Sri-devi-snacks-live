@@ -37,6 +37,8 @@
     status: 'PENDING' | 'COMPLETED';
     items: BillItem[];
     payment_mode?: string;
+    cash_amount?: number;
+    gpay_amount?: number;
     transaction_id?: string;
     payment_date?: string;
     signature?: string;
@@ -605,6 +607,11 @@
 
     // State for payment mode
     const [paymentMode, setPaymentMode] = useState<string>('CASH');
+    
+    // Split payment state
+    const [isSplitPayment, setIsSplitPayment] = useState(false);
+    const [cashAmount, setCashAmount] = useState<string>('');
+    const [gpayAmount, setGpayAmount] = useState<string>('');
 
     // State for payment bill mode
     const [isPaymentBillMode, setIsPaymentBillMode] = useState(false);
@@ -1130,7 +1137,15 @@
 
       let finalTotal = Math.round(billingAmount + returnAmount); // returnAmount is negative
 
-      let currentReceived = parseFloat(receivedAmount || "0");
+      let currentReceived = 0;
+      if (isSplitPayment) {
+        const parsedCash = parseFloat(cashAmount || "0");
+        const parsedGpay = parseFloat(gpayAmount || "0");
+        currentReceived = parsedCash + parsedGpay;
+      } else {
+        currentReceived = parseFloat(receivedAmount || "0");
+      }
+
       if (forcePending && currentReceived >= finalTotal) {
         currentReceived = 0; // Reset received to 0 since it is fully pending
       }
@@ -1171,7 +1186,9 @@
         received_amount: currentReceived,
         pending_amount: pendingAmount,
         status: billStatus,
-        payment_mode: paymentMode,
+        payment_mode: isSplitPayment ? 'SPLIT' : paymentMode,
+        cash_amount: isSplitPayment ? parseFloat(cashAmount || "0") : undefined,
+        gpay_amount: isSplitPayment ? parseFloat(gpayAmount || "0") : undefined,
         items: currentBill.map(item => ({
           ...item,
           rate: item.price,
@@ -1237,6 +1254,9 @@
         setHasPrinted(false); // Reset print status when bill is saved
         setSelectedMonth(null); // Reset to show financial year overview
         setPaymentMode('CASH'); // Reset payment mode
+        setIsSplitPayment(false);
+        setCashAmount('');
+        setGpayAmount('');
         alert(`Bill ${newBill.id} saved successfully!\nFinal Amount: ₹${finalTotal.toFixed(2)}\nStatus: ${billStatus}`);
       } catch (error: any) {
         console.error('Failed to save bill:', error);
@@ -1756,10 +1776,10 @@
         const itemTotal = bill.items.reduce((sum: number, item: any) => sum + item.amount, 0);
         const sgst = bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const cgst = bill.items.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
+        const currentBillTotal = Math.round(itemTotal + sgst + cgst);
         
         const rawTotal = bill.total_amount;
-        const finalTotal = Math.floor(rawTotal);
+        const finalTotal = Math.round(rawTotal);
         const discount = rawTotal - finalTotal;
         const previousPending = finalTotal - currentBillTotal;
 
@@ -3198,7 +3218,7 @@
                                 const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
                                 
                                 const rawTotal = itemTotal + sgst + cgst + pendingAmount;
-                                const finalTotal = Math.floor(rawTotal);
+                                const finalTotal = Math.round(rawTotal);
                                 const discount = rawTotal - finalTotal;
 
                                 const gstTotal = sgst + cgst;
@@ -3253,6 +3273,9 @@
                                 setTimeout(() => {
                                   win.print(() => {
                                     setHasPrinted(true); // Mark that bill has been printed
+                                    setIsSplitPayment(false);
+                                    setCashAmount('');
+                                    setGpayAmount('');
                                     setShowSaveOptionsModal(true); // Open Save Options Modal
                                   });
                                 }, 100);
@@ -3537,7 +3560,7 @@
                         const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
                         
                         const rawTotal = todayTotalAmount + pendingAmount;
-                        const finalTotal = Math.floor(rawTotal);
+                        const finalTotal = Math.round(rawTotal);
                         const discount = rawTotal - finalTotal;
 
                         return (
@@ -3906,10 +3929,10 @@
                       const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
                       const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
                       const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                      const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
+                      const currentBillTotal = Math.round(itemTotal + sgst + cgst);
 
                       const rawTotal = selectedBillForView.total_amount;
-                      const finalTotal = Math.floor(rawTotal);
+                      const finalTotal = Math.round(rawTotal);
                       const discount = rawTotal - finalTotal;
                       const previousPending = finalTotal - currentBillTotal;
                       const gstTotal = sgst + cgst;
@@ -4279,10 +4302,10 @@
                           const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
                           const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
                           const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                          const currentBillTotal = Math.floor(itemTotal + sgst + cgst);
+                          const currentBillTotal = Math.round(itemTotal + sgst + cgst);
                           
                           const rawTotal = selectedBillForView.total_amount;
-                          const finalTotal = Math.floor(rawTotal);
+                          const finalTotal = Math.round(rawTotal);
                           const discount = rawTotal - finalTotal;
                           const previousPending = finalTotal - currentBillTotal;
 
@@ -4596,20 +4619,71 @@
                   </div>
 
                   {/* Received Amount Input */}
-                  <div>
-                    <label htmlFor="modalReceivedAmount" className="block text-sm font-semibold text-gray-700 mb-1">
-                      Received Amount (வரவு)
-                    </label>
-                    <input
-                      type="number"
-                      id="modalReceivedAmount"
-                      min="0"
-                      value={receivedAmount}
-                      placeholder="0"
-                      onChange={(e) => setReceivedAmount(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-bold text-center"
-                    />
-                  </div>
+                  {!isSplitPayment ? (
+                    <div>
+                      <label htmlFor="modalReceivedAmount" className="block text-sm font-semibold text-gray-700 mb-1">
+                        Received Amount (வரவு)
+                      </label>
+                      <input
+                        type="number"
+                        id="modalReceivedAmount"
+                        min="0"
+                        value={receivedAmount}
+                        placeholder="0"
+                        onChange={(e) => setReceivedAmount(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-bold text-center"
+                      />
+                      {userRole !== 'STAFF' && (
+                        <button
+                          onClick={() => setIsSplitPayment(true)}
+                          className="mt-3 w-full py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 font-semibold rounded-lg border border-blue-200 transition-colors shadow-sm"
+                        >
+                          + Cash & GPay (பிரித்து செலுத்த)
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm font-semibold text-gray-700">Split Payment (பிரித்து செலுத்த)</span>
+                        <button
+                          onClick={() => {
+                            setIsSplitPayment(false);
+                            setReceivedAmount(String((parseFloat(cashAmount || "0") + parseFloat(gpayAmount || "0")) || ""));
+                          }}
+                          className="text-xs text-red-600 font-semibold hover:text-red-800"
+                        >
+                          Cancel Split (ரத்து செய்)
+                        </button>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Received (பணம் - ₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cashAmount}
+                          onChange={(e) => setCashAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-center font-bold"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">GPay Received (GPay - ₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={gpayAmount}
+                          onChange={(e) => setGpayAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-center font-bold"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="pt-2 border-t border-gray-200 text-sm font-bold text-gray-800 flex justify-between">
+                        <span>Total (மொத்தம்):</span>
+                        <span>₹{(parseFloat(cashAmount || "0") + parseFloat(gpayAmount || "0")).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -4619,7 +4693,7 @@
                       setShowSaveOptionsModal(false);
                       await handleSaveBill(false);
                     }}
-                    disabled={!receivedAmount || parseFloat(receivedAmount) <= 0}
+                    disabled={isSplitPayment ? (parseFloat(cashAmount || "0") + parseFloat(gpayAmount || "0") <= 0) : (!receivedAmount || parseFloat(receivedAmount) <= 0)}
                     className="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow transition"
                   >
                     Save Bill (பில் சேமிக்க)
@@ -4642,6 +4716,10 @@
                     onClick={async () => {
                       setShowSaveOptionsModal(false);
                       setGpayFromModal(true);
+                      if (isSplitPayment) {
+                         setIsSplitPayment(false);
+                         setReceivedAmount(String((parseFloat(cashAmount || "0") + parseFloat(gpayAmount || "0")) || ""));
+                      }
                       await handleGPayPayment();
                     }}
                     className="w-full inline-flex items-center justify-center px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow transition"
