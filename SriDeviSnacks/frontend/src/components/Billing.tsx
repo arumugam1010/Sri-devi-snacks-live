@@ -1908,18 +1908,29 @@
                 <div>${(sgst + cgst).toFixed(2)}</div>
               </div>
               <div class="total-row">
-                <div>Today Total Amount:</div>
+                <div>Today Total Amount (இன்றைய பில்):</div>
                 <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
               </div>
         `);
 
+        const shopPendingBills = bills.filter((b: any) => b.shop_id === bill.shop_id && b.status === 'PENDING' && b.id !== bill.id);
+
         if (previousPending > 0) {
           win.document.write(`
             <div class="total-row">
-              <div>Previous Pending:</div>
+              <div>Previous Pending (பழைய பாக்கி):</div>
               <div>${previousPending.toFixed(2)}</div>
             </div>
           `);
+          
+          shopPendingBills.forEach((b: any) => {
+            win.document.write(`
+              <div class="total-row" style="font-size: 13px; color: #555;">
+                <div>bill no ${b.id}:</div>
+                <div>${b.pending_amount.toFixed(2)}</div>
+              </div>
+            `);
+          });
         }
 
         win.document.write(`
@@ -3234,7 +3245,7 @@
                                         <div>${gstTotal.toFixed(2)}</div>
                                       </div>
                                       <div class="total-row">
-                                        <div>Today Total Amount:</div>
+                                        <div>Today Total Amount (இன்றைய பில்):</div>
                                         <div>${(itemTotal + gstTotal).toFixed(2)}</div>
                                       </div>
                                   `);
@@ -3242,10 +3253,19 @@
                                 if (pendingAmount > 0) {
                                   win.document.write(`
                                       <div class="total-row">
-                                        <div>Previous Pending:</div>
+                                        <div>Previous Pending (பழைய பாக்கி):</div>
                                         <div>${pendingAmount.toFixed(2)}</div>
                                       </div>
                                     `);
+                                    
+                                  pendingBills.forEach(b => {
+                                    win.document.write(`
+                                      <div class="total-row" style="font-size: 13px; color: #555;">
+                                        <div>bill no ${b.id}:</div>
+                                        <div>${b.pending_amount.toFixed(2)}</div>
+                                      </div>
+                                    `);
+                                  });
                                 }
 
                                 win.document.write(`
@@ -3576,7 +3596,7 @@
                             </div>
 
                             <div className="flex justify-between py-1 font-semibold">
-                              <div>Today Total Amount:</div>
+                              <div>Today Total Amount (இன்றைய பில்):</div>
                               <div>{todayTotalAmount.toFixed(2)}</div>
                             </div>
 
@@ -3584,12 +3604,16 @@
                             {pendingAmount > 0 && (
                               <>
                                 <div className="flex justify-between py-1">
-                                  <div>Previous Pending:</div>
+                                  <div>Previous Pending (பழைய பாக்கி):</div>
                                   <div>{pendingAmount.toFixed(2)}</div>
                                 </div>
-                                <div className="flex justify-between py-1 text-xs text-gray-500">
-                                  <div>({pendingBills.length} pending bill{pendingBills.length > 1 ? 's' : ''})</div>
-                                  <div></div>
+                                <div className="text-xs text-gray-500 pb-2">
+                                  {pendingBills.map(b => (
+                                    <div key={b.id} className="flex justify-between py-0.5">
+                                      <span>bill no {b.id}:</span>
+                                      <span>{b.pending_amount.toFixed(2)}</span>
+                                    </div>
+                                  ))}
                                 </div>
                               </>
                             )}
@@ -3950,14 +3974,14 @@
                           </div>
 
                           <div className="flex justify-between py-1 font-semibold">
-                            <div>Today Total Amount:</div>
+                            <div>Today Total Amount (இன்றைய பில்):</div>
                             <div>{(itemTotal + gstTotal).toFixed(2)}</div>
                           </div>
 
                           {previousPending > 0 && (
                             <>
                               <div className="flex justify-between py-1">
-                                <div>Previous Pending:</div>
+                                <div>Previous Pending (பழைய பாக்கி):</div>
                                 <div>{previousPending.toFixed(2)}</div>
                               </div>
                               <div className="flex justify-between py-1 text-xs text-gray-500">
@@ -4321,7 +4345,7 @@
                                   <div>${(sgst + cgst).toFixed(2)}</div>
                                 </div>
                                 <div class="total-row">
-                                  <div>Today Total Amount:</div>
+                                  <div>Today Total Amount (இன்றைய பில்):</div>
                                   <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
                                 </div>
                           `);
@@ -4329,7 +4353,7 @@
                           if (previousPending > 0) {
                             win.document.write(`
                               <div class="total-row">
-                                <div>Previous Pending:</div>
+                                <div>Previous Pending (பழைய பாக்கி):</div>
                                 <div>${previousPending.toFixed(2)}</div>
                               </div>
                             `);
@@ -4633,14 +4657,6 @@
                         onChange={(e) => setReceivedAmount(e.target.value)}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-bold text-center"
                       />
-                      {userRole !== 'STAFF' && (
-                        <button
-                          onClick={() => setIsSplitPayment(true)}
-                          className="mt-3 w-full py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 font-semibold rounded-lg border border-blue-200 transition-colors shadow-sm"
-                        >
-                          + Cash & GPay (பிரித்து செலுத்த)
-                        </button>
-                      )}
                     </div>
                   ) : (
                     <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
@@ -4726,6 +4742,16 @@
                   >
                     Pay with GPay (GPay மூலம் செலுத்த)
                   </button>
+
+                  {/* Cash & GPay Split Button */}
+                  {!isSplitPayment && (
+                    <button
+                      onClick={() => setIsSplitPayment(true)}
+                      className="w-full inline-flex items-center justify-center px-4 py-3 bg-[#8B4513] hover:bg-[#A0522D] text-white font-semibold rounded-xl shadow transition"
+                    >
+                      + Cash & GPay (பிரித்து செலுத்த)
+                    </button>
+                  )}
 
                   {/* Draft Button */}
                   <button

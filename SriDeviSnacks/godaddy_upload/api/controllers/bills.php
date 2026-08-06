@@ -307,8 +307,8 @@
         $receivedAmount = isset($body['receivedAmount']) ? round((float)$body['receivedAmount'], 2) : 0.00;
         $applyToPending = isset($body['applyToPending']) && $body['applyToPending'] === true;
         $notes = $body['notes'] ?? null;
-        $cashAmount = isset($body['cashAmount']) ? round((float)$body['cashAmount'], 2) : 0.00;
-        $gpayAmount = isset($body['gpayAmount']) ? round((float)$body['gpayAmount'], 2) : 0.00;
+        $cashAmount = isset($body['cashAmount']) ? round((float)$body['cashAmount'], 2) : (isset($body['cash_amount']) ? round((float)$body['cash_amount'], 2) : 0.00);
+        $gpayAmount = isset($body['gpayAmount']) ? round((float)$body['gpayAmount'], 2) : (isset($body['gpay_amount']) ? round((float)$body['gpay_amount'], 2) : 0.00);
         
         $paymentMode = $body['paymentMode'] ?? null;
         
