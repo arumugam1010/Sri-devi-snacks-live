@@ -16,6 +16,8 @@ interface Product {
   price: number;
   stockId: number | null;
   image?: string | null;
+  soldToday?: number;
+  morningStock?: number;
 }
 
 interface ShopProduct {
@@ -187,6 +189,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
               ...product,
               quantity: stock.quantity,
               stockId: stock.id,
+              soldToday: stock.soldToday || 0,
+              morningStock: stock.morningStock,
             };
           }
           return product;

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Package, IndianRupee, Warehouse, FileText, Printer, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, IndianRupee, Warehouse, FileText, Printer, AlertTriangle, Sun } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { stocksAPI, settingsAPI } from '../services/api';
 import Logo from '../assets/Logo.png';
+import html2canvas from 'html2canvas';
+
+let logoBase64String = '';
 
 interface Product {
   id: number;
@@ -116,6 +119,7 @@ const Stock: React.FC = () => {
   const [showEStockBill, setShowEStockBill] = useState(false);
 
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [showMorningStockModal, setShowMorningStockModal] = useState(false);
 
   const [productForm, setProductForm] = useState({
     product_name: '',
@@ -432,6 +436,181 @@ const Stock: React.FC = () => {
     }
   };
 
+  const isMobileOrTablet = () => {
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
+  };
+
+  const [useRawBT, setUseRawBT] = useState<boolean>(() => {
+    const saved = localStorage.getItem('useRawBT');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return isMobileOrTablet();
+  });
+
+  useEffect(() => {
+    localStorage.setItem('useRawBT', String(useRawBT));
+  }, [useRawBT]);
+
+  useEffect(() => {
+    if (Logo) {
+      fetch(Logo)
+        .then(res => res.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            logoBase64String = reader.result as string;
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(err => console.error('Failed to convert logo to base64:', err));
+    }
+  }, []);
+
+  const printStandard = (htmlContent: string) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      
+      const optimizedHtml = htmlContent
+        .replace(/size:\s*80mm\s*auto/gi, 'size: auto')
+        .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
+        .replace(/width:\s*(72mm|80mm)\s*!important/gi, 'width: 100% !important')
+        .replace(/padding:\s*2mm\s*0mm/gi, 'padding: 10px')
+        .replace(/padding:\s*4mm\s*2mm/gi, 'padding: 10px')
+        .replace(/₹/g, '<span class="rupee">₹</span>');
+
+      doc.write(optimizedHtml);
+      doc.close();
+
+      setTimeout(() => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        } else {
+          document.body.removeChild(iframe);
+        }
+      }, 250);
+    } else {
+      document.body.removeChild(iframe);
+    }
+  };
+
+  const handlePrintMorningStock = async () => {
+    const totalMorningValue = products.reduce((total, p) => total + ((p.morningStock ?? (p.quantity + (p.soldToday || 0))) * getProductRate(p.id)), 0);
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Morning Stock</title>
+        <style>
+          @page { margin: 0; size: 80mm auto; }
+          body { 
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0; 
+            padding: 4mm 2mm; 
+            color: #000;
+            width: 72mm;
+            background: #fff;
+          }
+          .header { text-align: center; margin-bottom: 5px; }
+          .title { font-size: 16px; font-weight: bold; margin: 5px 0; }
+          .logo { width: 60px; height: auto; margin-bottom: 5px; }
+          .meta { font-size: 12px; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
+          th, td { text-align: left; padding: 2px 0; }
+          th { border-bottom: 1px dashed #000; padding-bottom: 4px; }
+          .right { text-align: right; }
+          .total-row { border-top: 1px dashed #000; font-weight: bold; }
+          .total-row td { padding-top: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="font-size:10px; font-weight:bold;">"ஸ்ரீ தேவி சந்தன மாரியம்மன் துணை"</div>
+          <img src="${logoBase64String || Logo}" class="logo" />
+          <div class="title">Morning Stock (Opening)</div>
+        </div>
+        <div class="meta">
+          <div>Date: ${new Date().toLocaleDateString()}</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="right">Qty</th>
+              <th class="right">Val</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${products.filter(p => (p.morningStock ?? (p.quantity + (p.soldToday || 0))) > 0).map(p => {
+              const morningQty = p.morningStock ?? (p.quantity + (p.soldToday || 0));
+              const val = morningQty * getProductRate(p.id);
+              return `
+                <tr>
+                  <td>${p.product_name} (${p.unit})</td>
+                  <td class="right">${morningQty}</td>
+                  <td class="right">${val.toFixed(2)}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr class="total-row">
+              <td colspan="2">Total Value:</td>
+              <td class="right">₹${totalMorningValue.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="text-align:center; font-size:10px; margin-top:10px;">
+          Generated by Sri Devi Snacks
+        </div>
+      </body>
+      </html>
+    `;
+
+    if (isMobileOrTablet() && useRawBT) {
+      try {
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '800px'; 
+        container.style.backgroundColor = '#ffffff';
+        container.innerHTML = htmlContent + '<style>body { width: 100% !important; padding: 20px !important; font-size: 18px !important; } table { font-size: 16px !important; } .logo { width: 100px !important; }</style>';
+        document.body.appendChild(container);
+
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        const canvas = await html2canvas(container, {
+          scale: 1.0,
+          useCORS: true,
+          backgroundColor: '#ffffff'
+        });
+
+        document.body.removeChild(container);
+        const base64Image = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        window.location.href = `rawbt:data:image/jpeg;base64,` + base64Image;
+      } catch (e) {
+        console.error('RawBT image print failed:', e);
+        printStandard(htmlContent);
+      }
+    } else {
+      printStandard(htmlContent);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -476,18 +655,28 @@ const Stock: React.FC = () => {
           />
         </div>
         
-        <button
-          type="button"
-          onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-          className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold border transition ${
-            showLowStockOnly 
-              ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' 
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          <AlertTriangle className={`h-4 w-4 mr-2 ${showLowStockOnly ? 'text-red-600' : 'text-gray-500'}`} />
-          Low Stock Only ({products.filter(p => p.quantity <= lowStockThreshold).length})
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowMorningStockModal(true)}
+            className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold border transition bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100`}
+          >
+            <Sun className={`h-4 w-4 mr-2 text-blue-600`} />
+            Today Morning Stock
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+            className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold border transition ${
+              showLowStockOnly 
+                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            <AlertTriangle className={`h-4 w-4 mr-2 ${showLowStockOnly ? 'text-red-600' : 'text-gray-500'}`} />
+            Low Stock ({products.filter(p => p.quantity <= lowStockThreshold).length})
+          </button>
+        </div>
       </div>
 
       {/* Products Table */}
@@ -992,6 +1181,102 @@ const Stock: React.FC = () => {
                     </table>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Morning Stock Modal */}
+      {showMorningStockModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+                <Sun className="h-6 w-6 text-blue-600 mr-2" />
+                Today Morning Stock (Opening Stock)
+              </h3>
+              <button
+                onClick={() => setShowMorningStockModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <span className="sr-only">Close</span>
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Morning Stock</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Rate (₹)</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Value (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {products.map((product) => {
+                    const morningStock = product.morningStock ?? (product.quantity + (product.soldToday || 0));
+                    return (
+                      <tr key={product.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {product.product_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {product.unit}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-right">
+                          {morningStock}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                          ₹{getProductRate(product.id).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600 text-right">
+                          ₹{(morningStock * getProductRate(product.id)).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="p-4 border-t border-gray-200 bg-blue-50 flex justify-between items-center">
+              <span className="text-lg font-bold text-blue-800">Total Morning Stock Value:</span>
+              <span className="text-2xl font-bold text-blue-800">
+                ₹{products.reduce((total, p) => total + ((p.morningStock ?? (p.quantity + (p.soldToday || 0))) * getProductRate(p.id)), 0).toLocaleString()}
+              </span>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+              <div className="flex items-center">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useRawBT}
+                    onChange={(e) => setUseRawBT(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Use RawBT (Mobile)</span>
+                </label>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handlePrintMorningStock}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </button>
+                <button
+                  onClick={() => setShowMorningStockModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>

@@ -103,9 +103,12 @@ function getStocksList() {
         $countStmt->execute($params);
         $total = (int)$countStmt->fetchColumn();
         
+        $params['today'] = date('Y-m-d');
+        
         // Get stocks
-        $querySql = "SELECT s.id, s.product_id as productId, s.quantity, s.rate, s.createdAt, s.updatedAt,
-                            p.product_name as productName, p.unit, p.hsn_code as hsnCode, p.gst, p.price as productPrice, p.createdAt as p_createdAt, p.updatedAt as p_updatedAt
+        $querySql = "SELECT s.id, s.product_id as productId, s.quantity, s.rate, s.morning_stock, s.morning_stock_date, s.createdAt, s.updatedAt,
+                            p.product_name as productName, p.unit, p.hsn_code as hsnCode, p.gst, p.price as productPrice, p.createdAt as p_createdAt, p.updatedAt as p_updatedAt,
+                            (SELECT COALESCE(SUM(bi.quantity), 0) FROM bill_items bi JOIN bills b ON bi.bill_id = b.id WHERE bi.product_id = p.id AND DATE(b.bill_date) = :today) as soldToday
                      FROM stocks s
                      JOIN products p ON s.product_id = p.id
                      {$whereSql}
@@ -123,11 +126,20 @@ function getStocksList() {
         
         $stocks = [];
         foreach ($rows as $row) {
+            $soldToday = isset($row['soldToday']) ? (float)$row['soldToday'] : 0;
+            // Use morning_stock if set today, else fallback to quantity + soldToday
+            $morningStock = $row['quantity'] + $soldToday;
+            if ($row['morning_stock_date'] === date('Y-m-d') && $row['morning_stock'] !== null) {
+                $morningStock = (float)$row['morning_stock'];
+            }
+            
             $stocks[] = [
                 'id' => (int)$row['id'],
                 'productId' => (int)$row['productId'],
                 'quantity' => (float)$row['quantity'],
                 'rate' => (float)$row['rate'],
+                'soldToday' => $soldToday,
+                'morningStock' => $morningStock,
                 'createdAt' => $row['createdAt'],
                 'updatedAt' => $row['updatedAt'],
                 'product' => [
@@ -348,12 +360,14 @@ function createStock() {
             sendResponse(false, 'Stock already exists for this product. Use update instead.', null, 409);
         }
         
-        $stmt = $db->prepare("INSERT INTO stocks (product_id, quantity, rate, createdAt, updatedAt) 
-                              VALUES (:product_id, :quantity, :rate, NOW(), NOW())");
+        $stmt = $db->prepare("INSERT INTO stocks (product_id, quantity, rate, morning_stock, morning_stock_date, createdAt, updatedAt) 
+                              VALUES (:product_id, :quantity, :rate, :quantity2, :today, NOW(), NOW())");
         $stmt->execute([
             'product_id' => $productId,
             'quantity' => $quantity,
-            'rate' => $rate
+            'quantity2' => $quantity,
+            'rate' => $rate,
+            'today' => date('Y-m-d')
         ]);
         
         $stockId = (int)$db->lastInsertId();
@@ -396,7 +410,7 @@ function updateStock($stockId) {
     $db = getDatabaseConnection();
     try {
         // Check if exists
-        $stmt = $db->prepare("SELECT id, quantity FROM stocks WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id, quantity, morning_stock_date FROM stocks WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $stockId]);
         $oldStock = $stmt->fetch();
         if (!$oldStock) {
@@ -410,6 +424,13 @@ function updateStock($stockId) {
         
         if (isset($body['quantity'])) {
             $updates[] = "quantity = :quantity";
+            
+            if ($oldStock['morning_stock_date'] !== date('Y-m-d')) {
+                $updates[] = "morning_stock = :quantity";
+                $updates[] = "morning_stock_date = :today";
+                $params['today'] = date('Y-m-d');
+            }
+            
             $params['quantity'] = (float)$body['quantity'];
         }
         if (isset($body['rate'])) {

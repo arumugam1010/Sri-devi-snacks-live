@@ -777,7 +777,6 @@
       ? shopProducts.filter(sp => Number(sp.shop_id) === Number(selectedShop))
       : [];
 
-    // Get all available products for dropdown (only products with stock > 0)
     const allProductsForShop = selectedShop
       ? products
         .filter(product => product.quantity > 0) // Only show products with stock
@@ -795,7 +794,8 @@
             gst: product.gst, // inherit gst from base product
             stock_quantity: product.quantity, // include stock quantity
             hsn_code: product.hsn_code, // inherit hsn_code from base product
-            image: product.image // inherit image from base product
+            image: product.image, // inherit image from base product
+            soldToday: product.soldToday || 0 // inherit soldToday from base product
           };
           return productData;
         })
@@ -2845,7 +2845,7 @@
                         </button>
 
                         {isDropdownOpen && (
-                          <div className="absolute z-50 bottom-full mb-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-[60vh] md:max-h-[450px] overflow-y-auto">
+                          <div className="absolute z-50 top-full mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-[60vh] md:max-h-[450px] overflow-y-auto">
                             <div className="divide-y divide-gray-100">
                               {filteredProductsForDropdown.length === 0 ? (
                                 <div className="p-3 text-sm text-gray-500 text-center">No products found</div>

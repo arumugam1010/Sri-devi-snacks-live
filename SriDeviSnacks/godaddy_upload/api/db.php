@@ -70,6 +70,18 @@ function getDatabaseConnection() {
                     $pdo->exec("ALTER TABLE bills ADD COLUMN payment_mode VARCHAR(50) NULL");
                 }
                 
+                // Check and add morning_stock to stocks table
+                try {
+                    $stmt = $pdo->query("SHOW COLUMNS FROM stocks LIKE 'morning_stock'");
+                    $column = $stmt->fetch();
+                    if (!$column) {
+                        $pdo->exec("ALTER TABLE stocks ADD COLUMN morning_stock DECIMAL(10, 2) NULL");
+                        $pdo->exec("ALTER TABLE stocks ADD COLUMN morning_stock_date DATE NULL");
+                        // Initialize existing stocks
+                        $pdo->exec("UPDATE stocks SET morning_stock = quantity, morning_stock_date = CURDATE()");
+                    }
+                } catch (\Exception $e) {}
+                
                 // Check and create settings table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
                     setting_key VARCHAR(100) PRIMARY KEY,

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { Pagination } from './Pagination';
+
 import { billsAPI } from '../services/api';
 
 const Reports: React.FC = () => {
@@ -486,7 +486,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto max-w-full">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh] max-w-full">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -515,9 +515,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(dailyBillingSummary.length / 5);
-                    const paginatedData = dailyBillingSummary.slice((currentPage - 1) * 5, currentPage * 5);
-                    return paginatedData.map((bill) => (
+                    return dailyBillingSummary.map((bill) => (
                       <tr key={bill.billNumber} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {new Date(bill.date).toLocaleDateString()}
@@ -552,11 +550,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(dailyBillingSummary.length / 5)}
-              onPageChange={(page) => handlePageChange('daily', page)}
-            />
+            
           </div>
         )}
 
@@ -573,7 +567,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -605,9 +599,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(weeklyBillingSummary.length / 5);
-                    const paginatedData = weeklyBillingSummary.slice((currentPage - 1) * 5, currentPage * 5);
-                    return paginatedData.map((week) => (
+                    return weeklyBillingSummary.map((week) => (
                       <tr key={week.week} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {week.week}
@@ -639,11 +631,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(weeklyBillingSummary.length / 5)}
-              onPageChange={(page) => handlePageChange('weekly', page)}
-            />
+            
           </div>
         )}
 
@@ -660,7 +648,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -692,9 +680,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(monthlyBillingSummary.length / 5);
-                    const paginatedData = monthlyBillingSummary.slice((currentPage - 1) * 5, currentPage * 5);
-                    return paginatedData.map((month) => (
+                    return monthlyBillingSummary.map((month) => (
                       <tr key={month.month} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {month.monthName}
@@ -726,11 +712,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(monthlyBillingSummary.length / 5)}
-              onPageChange={(page) => handlePageChange('monthly', page)}
-            />
+            
           </div>
         )}
 
@@ -747,7 +729,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -773,9 +755,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(shopWiseReport.length / 5);
-                    const paginatedData = shopWiseReport.slice((currentPage - 1) * 5, currentPage * 5);
-                    return paginatedData.map((shop) => (
+                    return shopWiseReport.map((shop) => (
                       <tr key={shop.shop_name} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{shop.shop_name}</div>
@@ -815,11 +795,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(shopWiseReport.length / 5)}
-              onPageChange={(page) => handlePageChange('shops', page)}
-            />
+            
           </div>
         )}
 
@@ -836,7 +812,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -859,9 +835,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(pendingShopsReport.length / 5);
-                    const paginatedData = pendingShopsReport.slice((currentPage - 1) * 5, currentPage * 5);
-                    if (paginatedData.length === 0) {
+                    if (pendingShopsReport.length === 0) {
                       return (
                         <tr>
                           <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
@@ -870,7 +844,7 @@ const Reports: React.FC = () => {
                         </tr>
                       );
                     }
-                    return paginatedData.map((shop) => (
+                    return pendingShopsReport.map((shop) => (
                       <tr key={shop.shop_name} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{shop.shop_name}</div>
@@ -900,11 +874,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(pendingShopsReport.length / 5)}
-              onPageChange={(page) => handlePageChange('pending', page)}
-            />
+            
           </div>
         )}
 
@@ -921,7 +891,7 @@ const Reports: React.FC = () => {
                 Export
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -934,9 +904,7 @@ const Reports: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
-                    const totalPages = Math.ceil(pendingReceivedPayments.length / 10);
-                    const paginatedData = pendingReceivedPayments.slice((currentPage - 1) * 10, currentPage * 10);
-                    if (paginatedData.length === 0) {
+                    if (pendingReceivedPayments.length === 0) {
                       return (
                         <tr>
                           <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
@@ -945,7 +913,7 @@ const Reports: React.FC = () => {
                         </tr>
                       );
                     }
-                    return paginatedData.map((payment, i) => (
+                    return pendingReceivedPayments.map((payment, i) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(payment.payment_date).toLocaleDateString()}
@@ -975,11 +943,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(pendingReceivedPayments.length / 10)}
-              onPageChange={(page) => handlePageChange('pending_received', page)}
-            />
+            
           </div>
         )}
 
@@ -1053,7 +1017,7 @@ const Reports: React.FC = () => {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1080,11 +1044,7 @@ const Reports: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
                     const data = returnsSubTab === 'today' ? todayReturns : returnHistory;
-                    const returnsKey = `returns-${returnsSubTab}`;
-                    const returnsPage = pageStates[returnsKey] || 1;
-                    const paginatedData = data.slice((returnsPage - 1) * 5, returnsPage * 5);
-                    
-                    if (paginatedData.length === 0) {
+                    if (data.length === 0) {
                       return (
                         <tr>
                           <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
@@ -1094,7 +1054,7 @@ const Reports: React.FC = () => {
                       );
                     }
 
-                    return paginatedData.map((returnItem: any, index: number) => (
+                    return data.map((returnItem: any, index: number) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {new Date(returnItem.return_date).toLocaleDateString()}
@@ -1122,18 +1082,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            {(() => {
-              const data = returnsSubTab === 'today' ? todayReturns : returnHistory;
-              const returnsKey = `returns-${returnsSubTab}`;
-              const returnsPage = pageStates[returnsKey] || 1;
-              return data.length > 0 && (
-                <Pagination
-                  currentPage={returnsPage}
-                  totalPages={Math.ceil(data.length / 5)}
-                  onPageChange={(page) => handlePageChange(`returns-${returnsSubTab}`, page)}
-                />
-              );
-            })()}
+
           </div>
         )}
 
@@ -1204,7 +1153,7 @@ const Reports: React.FC = () => {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1231,11 +1180,7 @@ const Reports: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
                     const data = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
-                    const productsKey = `products-${productsSubTab}`;
-                    const productsPage = pageStates[productsKey] || 1;
-                    const paginatedData = data.slice((productsPage - 1) * 5, productsPage * 5);
-
-                    if (paginatedData.length === 0) {
+                    if (data.length === 0) {
                       return (
                         <tr>
                           <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
@@ -1245,7 +1190,7 @@ const Reports: React.FC = () => {
                       );
                     }
 
-                    return paginatedData.map((product) => {
+                    return data.map((product) => {
                       const maxRevenue = productsSubTab === 'today'
                         ? (topProductToday?.revenue || 2000)
                         : 20000;
@@ -1288,18 +1233,7 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            {(() => {
-              const data = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
-              const productsKey = `products-${productsSubTab}`;
-              const productsPage = pageStates[productsKey] || 1;
-              return data.length > 0 && (
-                <Pagination
-                  currentPage={productsPage}
-                  totalPages={Math.ceil(data.length / 5)}
-                  onPageChange={(page) => handlePageChange(`products-${productsSubTab}`, page)}
-                />
-              );
-            })()}
+
           </div>
         )}
       </div>
