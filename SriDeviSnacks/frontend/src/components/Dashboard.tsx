@@ -111,7 +111,7 @@ const Dashboard: React.FC = () => {
   }, [dashboardStats]);
 
   const totalCollectedToday = React.useMemo(() => {
-    return todayCollections.reduce((sum, item) => sum + item.paidAmount, 0);
+    return todayCollections.reduce((sum: number, item: any) => sum + item.paidAmount, 0);
   }, [todayCollections]);
 
   const totalGPayToday = React.useMemo(() => {
