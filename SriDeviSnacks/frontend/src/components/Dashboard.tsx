@@ -105,29 +105,10 @@ const Dashboard: React.FC = () => {
            d.getFullYear() === today.getFullYear();
   };
 
-  // Filter for collections received today (bill_date is today)
+  // Use collections from backend which accurately reflects today's received payments
   const todayCollections = React.useMemo(() => {
-    return bills
-      .filter(bill => bill.bill_date && isToday(bill.bill_date) && bill.received_amount > 0)
-      .map(bill => {
-        const isPaymentBill = bill.items && bill.items.length === 0 && bill.total_amount === 0;
-        let paymentType = 'Bill Payment';
-        if (isPaymentBill) {
-          paymentType = 'Pending Collection';
-        } else if (bill.payment_mode === 'GPAY') {
-          paymentType = 'GPAY';
-        }
-        return {
-          shopName: bill.shop_name,
-          billNumber: bill.id,
-          paymentType,
-          paidAmount: bill.received_amount,
-          remainingPending: isPaymentBill ? '-' : `₹${bill.pending_amount.toLocaleString()}`,
-          collectedBy: bill.user_name || 'System',
-        };
-      })
-      .sort((a, b) => parseInt(b.billNumber) - parseInt(a.billNumber));
-  }, [bills]);
+    return dashboardStats?.collections?.today_list || [];
+  }, [dashboardStats]);
 
   const totalCollectedToday = React.useMemo(() => {
     return todayCollections.reduce((sum, item) => sum + item.paidAmount, 0);
@@ -430,7 +411,7 @@ const Dashboard: React.FC = () => {
                           {item.shopName}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                          {item.billNumber}
+                          {item.bill_id || item.billNumber}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${

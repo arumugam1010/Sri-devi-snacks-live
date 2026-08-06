@@ -97,7 +97,7 @@ function getDashboardStats() {
         // 11. Today's collections from bill_payments
         $stmt = $db->prepare("
             SELECT p.id, p.bill_id, p.amount as paidAmount, p.payment_mode as paymentType, p.payment_date,
-                   s.shop_name as shopName, b.bill_number as billNumber, b.pending_amount as remainingPending,
+                   s.shop_name as shopName, b.bill_number as billNumber, b.pending_amount as remainingPending, b.bill_date, b.total_amount as billTotalAmount,
                    u.name as collectedBy
             FROM bill_payments p
             JOIN bills b ON p.bill_id = b.id
@@ -115,15 +115,20 @@ function getDashboardStats() {
             $payment['bill_id'] = (int)$payment['bill_id'];
             $payment['paidAmount'] = (float)$payment['paidAmount'];
             
-            $stmtBill = $db->prepare("SELECT total_amount FROM bills WHERE id = :id");
-            $stmtBill->execute(['id' => $payment['bill_id']]);
-            $billTotal = (float)($stmtBill->fetchColumn() ?: 0.0);
+            $billTotal = (float)$payment['billTotalAmount'];
             
             $isPaymentBill = ($billTotal == 0);
+            
+            // Extract Y-m-d from bill_date
+            $billDateParts = explode(' ', $payment['bill_date']);
+            $billDateStr = $billDateParts[0];
+            $todayStr = date('Y-m-d');
+            $isOldBill = (strtotime($billDateStr) < strtotime($todayStr));
+
             if ($payment['paymentType'] === 'GPAY') {
                 $payment['paymentType'] = 'GPAY';
             } else {
-                $payment['paymentType'] = $isPaymentBill ? 'Pending Collection' : 'Bill Payment';
+                $payment['paymentType'] = ($isPaymentBill || $isOldBill) ? 'Pending Collection' : 'Bill Payment';
             }
             
             if ($isPaymentBill) {

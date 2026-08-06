@@ -410,7 +410,7 @@ function updateStock($stockId) {
     $db = getDatabaseConnection();
     try {
         // Check if exists
-        $stmt = $db->prepare("SELECT id, quantity FROM stocks WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id, quantity, morning_stock_date FROM stocks WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $stockId]);
         $oldStock = $stmt->fetch();
         if (!$oldStock) {

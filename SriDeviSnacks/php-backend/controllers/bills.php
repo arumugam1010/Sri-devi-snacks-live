@@ -652,7 +652,7 @@
             $stmt = $db->prepare("UPDATE bills SET {$updatesStr} WHERE id = :id");
             $stmt->execute($params);
 
-            // Record transaction if receivedAmount was increased
+            // Record transaction if receivedAmount was changed
             if (isset($body['receivedAmount'])) {
                 $oldReceived = (float)$currentBill['received_amount'];
                 $newReceived = (float)$params['received_amount'];
@@ -667,6 +667,27 @@
                         'payment_mode' => $body['paymentMode'] ?? $currentBill['payment_mode'] ?? 'CASH',
                         'user_id' => $user['id'] ?? null
                     ]);
+                } elseif ($diff < 0) {
+                    $absDiff = abs($diff);
+                    $payStmt = $db->prepare("SELECT id, amount FROM bill_payments WHERE bill_id = :bill_id ORDER BY id DESC");
+                    $payStmt->execute(['bill_id' => $billId]);
+                    $payments = $payStmt->fetchAll();
+                    
+                    $remainingToRemove = $absDiff;
+                    foreach ($payments as $pay) {
+                        if ($remainingToRemove <= 0) break;
+                        $payAmount = (float)$pay['amount'];
+                        $payId = (int)$pay['id'];
+                        
+                        if ($payAmount <= $remainingToRemove) {
+                            $db->prepare("DELETE FROM bill_payments WHERE id = :id")->execute(['id' => $payId]);
+                            $remainingToRemove = round($remainingToRemove - $payAmount, 2);
+                        } else {
+                            $newPayAmount = round($payAmount - $remainingToRemove, 2);
+                            $db->prepare("UPDATE bill_payments SET amount = :amt WHERE id = :id")->execute(['amt' => $newPayAmount, 'id' => $payId]);
+                            $remainingToRemove = 0;
+                        }
+                    }
                 }
             }
             

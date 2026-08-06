@@ -357,7 +357,13 @@ export const schedulesAPI = {
 // Dashboard API
 export const dashboardAPI = {
   getDashboard: async () => {
-    return authenticatedFetch(`${API_BASE_URL}/dashboard/stats`);
+    return authenticatedFetch(`${API_BASE_URL}/dashboard/stats?_t=${Date.now()}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
   },
 };
 
