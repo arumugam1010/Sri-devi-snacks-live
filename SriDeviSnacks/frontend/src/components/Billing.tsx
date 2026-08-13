@@ -533,7 +533,9 @@
       const val = localStorage.getItem('draft_currentBill');
       return val ? JSON.parse(val) : [];
     });
-    const [showReturnModal, setShowReturnModal] = useState(false);
+     const [showReturnModal, setShowReturnModal] = useState(false);
+    const [showAddProductsModal, setShowAddProductsModal] = useState(false);
+    const [addQuantities, setAddQuantities] = useState<{ [key: number]: string }>({});
     const [returnItems, setReturnItems] = useState<ReturnItem[]>([]);
     // Removed local savedBills state to use context bills instead
     // const [savedBills, setSavedBills] = useState<Bill[]>([]);
@@ -1346,6 +1348,130 @@
     const handlePaymentBillCancel = () => {
       setShowPaymentConfirmation(false);
       setPaymentBillData(null);
+    };
+
+    const handleShowAddProducts = () => {
+      if (!selectedShop) {
+        alert('Please select a shop first');
+        return;
+      }
+
+      // Initialize add quantities for all products in allProductsForShop as empty string
+      const initialAddQuantities: { [key: number]: string } = {};
+      allProductsForShop.forEach(product => {
+        initialAddQuantities[product.product_id] = '';
+      });
+
+      setAddQuantities(initialAddQuantities);
+      setShowAddProductsModal(true);
+    };
+
+    const handleAddQuantityChange = (productId: number, addQuantity: string) => {
+      setAddQuantities({
+        ...addQuantities,
+        [productId]: addQuantity
+      });
+    };
+
+    const handleProcessAddProducts = () => {
+      // Validate no negative quantities
+      for (const [productId, quantityStr] of Object.entries(addQuantities)) {
+        const quantity = parseInt(quantityStr);
+        if (!isNaN(quantity) && quantity < 0) {
+          alert('Quantity cannot be less than 0');
+          return;
+        }
+      }
+
+      // Get products to add
+      const productsToAdd = Object.entries(addQuantities)
+        .filter(([_, quantityStr]) => {
+          const quantity = parseInt(quantityStr);
+          return !isNaN(quantity) && quantity > 0;
+        })
+        .map(([productId, quantityStr]) => {
+          const product = allProductsForShop.find(p => Number(p.product_id) === Number(productId));
+          return {
+            product,
+            quantity: parseInt(quantityStr)
+          };
+        })
+        .filter(item => item.product !== undefined) as { product: any, quantity: number }[];
+
+      if (productsToAdd.length === 0) {
+        alert('Please select items and enter quantities');
+        return;
+      }
+
+      // Validate stocks and prices for all requested items
+      for (const { product, quantity } of productsToAdd) {
+        const baseProduct = products.find(p => p.id === product.product_id);
+        if (!baseProduct) continue;
+
+        const totalRequestedQuantity = quantity +
+          (currentBill.find(item => item.product_id === product.product_id && !item.isReturn)?.quantity || 0);
+
+        if (totalRequestedQuantity > baseProduct.quantity) {
+          alert(`Not enough stock for ${product.product_name}! Available: ${baseProduct.quantity}, Requested: ${totalRequestedQuantity}`);
+          return;
+        }
+        
+        if (product.price === 0) {
+          alert(`Please set a price for ${product.product_name} before adding it to the bill.`);
+          return;
+        }
+      }
+
+      // Process additions by updating currentBill
+      let updatedBill = [...currentBill];
+
+      productsToAdd.forEach(({ product, quantity }) => {
+        const existingItemIndex = updatedBill.findIndex(item => item.product_id === product.product_id && !item.isReturn);
+
+        if (existingItemIndex >= 0) {
+          updatedBill[existingItemIndex].quantity += quantity;
+          updatedBill[existingItemIndex].amount = updatedBill[existingItemIndex].quantity * updatedBill[existingItemIndex].price;
+          
+          if (product.gst && updatedBill[existingItemIndex].quantity > 0) {
+            const gstAmount = (updatedBill[existingItemIndex].amount * product.gst) / 100;
+            updatedBill[existingItemIndex].sgst = gstAmount / 2;
+            updatedBill[existingItemIndex].cgst = gstAmount / 2;
+          } else {
+            updatedBill[existingItemIndex].sgst = 0;
+            updatedBill[existingItemIndex].cgst = 0;
+          }
+        } else {
+          const amount = product.price * quantity;
+          const newItem: BillItem = {
+            id: Date.now() + product.product_id + Math.random(),
+            product_id: product.product_id,
+            product_name: product.product_name,
+            price: product.price,
+            quantity: quantity,
+            amount: amount,
+            unit: product.unit,
+            hsnCode: product.hsn_code,
+            isReturn: false
+          };
+
+          if (product.gst && quantity > 0) {
+            const gstAmount = (amount * product.gst) / 100;
+            newItem.sgst = gstAmount / 2;
+            newItem.cgst = gstAmount / 2;
+          } else {
+            newItem.sgst = 0;
+            newItem.cgst = 0;
+          }
+
+          updatedBill.push(newItem);
+        }
+      });
+
+      setCurrentBill(updatedBill);
+      setHasPrinted(false);
+      setShowAddProductsModal(false);
+      setAddQuantities({});
+      alert('Products added to bill successfully!');
     };
 
     const handleShowReturns = () => {
@@ -2898,124 +3024,18 @@
                 </div>
               </div>
 
-              {/* Add Product Form - Only show in normal bill mode */}
+              {/* Add Product Button Card - Opens Add Products Modal */}
               {selectedShop && !isPayPendingMode && !isPaymentBillMode && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Product</h3>
-                  <form onSubmit={handleAddProduct} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Product (பொருள்)
-                      </label>
-                      {/* Custom Searchable Dropdown with Images */}
-                      <div className="relative">
-                        {isDropdownOpen && (
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => {
-                              setIsDropdownOpen(false);
-                              setDropdownSearch('');
-                            }}
-                          />
-                        )}
-                        
-                        <button
-                          type="button"
-                          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                          className="w-full flex items-center justify-between px-6 py-5 md:px-3 md:py-2 border-2 border-gray-900 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left relative z-10 text-xl md:text-sm"
-                        >
-                          <div className="flex items-center space-x-3">
-                            {selectedProductDetails ? (
-                              <>
-                                <div className="h-12 w-12 md:h-6 md:w-6 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                  {selectedProductDetails.image || productImages[selectedProductDetails.product_id] || productImages[selectedProductDetails.product_name] ? (
-                                    <img
-                                      src={selectedProductDetails.image || productImages[selectedProductDetails.product_id] || productImages[selectedProductDetails.product_name]}
-                                      alt={selectedProductDetails.product_name}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    <Package className="h-8 w-8 md:h-4 md:w-4 text-gray-400" />
-                                  )}
-                                </div>
-                                <span className="text-gray-900 font-bold md:font-medium text-xl md:text-sm">{selectedProductDetails.product_name}</span>
-                              </>
-                            ) : (
-                              <span className="text-gray-500 text-xl md:text-sm">Select a product...</span>
-                            )}
-                          </div>
-                          <span className="ml-2 text-gray-500 text-xs">▼</span>
-                        </button>
-
-                        {isDropdownOpen && (
-                          <div className="absolute z-50 top-full mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-[60vh] md:max-h-[450px] overflow-y-auto">
-                            <div className="divide-y divide-gray-100">
-                              {filteredProductsForDropdown.length === 0 ? (
-                                <div className="p-3 text-sm text-gray-500 text-center">No products found</div>
-                              ) : (
-                                filteredProductsForDropdown.map(product => (
-                                  <button
-                                    key={product.product_id}
-                                    type="button"
-                                    onClick={() => {
-                                      setProductForm({ ...productForm, product_id: product.product_id.toString() });
-                                      setIsDropdownOpen(false);
-                                      setDropdownSearch('');
-                                      setTimeout(() => {
-                                        quantityInputRef.current?.focus();
-                                        quantityInputRef.current?.select();
-                                      }, 50);
-                                    }}
-                                    className="w-full flex items-center px-6 py-5.5 md:px-3 md:py-2 hover:bg-blue-50 transition text-left"
-                                  >
-                                    <div className="h-20 w-20 md:h-8 md:w-8 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0 mr-4">
-                                      {product.image || productImages[product.product_id] || productImages[product.product_name] ? (
-                                        <img
-                                          src={product.image || productImages[product.product_id] || productImages[product.product_name]}
-                                          alt={product.product_name}
-                                          className="h-full w-full object-cover"
-                                        />
-                                      ) : (
-                                        <Package className="h-12 w-12 md:h-5 md:w-5 text-gray-400" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-2xl md:text-sm font-bold md:font-medium text-gray-900 whitespace-normal break-words">{product.product_name}</p>
-                                      <p className="text-lg md:text-xs text-gray-500 whitespace-normal break-words mt-1">
-                                        ₹{product.price} / {product.unit} • Stock: {product.stock_quantity}
-                                      </p>
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantity (எண்ணிக்கை)
-                      </label>
-                      <input
-                        ref={quantityInputRef}
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        value={productForm.quantity}
-                        onChange={(e) => setProductForm({ ...productForm, quantity: e.target.value })}
-                        className="w-full px-3 py-2 border-2 border-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
-                    >
-                      <Plus className="h-5 w-5 mr-2" />
-                      Add to Bill
-                    </button>
-                  </form>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6 text-center">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Add Products</h3>
+                  <p className="text-sm text-gray-500 mb-4">Add items and select quantities for the bill</p>
+                  <button
+                    onClick={handleShowAddProducts}
+                    className="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition shadow-md"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Open Product List
+                  </button>
                 </div>
               )}
             </div>
@@ -3928,6 +3948,110 @@
                     className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition"
                   >
                     Process Returns
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Products Modal */}
+        {showAddProductsModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-lg bg-white">
+              <div className="mt-3">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Add Products to Bill</h3>
+                  <button
+                    onClick={() => setShowAddProductsModal(false)}
+                    className="text-gray-400 hover:text-gray-500 font-bold text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-900 mb-2">Add Products for {currentShop?.shop_name}</h4>
+                </div>
+
+                <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+
+                {/* Add Items Input */}
+                <div className="mb-4 max-h-[60vh] overflow-y-auto px-2">
+                  <div className="grid grid-cols-4 gap-4 py-2 font-bold text-gray-700 border-b border-gray-200">
+                    <div>Product Name</div>
+                    <div className="text-right">Quantity</div>
+                    <div className="text-right">Price</div>
+                    <div className="text-right">Total</div>
+                  </div>
+
+                  {allProductsForShop.map((product) => {
+                    const addQuantity = addQuantities[product.product_id] || '';
+                    const addQuantityNumber = parseInt(addQuantity) || 0;
+                    const amount = addQuantityNumber * product.price;
+
+                    return (
+                      <div key={`add-input-${product.product_id}`} className="grid grid-cols-4 gap-4 py-3 items-center border-b border-gray-100 hover:bg-gray-50">
+                        <div className="flex items-center space-x-3">
+                          <div className="h-10 w-10 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {product.image || productImages[product.product_id] || productImages[product.product_name] ? (
+                              <img
+                                src={product.image || productImages[product.product_id] || productImages[product.product_name]}
+                                alt={product.product_name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Package className="h-5 w-5 text-gray-400" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{product.product_name}</div>
+                            <div className="text-xs text-gray-500">Stock: {product.stock_quantity} • {product.unit}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={addQuantity}
+                            onChange={(e) => handleAddQuantityChange(product.product_id, e.target.value)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-transparent font-semibold"
+                          />
+                        </div>
+                        <div className="text-right text-gray-600">₹{product.price}</div>
+                        <div className="text-right font-semibold text-blue-600">₹{amount > 0 ? amount.toFixed(2) : '0.00'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="border-b-2 border-dashed border-gray-300 my-2"></div>
+
+                {/* Add Calculations */}
+                <div className="ml-auto w-64">
+                  <div className="flex justify-between py-1 font-bold text-lg">
+                    <div>Total Value:</div>
+                    <div className="text-blue-600">₹{
+                      allProductsForShop.reduce((sum, product) => {
+                        const qty = parseInt(addQuantities[product.product_id] || '0') || 0;
+                        return sum + (qty * product.price);
+                      }, 0).toFixed(2)
+                    }</div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowAddProductsModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleProcessAddProducts}
+                    className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-md"
+                  >
+                    Add to Bill
                   </button>
                 </div>
               </div>
