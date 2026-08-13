@@ -20,9 +20,15 @@
         // GET /bills/shop/:shopId
         if ($action === 'shop') {
             $shopId = $parts[2] ?? '';
-            if (is_numeric($shopId) && $method === 'GET') {
-                getBillsByShopId((int)$shopId);
-                return;
+            $subAction = $parts[3] ?? '';
+            if (is_numeric($shopId)) {
+                if ($subAction === 'payments' && $method === 'GET') {
+                    getShopPaymentsHistory((int)$shopId);
+                    return;
+                } elseif (empty($subAction) && $method === 'GET') {
+                    getBillsByShopId((int)$shopId);
+                    return;
+                }
             }
         }
         
@@ -297,6 +303,17 @@
         }
     }
 
+    function getRoundingDetailsPhp($rawTotal) {
+    $absTotal = abs($rawTotal);
+    $fraction = round($absTotal - floor($absTotal), 2);
+    if ($fraction >= 0.10 && $fraction <= 0.90) {
+        $finalTotal = floor($absTotal);
+    } else {
+        $finalTotal = round($absTotal);
+    }
+    return ($rawTotal < 0) ? -$finalTotal : $finalTotal;
+}
+
     /**
      * Handle POST /api/bills
      */
@@ -312,60 +329,47 @@
         
         $paymentMode = $body['paymentMode'] ?? null;
         
-        if ($cashAmount > 0 || $gpayAmount > 0) {
-            $receivedAmount = $cashAmount + $gpayAmount;
-            if ($cashAmount > 0 && $gpayAmount > 0) {
-                $paymentMode = 'SPLIT';
-            } else if ($cashAmount > 0) {
-                $paymentMode = 'CASH';
-            } else {
-                $paymentMode = 'GPAY';
-            }
-        }
-        
-        $items = $body['items'] ?? [];
-        
-        if ($shopId <= 0) {
-            sendResponse(false, 'Shop ID is required', null, 400);
-        }
-        
-        $billDate = $billDateVal ? date('Y-m-d H:i:s', strtotime($billDateVal)) : date('Y-m-d H:i:s');
-        
         $db = getDatabaseConnection();
         try {
             $db->beginTransaction();
             
             // Check if shop exists
-            $stmt = $db->prepare("SELECT id FROM shops WHERE id = :id LIMIT 1");
-            $stmt->execute(['id' => $shopId]);
-            if (!$stmt->fetch()) {
+            $shopStmt = $db->prepare("SELECT id, shop_name FROM shops WHERE id = :id LIMIT 1");
+            $shopStmt->execute(['id' => $shopId]);
+            $shop = $shopStmt->fetch();
+            if (!$shop) {
                 $db->rollBack();
                 sendResponse(false, 'Shop not found', null, 404);
             }
             
-            // Generate bill number
-            $billNumber = generateBillNumber($db);
+            // Format bill date
+            $billDate = $billDateVal ? date('Y-m-d H:i:s', strtotime($billDateVal)) : date('Y-m-d H:i:s');
             
-            // Gather HSN codes for products
+            // Generate unique bill number
+            $billNumber = 'BILL-' . time() . '-' . rand(1000, 9999);
+            
+            // Get product rates for calculating amount
+            $productStmt = $db->query("SELECT id, price, hsn_code FROM products");
+            $products = $productStmt->fetchAll();
             $productMap = [];
-            if (!empty($items)) {
-                $productIds = array_map(function($item) { return (int)$item['productId']; }, $items);
-                $productIdsStr = implode(',', $productIds);
-                $stmt = $db->query("SELECT id, hsn_code FROM products WHERE id IN ({$productIdsStr})");
-                while ($row = $stmt->fetch()) {
-                    $productMap[(int)$row['id']] = $row['hsn_code'];
-                }
+            foreach ($products as $p) {
+                $productMap[$p['id']] = $p['price'];
             }
             
-            // Calculate totals and format items
-            $totalAmount = 0;
+            $items = $body['items'] ?? [];
+            $totalAmount = 0.00;
             $billItems = [];
+            
             foreach ($items as $item) {
-                $prodId = (int)$item['productId'];
-                $qty = (float)$item['quantity'];
-                $rate = (float)$item['rate'];
-                $sgst = isset($item['sgst']) ? (float)$item['sgst'] : 0.0;
-                $cgst = isset($item['cgst']) ? (float)$item['cgst'] : 0.0;
+                $prodId = (int)$item['product_id'];
+                $qty = (int)$item['quantity'];
+                
+                // Use price from request if provided, otherwise default to product price
+                $rate = isset($item['price']) ? (float)$item['price'] : ($productMap[$prodId] ?? 0.00);
+                
+                // Calculate tax
+                $sgst = isset($item['sgst']) ? (float)$item['sgst'] : 0.00;
+                $cgst = isset($item['cgst']) ? (float)$item['cgst'] : 0.00;
                 
                 $amount = round($qty * $rate, 2);
                 $totalAmount += $amount + $sgst + $cgst;
@@ -382,81 +386,28 @@
             }
             
             $isPaymentBill = empty($items) && $receivedAmount > 0;
-            $shouldApplyToPending = $isPaymentBill && $applyToPending;
             
-            $billReceivedAmount = $receivedAmount;
-            $excessPayment = 0;
-            if ($receivedAmount > $totalAmount && !$isPaymentBill) {
-                $excessPayment = round($receivedAmount - $totalAmount, 2);
-                // We deliberately do NOT cap $billReceivedAmount to $totalAmount here.
-                // By allowing $billReceivedAmount to be > $totalAmount, the Dashboard will 
-                // correctly see the full amount collected today under Today's Collections.
-                // The bill will get a negative pending_amount and status 'COMPLETED', so 
-                // it won't inflate the shop's pending balance.
-            }
+            $totalAmount = getRoundingDetailsPhp($totalAmount);
             
-            $pendingAmount = round($totalAmount - $billReceivedAmount, 2);
-            // If remaining pending amount is less than 1.00 Rupee, clear it completely
-            if ($pendingAmount > 0 && $pendingAmount < 1.00) {
-                $billReceivedAmount = $totalAmount;
-                $pendingAmount = 0.0;
-            }
-            $status = $pendingAmount <= 0 ? 'COMPLETED' : 'PENDING';
+            // Insert Today's Bill with received = 0, pending = total_amount.
+            // If it is a payment-only bill, it will have total = 0, so it will be COMPLETED immediately.
+            $initialStatus = $totalAmount <= 0 ? 'COMPLETED' : 'PENDING';
             
-            // Insert Bill
             $stmt = $db->prepare("INSERT INTO bills (bill_number, shop_id, user_id, bill_date, total_amount, received_amount, pending_amount, status, notes, payment_mode, createdAt, updatedAt) 
-                                VALUES (:bill_number, :shop_id, :user_id, :bill_date, :total_amount, :received_amount, :pending_amount, :status, :notes, :payment_mode, NOW(), NOW())");
+                                VALUES (:bill_number, :shop_id, :user_id, :bill_date, :total_amount, 0, :pending_amount, :status, :notes, :payment_mode, NOW(), NOW())");
             $stmt->execute([
                 'bill_number' => $billNumber,
                 'shop_id' => $shopId,
                 'user_id' => $userId,
                 'bill_date' => $billDate,
                 'total_amount' => $totalAmount,
-                'received_amount' => $billReceivedAmount,
-                'pending_amount' => $pendingAmount,
-                'status' => $status,
+                'pending_amount' => $totalAmount,
+                'status' => $initialStatus,
                 'notes' => $notes,
                 'payment_mode' => $paymentMode
             ]);
             
             $billId = (int)$db->lastInsertId();
-            
-            // Record payment transaction
-            if ($billReceivedAmount > 0) {
-                $payStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
-                                         VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
-                if ($cashAmount > 0 || $gpayAmount > 0) {
-                    // For split payment, distribute the billReceivedAmount
-                    // Normally billReceivedAmount == receivedAmount unless capped
-                    // Assuming no capping for excess payment as per original code
-                    if ($cashAmount > 0) {
-                        $payStmt->execute([
-                            'bill_id' => $billId,
-                            'amount' => $cashAmount,
-                            'payment_mode' => 'CASH',
-                            'payment_date' => $billDate,
-                            'user_id' => $userId
-                        ]);
-                    }
-                    if ($gpayAmount > 0) {
-                        $payStmt->execute([
-                            'bill_id' => $billId,
-                            'amount' => $gpayAmount,
-                            'payment_mode' => 'GPAY',
-                            'payment_date' => $billDate,
-                            'user_id' => $userId
-                        ]);
-                    }
-                } else {
-                    $payStmt->execute([
-                        'bill_id' => $billId,
-                        'amount' => $billReceivedAmount,
-                        'payment_mode' => $paymentMode,
-                        'payment_date' => $billDate,
-                        'user_id' => $userId
-                    ]);
-                }
-            }
             
             // Insert Items & Update Stocks
             if (!$isPaymentBill) {
@@ -514,61 +465,92 @@
                 }
             }
             
-            // Apply payments to pending bills
-            $paymentToApply = 0;
-            if ($shouldApplyToPending) {
-                $paymentToApply = $receivedAmount;
-            } elseif ($excessPayment > 0) {
-                $paymentToApply = $excessPayment;
-            }
-            
-            if ($paymentToApply > 0) {
-                $pendingStmt = $db->prepare("SELECT * FROM bills WHERE shop_id = :shop_id AND status = 'PENDING' ORDER BY bill_date ASC");
+            // FIFO Payment Distribution Across Pending Bills (including today's bill)
+            if ($receivedAmount > 0) {
+                // Fetch all pending bills for this shop ordered oldest to newest
+                $pendingStmt = $db->prepare("SELECT id, total_amount, received_amount, pending_amount, status FROM bills WHERE shop_id = :shop_id AND status = 'PENDING' ORDER BY bill_date ASC, id ASC");
                 $pendingStmt->execute(['shop_id' => $shopId]);
                 $pendingBills = $pendingStmt->fetchAll();
                 
-                $updatePendingStmt = $db->prepare("UPDATE bills SET received_amount = :rec, pending_amount = :pend, status = :status, updatedAt = NOW() WHERE id = :id");
+                // Set up payment chunks for split payment
+                $paymentChunks = [];
+                if ($cashAmount > 0) {
+                    $paymentChunks[] = ['amount' => $cashAmount, 'mode' => 'CASH'];
+                }
+                if ($gpayAmount > 0) {
+                    $paymentChunks[] = ['amount' => $gpayAmount, 'mode' => 'GPAY'];
+                }
+                if (empty($paymentChunks)) {
+                    $paymentChunks[] = ['amount' => $receivedAmount, 'mode' => $paymentMode ?: 'CASH'];
+                }
                 
-                foreach ($pendingBills as $pBill) {
-                    if ($paymentToApply <= 0) break;
-                    
+                $chunkIndex = 0;
+                $numChunks = count($paymentChunks);
+                
+                foreach ($pendingBills as $index => $pBill) {
                     $pBillId = (int)$pBill['id'];
                     $pBillPending = (float)$pBill['pending_amount'];
                     $pBillReceived = (float)$pBill['received_amount'];
                     
-                    $apply = min($paymentToApply, $pBillPending);
-                    $newPending = round($pBillPending - $apply, 2);
+                    $isLastBill = ($index === count($pendingBills) - 1);
+                    $totalAppliedToThisBill = 0;
                     
-                    // If remaining pending amount is less than 1.00 Rupee, clear it completely
-                    if ($newPending > 0 && $newPending < 1.00) {
-                        $apply += $newPending;
-                        $newPending = 0.0;
+                    while ($chunkIndex < $numChunks && ($pBillPending > 0 || ($isLastBill && $paymentChunks[$chunkIndex]['amount'] > 0))) {
+                        $chunk = &$paymentChunks[$chunkIndex];
+                        if ($chunk['amount'] <= 0) {
+                            $chunkIndex++;
+                            continue;
+                        }
+                        
+                        $apply = min($chunk['amount'], $pBillPending);
+                        if ($isLastBill && $chunk['amount'] > $pBillPending) {
+                            $apply = $chunk['amount'];
+                        }
+                        
+                        $newPending = round($pBillPending - $apply, 2);
+                        if ($newPending > 0 && $newPending < 1.00 && !$isLastBill) {
+                            $apply = $pBillPending;
+                            $newPending = 0.0;
+                        }
+                        
+                        if ($apply > 0) {
+                            $pBillReceived = round($pBillReceived + $apply, 2);
+                            $pBillPending = $newPending;
+                            $totalAppliedToThisBill = round($totalAppliedToThisBill + $apply, 2);
+                            
+                            // Record payment chunk in bill_payments
+                            $payPendingStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
+                                                            VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
+                            $payPendingStmt->execute([
+                                'bill_id' => $pBillId,
+                                'amount' => $apply,
+                                'payment_mode' => $chunk['mode'],
+                                'payment_date' => $billDate,
+                                'user_id' => $userId
+                            ]);
+                            
+                            $chunk['amount'] = round($chunk['amount'] - $apply, 2);
+                        }
+                        
+                        if ($chunk['amount'] <= 0) {
+                            $chunkIndex++;
+                        }
+                        
+                        if ($pBillPending <= 0 && !$isLastBill) {
+                            break;
+                        }
                     }
                     
-                    $newReceived = round($pBillReceived + $apply, 2);
-                    $newStatus = $newPending <= 0 ? 'COMPLETED' : 'PENDING';
-                    
-                    $updatePendingStmt->execute([
-                        'rec' => $newReceived,
-                        'pend' => $newPending,
-                        'status' => $newStatus,
-                        'id' => $pBillId
-                    ]);
-                    
-                    // Record applied payment on pending bill
-                    if ($apply > 0) {
-                        $payPendingStmt = $db->prepare("INSERT INTO bill_payments (bill_id, amount, payment_mode, payment_date, user_id, created_at)
-                                                        VALUES (:bill_id, :amount, :payment_mode, :payment_date, :user_id, NOW())");
-                        $payPendingStmt->execute([
-                            'bill_id' => $pBillId,
-                            'amount' => $apply,
-                            'payment_mode' => $paymentMode,
-                            'payment_date' => $billDate,
-                            'user_id' => $userId
+                    if ($totalAppliedToThisBill > 0) {
+                        $newStatus = $pBillPending <= 0 ? 'COMPLETED' : 'PENDING';
+                        $updatePendingStmt = $db->prepare("UPDATE bills SET received_amount = :rec, pending_amount = :pend, status = :status, updatedAt = NOW() WHERE id = :id");
+                        $updatePendingStmt->execute([
+                            'rec' => $pBillReceived,
+                            'pend' => $pBillPending,
+                            'status' => $newStatus,
+                            'id' => $pBillId
                         ]);
                     }
-                    
-                    $paymentToApply = round($paymentToApply - $apply, 2);
                 }
             }
             
@@ -879,10 +861,32 @@
                 FROM bill_payments bp
                 JOIN bills b ON bp.bill_id = b.id
                 JOIN shops s ON b.shop_id = s.id
+                WHERE DATE(bp.payment_date) != DATE(b.bill_date)
                 ORDER BY bp.payment_date DESC, bp.created_at DESC
             ");
             $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
+            sendResponse(true, '', $payments);
+        } catch (PDOException $e) {
+            sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Handle GET /api/bills/shop/:shopId/payments
+     */
+    function getShopPaymentsHistory($shopId) {
+        $db = getDatabaseConnection();
+        try {
+            $stmt = $db->prepare("
+                SELECT bp.payment_date as paymentDate, bp.amount, bp.payment_mode as paymentMode, b.id as billNumber
+                FROM bill_payments bp
+                JOIN bills b ON bp.bill_id = b.id
+                WHERE b.shop_id = :shop_id AND DATE(bp.payment_date) != DATE(b.bill_date)
+                ORDER BY bp.payment_date DESC, bp.id DESC
+            ");
+            $stmt->execute(['shop_id' => $shopId]);
+            $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             sendResponse(true, '', $payments);
         } catch (PDOException $e) {
             sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);

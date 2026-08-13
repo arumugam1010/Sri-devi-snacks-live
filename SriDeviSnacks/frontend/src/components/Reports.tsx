@@ -1,16 +1,24 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle } from 'lucide-react';
+import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle, Warehouse } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-import { billsAPI } from '../services/api';
+import { billsAPI, stocksAPI } from '../services/api';
 
 const Reports: React.FC = () => {
   const { bills, products, shops } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received' | 'stock_details'>('daily');
   const [pageStates, setPageStates] = useState<Record<string, number>>({});
   const [returnsSubTab, setReturnsSubTab] = useState<'today' | 'all'>('today');
   const [productsSubTab, setProductsSubTab] = useState<'today' | 'all'>('today');
   const [pendingReceivedPayments, setPendingReceivedPayments] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [appliedDate, setAppliedDate] = useState<string>('');
+  const [stockHistory, setStockHistory] = useState<any[]>([]);
+  const [stockFilterDate, setStockFilterDate] = useState<string>('');
+  const [stockAppliedDate, setStockAppliedDate] = useState<string>('');
+  const [stockDebugError, setStockDebugError] = useState<string>('');
+  const [selectedShop, setSelectedShop] = useState<any>(null);
+  const [shopPayments, setShopPayments] = useState<any[]>([]);
 
   useEffect(() => {
     if (activeTab === 'pending_received') {
@@ -19,8 +27,33 @@ const Reports: React.FC = () => {
           setPendingReceivedPayments(res.data);
         }
       });
+    } else if (activeTab === 'stock_details') {
+      stocksAPI.getStockHistory().then(res => {
+        if (res.success) {
+          setStockHistory(res.data);
+          setStockDebugError('');
+        } else {
+          setStockDebugError(res.message || "Failed to load stock history");
+          console.error("API Error:", res.message);
+        }
+      }).catch(err => {
+        setStockDebugError(err.message || "Network/JS error");
+        console.error("Network/JS Error:", err);
+      });
     }
   }, [activeTab]);
+
+  const handleShopClick = (shop: any) => {
+    const shopObj = shops.find(s => s.shop_name === shop.shop_name);
+    if (shopObj) {
+      setSelectedShop({ ...shop, id: shopObj.id });
+      billsAPI.getShopPaymentsHistory(shopObj.id).then(res => {
+        if (res.success) {
+          setShopPayments(res.data);
+        }
+      });
+    }
+  };
 
   const isToday = (dateString: string) => {
     if (!dateString) return false;
@@ -102,6 +135,14 @@ const Reports: React.FC = () => {
         break;
       case 'product-performance':
         dataToExport = productsSubTab === 'today' ? todayProductPerformance : productPerformance;
+        break;
+      case 'stock-history':
+        dataToExport = filteredStockHistory.map(item => ({
+          'Date': new Date(item.date).toLocaleDateString(),
+          'Product Name': item.productName,
+          'Loaded Quantity': item.morningStock,
+          'Unit': item.unit
+        }));
         break;
       default:
         alert('Unknown report type');
@@ -306,8 +347,23 @@ const Reports: React.FC = () => {
 
 
 
+  const filteredStockHistory = useMemo(() => {
+    if (!stockAppliedDate) {
+      return stockHistory;
+    }
+    return stockHistory.filter(item => {
+      if (!item.date) return false;
+      return item.date.startsWith(stockAppliedDate);
+    });
+  }, [stockHistory, stockAppliedDate]);
+
   const productPerformance = useMemo(() => {
-    const productStats = bills.reduce((acc, bill) => {
+    const filteredBills = bills.filter(bill => {
+      if (!appliedDate) return true;
+      if (!bill.bill_date) return false;
+      return bill.bill_date.startsWith(appliedDate);
+    });
+    const productStats = filteredBills.reduce((acc, bill) => {
       bill.items.forEach(item => {
         if (!acc[item.product_id]) {
           acc[item.product_id] = {
@@ -334,7 +390,7 @@ const Reports: React.FC = () => {
       ...product,
       shops: product.shops.size
     }));
-  }, [bills]);
+  }, [bills, appliedDate]);
 
   const todayProductPerformance = useMemo(() => {
     const todayBills = bills.filter(bill => isToday(bill.bill_date));
@@ -452,6 +508,7 @@ const Reports: React.FC = () => {
             { key: 'pending_received', label: 'Pending Received', icon: DollarSign },
             { key: 'returns', label: 'Returns', icon: Package },
             { key: 'products', label: 'Product Performance', icon: TrendingUp },
+            { key: 'stock_details', label: 'Stock Details', icon: Warehouse },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -756,7 +813,11 @@ const Reports: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {(() => {
                     return shopWiseReport.map((shop) => (
-                      <tr key={shop.shop_name} className="hover:bg-gray-50">
+                      <tr
+                        key={shop.shop_name}
+                        onClick={() => handleShopClick(shop)}
+                        className="hover:bg-blue-50 cursor-pointer transition"
+                      >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{shop.shop_name}</div>
                         </td>
@@ -1118,6 +1179,34 @@ const Reports: React.FC = () => {
                 <h3 className="text-lg font-semibold text-gray-900">
                   {productsSubTab === 'today' ? "Today's Product Performance" : "All-Time Product Performance"}
                 </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {productsSubTab === 'all' && (
+                  <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200 text-xs font-semibold">
+                    <span className="text-gray-700">Filter Date:</span>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="px-2 py-1 border border-gray-200 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-normal"
+                    />
+                    <button
+                      onClick={() => setAppliedDate(selectedDate)}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold"
+                    >
+                      Apply
+                    </button>
+                    {appliedDate && (
+                      <button
+                        onClick={() => { setSelectedDate(''); setAppliedDate(''); }}
+                        className="text-blue-600 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
                 <button
                   onClick={() => handleExport('product-performance')}
                   className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
@@ -1234,6 +1323,245 @@ const Reports: React.FC = () => {
               </table>
             </div>
 
+          </div>
+        )}
+
+        {/* Stock Details Tab */}
+        {activeTab === 'stock_details' && (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Stock Loading History</h3>
+              <button
+                onClick={() => handleExport('stock-history')}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </button>
+            </div>
+
+            {/* Date filter for Stock Loading History */}
+            <div className="flex flex-row flex-wrap items-center gap-3 mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100 text-sm animate-fadeIn">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Calendar className="h-4 w-4 text-gray-500" />
+                <span className="font-semibold text-gray-800">Filter by Date:</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={stockFilterDate}
+                  onChange={(e) => setStockFilterDate(e.target.value)}
+                  className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+                <button
+                  onClick={() => setStockAppliedDate(stockFilterDate)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs transition"
+                >
+                  Apply
+                </button>
+              </div>
+              {stockAppliedDate && (
+                <button
+                  onClick={() => { setStockFilterDate(''); setStockAppliedDate(''); }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2.5 py-1 hover:bg-blue-50 rounded transition ml-auto"
+                >
+                  Clear Filter
+                </button>
+              )}
+            </div>
+
+
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Product Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Loaded Quantity (Morning Stock)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Unit
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(() => {
+                    const data = filteredStockHistory;
+                    if (data.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
+                            No stock loading records found for this period.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return data.map((historyItem, idx) => {
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(historyItem.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{historyItem.productName}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600">
+                            {historyItem.morningStock}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {historyItem.unit}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Shop Pending Details & Payment History Modal */}
+        {selectedShop && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-lg">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">{selectedShop.shop_name}</h3>
+                  <p className="text-xs text-gray-500 mt-1">Pending and Payment History Summary</p>
+                </div>
+                <button
+                  onClick={() => { setSelectedShop(null); setShopPayments([]); }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                {/* Stats Summary */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <span className="text-xs text-blue-600 font-semibold block uppercase">Total Bills</span>
+                    <span className="text-2xl font-extrabold text-blue-800">{selectedShop.bills}</span>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                    <span className="text-xs text-green-600 font-semibold block uppercase">Total Amount</span>
+                    <span className="text-2xl font-extrabold text-green-800 font-bold">₹{selectedShop.total_amount.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                    <span className="text-xs text-red-600 font-semibold block uppercase">Total Pending</span>
+                    <span className="text-2xl font-extrabold text-red-850 font-bold">₹{selectedShop.total_pending.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Pending Bills Section */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-3">Pending Bills</h4>
+                  {selectedShop.pending_bills && selectedShop.pending_bills.length > 0 ? (
+                    <div className="overflow-x-auto border border-gray-150 rounded-xl">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Bill No</th>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                            <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Bill Amount</th>
+                            <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Pending Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-150 text-sm">
+                          {selectedShop.pending_bills.map((b: any) => (
+                            <tr key={b.billNumber}>
+                              <td className="px-4 py-3 font-semibold text-blue-600">Bill #{b.billNumber}</td>
+                              <td className="px-4 py-3 text-gray-500">{new Date(b.date).toLocaleDateString()}</td>
+                              <td className="px-4 py-3 text-right text-gray-900 font-medium">₹{b.totalAmount.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right text-red-600 font-bold">₹{b.pendingAmount.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-sm text-gray-500">
+                      No pending bills for this shop.
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment History Section */}
+                <div>
+                  <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-3">Payment History</h4>
+                  {shopPayments && shopPayments.length > 0 ? (
+                    <div className="overflow-x-auto border border-gray-150 rounded-xl">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Bill No</th>
+                            <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">Amount Paid</th>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Mode</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-150 text-sm">
+                          {shopPayments.map((p: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-gray-900">
+                                {(() => {
+                                  const dateVal = p.paymentDate || p.paymentdate || p.PAYMENTDATE || p.payment_date || p.PAYMENT_DATE;
+                                  return dateVal ? new Date(dateVal).toLocaleDateString() : 'Invalid Date';
+                                })()}
+                              </td>
+                              <td className="px-4 py-3 font-semibold text-gray-700">
+                                Bill #{p.billNumber || p.billnumber || p.BILLNUMBER || p.bill_number || p.BILL_NUMBER}
+                              </td>
+                              <td className="px-4 py-3 text-right text-green-600 font-bold">
+                                ₹{(() => {
+                                  const amtVal = p.amount || p.AMOUNT;
+                                  return amtVal && !isNaN(parseFloat(amtVal)) ? parseFloat(amtVal).toLocaleString() : '0';
+                                })()}
+                              </td>
+                              <td className="px-4 py-3">
+                                {(() => {
+                                  const modeVal = p.paymentMode || p.paymentmode || p.PAYMENTMODE || p.payment_mode || p.PAYMENT_MODE || 'CASH';
+                                  return (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                      modeVal === 'GPAY' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
+                                    }`}>
+                                      {modeVal}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-sm text-gray-500">
+                      No payments recorded yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end rounded-b-lg">
+                <button
+                  onClick={() => { setSelectedShop(null); setShopPayments([]); }}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg text-sm transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

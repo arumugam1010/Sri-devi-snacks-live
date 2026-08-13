@@ -26,6 +26,12 @@ function handleStocksRoute($parts, $method) {
         }
     }
     
+    // GET /stocks/history
+    if ($action === 'history' && $method === 'GET') {
+        getStockHistory();
+        return;
+    }
+    
     // GET /stocks or POST /stocks
     if (empty($action)) {
         if ($method === 'GET') {
@@ -61,7 +67,7 @@ function handleStocksRoute($parts, $method) {
         return;
     }
     
-    sendResponse(false, 'Action not found in stocks', null, 404);
+    sendResponse(false, 'Action not found in stocks: action=' . $action . ', method=' . $method . ', parts=' . json_encode($parts), null, 404);
 }
 
 /**
@@ -88,6 +94,7 @@ function getStocksList() {
     
     $db = getDatabaseConnection();
     try {
+        syncTodayMorningStock($db);
         $whereSql = "";
         $params = [];
         
@@ -129,9 +136,6 @@ function getStocksList() {
             $soldToday = isset($row['soldToday']) ? (float)$row['soldToday'] : 0;
             // Use morning_stock if set today, else fallback to quantity + soldToday
             $morningStock = $row['quantity'] + $soldToday;
-            if ($row['morning_stock_date'] === date('Y-m-d') && $row['morning_stock'] !== null) {
-                $morningStock = (float)$row['morning_stock'];
-            }
             
             $stocks[] = [
                 'id' => (int)$row['id'],
@@ -426,9 +430,10 @@ function updateStock($stockId) {
             $updates[] = "quantity = :quantity";
             
             if ($oldStock['morning_stock_date'] !== date('Y-m-d')) {
-                $updates[] = "morning_stock = :quantity";
+                $updates[] = "morning_stock = :morning_stock_val";
                 $updates[] = "morning_stock_date = :today";
                 $params['today'] = date('Y-m-d');
+                $params['morning_stock_val'] = (float)$body['quantity'];
             }
             
             $params['quantity'] = (float)$body['quantity'];
@@ -643,6 +648,58 @@ function getLowStockAlerts() {
             ]
         ]);
         exit;
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Sync today's morning stock (current quantity + sold today) into daily_stock_history
+ */
+function syncTodayMorningStock($db) {
+    // Fetch all stock items and calculate morning stock using CURDATE()
+    $stmt = $db->query("
+        SELECT s.product_id, (s.quantity + COALESCE((
+            SELECT SUM(bi.quantity) 
+            FROM bill_items bi 
+            JOIN bills b ON bi.bill_id = b.id 
+            WHERE bi.product_id = s.product_id AND DATE(b.bill_date) = CURDATE()
+        ), 0)) as morning_stock
+        FROM stocks s
+    ");
+    $rows = $stmt->fetchAll();
+    
+    $upsert = $db->prepare("
+        INSERT INTO daily_stock_history (product_id, `date`, morning_stock)
+        VALUES (:product_id, CURDATE(), :morning_stock)
+        ON DUPLICATE KEY UPDATE morning_stock = :morning_stock2
+    ");
+    
+    foreach ($rows as $row) {
+        $upsert->execute([
+            'product_id' => $row['product_id'],
+            'morning_stock' => $row['morning_stock'],
+            'morning_stock2' => $row['morning_stock']
+        ]);
+    }
+}
+
+/**
+ * Handle GET /api/stocks/history
+ */
+function getStockHistory() {
+    $db = getDatabaseConnection();
+    try {
+        syncTodayMorningStock($db);
+        
+        $stmt = $db->query("
+            SELECT h.`date`, h.morning_stock as morningStock, p.product_name as productName, p.unit
+            FROM daily_stock_history h
+            JOIN products p ON h.product_id = p.id
+            ORDER BY h.`date` DESC, p.product_name ASC
+        ");
+        $history = $stmt->fetchAll();
+        sendResponse(true, '', $history);
     } catch (PDOException $e) {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }

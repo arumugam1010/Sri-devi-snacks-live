@@ -180,6 +180,10 @@ export const billsAPI = {
       body: JSON.stringify({ signature }),
     });
   },
+
+  getShopPaymentsHistory: async (shopId: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/bills/shop/${shopId}/payments`);
+  },
 };
 
 // Products API
@@ -331,6 +335,10 @@ export const stocksAPI = {
       method: 'PUT',
       body: JSON.stringify(stockData),
     });
+  },
+  
+  getStockHistory: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/stocks/history`);
   },
 };
 

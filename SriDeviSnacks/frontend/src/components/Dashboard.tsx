@@ -149,7 +149,27 @@ const Dashboard: React.FC = () => {
     }, 0);
   }, [todayCollections]);
 
-  const [activeView, setActiveView] = useState<'received' | 'pending_issued'>('received');
+  const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns'>('received');
+
+  const todayReturns = React.useMemo(() => {
+    const returns: any[] = [];
+    bills.filter(bill => bill.bill_date && isToday(bill.bill_date)).forEach(bill => {
+      if (bill.items && bill.items.length > 0) {
+        bill.items.filter((item: any) => item.quantity < 0).forEach((item: any) => {
+          returns.push({
+            shopName: bill.shop_name,
+            billNumber: bill.id,
+            productName: item.product_name,
+            quantity: Math.abs(item.quantity),
+            rate: item.price,
+            totalAmount: Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0),
+            unit: item.unit
+          });
+        });
+      }
+    });
+    return returns;
+  }, [bills]);
 
   // Filter for bills created today that have a pending balance (pending_amount > 0)
   const todayPendingIssued = React.useMemo(() => {
@@ -327,7 +347,7 @@ const Dashboard: React.FC = () => {
           <div className="sm:flex sm:items-center sm:justify-between mb-6">
             <div>
               <h3 className="text-lg font-medium leading-6 text-gray-900 font-semibold">
-                {activeView === 'received' ? "Today's Received Payments" : "Today's Pending Bills Issued"}
+                {activeView === 'received' ? "Today's Received Payments" : activeView === 'pending_issued' ? "Today's Pending Bills Issued" : "Today's Return Packets"}
               </h3>
               <p className="mt-1 text-sm font-bold text-gray-500">
                 {activeView === 'received' ? (
@@ -338,8 +358,10 @@ const Dashboard: React.FC = () => {
                     <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className="text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded">Old Pending Collected: ₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </span>
-                ) : (
+                ) : activeView === 'pending_issued' ? (
                   <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                ) : (
+                  <span className="text-red-700">Total Return Value Today: ₹{todayReturns.reduce((sum, item) => sum + item.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 )}
               </p>
             </div>
@@ -355,6 +377,17 @@ const Dashboard: React.FC = () => {
                   }`}
                 >
                   Payments Received ({todayCollections.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('returns')}
+                  className={`relative inline-flex items-center px-4 py-2 border-t border-b border-r border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                    activeView === 'returns'
+                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Return Packets ({todayReturns.length})
                 </button>
                 <button
                   type="button"
@@ -455,7 +488,7 @@ const Dashboard: React.FC = () => {
                   </tfoot>
                 )}
               </table>
-            ) : (
+            ) : activeView === 'pending_issued' ? (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -528,6 +561,50 @@ const Dashboard: React.FC = () => {
                         ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4"></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shop Name</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill ID</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Name</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rate</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {todayReturns.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                        No return packets today.
+                      </td>
+                    </tr>
+                  ) : (
+                    todayReturns.map((item, idx) => (
+                      <tr key={`${item.billNumber}-${idx}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.shopName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{item.billNumber}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.productName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{item.quantity} {item.unit}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{item.rate.toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">₹{item.totalAmount.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {todayReturns.length > 0 && (
+                  <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">Total</td>
+                      <td colSpan={4} className="px-6 py-4"></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
+                        ₹{todayReturns.reduce((sum, item) => sum + item.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
                     </tr>
                   </tfoot>
                 )}

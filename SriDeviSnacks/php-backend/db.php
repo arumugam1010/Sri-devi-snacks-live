@@ -231,6 +231,28 @@ function getDatabaseConnection() {
                         $insertSetting->execute(['key' => $key, 'val' => $val]);
                     }
                 }
+
+                // Create daily_stock_history table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS daily_stock_history (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    product_id INT NOT NULL,
+                    date DATE NOT NULL,
+                    morning_stock DECIMAL(10, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY prod_date_unique (product_id, date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Seed daily_stock_history from bill items
+                try {
+                    $pdo->exec("
+                        INSERT IGNORE INTO daily_stock_history (product_id, `date`, morning_stock)
+                        SELECT bi.product_id, DATE(b.bill_date) as d, SUM(bi.quantity)
+                        FROM bill_items bi
+                        JOIN bills b ON bi.bill_id = b.id
+                        WHERE bi.quantity > 0
+                        GROUP BY bi.product_id, d
+                    ");
+                } catch (\Exception $seedErr) {}
             } catch (\Exception $migrErr) {
                 // Keep execution running even if migration check fails
             }

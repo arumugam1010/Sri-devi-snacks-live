@@ -1,9 +1,10 @@
 RewriteEngine On
 
-# Do not rewrite api folder requests (handled by api/.htaccess)
-RewriteRule ^api/ - [L]
+# Allow CORS preflight requests (OPTIONS)
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ index.php [QSA,L]
 
-# Route all other non-file/non-directory requests to index.html for React Router
+# Route all requests to index.php if file or directory doesn't exist
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.html [L]
+RewriteRule ^(.*)$ index.php [QSA,L]
