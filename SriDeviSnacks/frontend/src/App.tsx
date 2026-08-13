@@ -15,6 +15,8 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import DayScheduleDetails from './components/DayScheduleDetails';
 import VtsGps from './components/VtsGps';
 import Employees from './components/Employees';
+import BarcodeGenerator from './components/BarcodeGenerator';
+
 
 
 const getBasename = () => {
@@ -202,6 +204,14 @@ interface UserData {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Employees />
+                </Layout>
+              } 
+            />
+            <Route 
+              path="/label-printer" 
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <BarcodeGenerator />
                 </Layout>
               } 
             />

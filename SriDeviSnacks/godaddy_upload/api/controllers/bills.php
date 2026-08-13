@@ -361,11 +361,11 @@
             $billItems = [];
             
             foreach ($items as $item) {
-                $prodId = (int)$item['product_id'];
-                $qty = (int)$item['quantity'];
+                $prodId = (int)($item['product_id'] ?? $item['productId'] ?? 0);
+                $qty = (float)($item['quantity'] ?? 0);
                 
-                // Use price from request if provided, otherwise default to product price
-                $rate = isset($item['price']) ? (float)$item['price'] : ($productMap[$prodId] ?? 0.00);
+                // Use price/rate from request if provided, otherwise default to product price
+                $rate = isset($item['price']) ? (float)$item['price'] : (isset($item['rate']) ? (float)$item['rate'] : ($productMap[$prodId] ?? 0.00));
                 
                 // Calculate tax
                 $sgst = isset($item['sgst']) ? (float)$item['sgst'] : 0.00;
@@ -381,7 +381,7 @@
                     'amount' => $amount,
                     'sgst' => $sgst,
                     'cgst' => $cgst,
-                    'hsnCode' => $item['hsnCode'] ?? ($productMap[$prodId] ?? '')
+                    'hsnCode' => $item['hsnCode'] ?? $item['hsn_code'] ?? ($productMap[$prodId] ?? '')
                 ];
             }
             

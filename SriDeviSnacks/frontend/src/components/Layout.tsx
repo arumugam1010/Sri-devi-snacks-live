@@ -11,7 +11,8 @@ import {
   X,
   Warehouse,
   MapPin,
-  Users
+  Users,
+  Printer
 } from 'lucide-react';
 import Logo from '../assets/Logo.png';
 import { useAppContext } from '../context/AppContext';
@@ -40,7 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
   // Filter navigation based on user role
   const navigation = allNavigation.filter(item => {
-    if (item.name === 'VTS GPS' || item.name === 'Employees') {
+    if (item.name === 'VTS GPS' || item.name === 'Employees' || item.name === 'Label Printer') {
       return userRole === 'SUPER_ADMIN';
     }
     if (userRole === 'STAFF') {
