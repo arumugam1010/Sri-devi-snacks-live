@@ -178,7 +178,8 @@ function getDashboardStats() {
             ],
             'collections' => [
                 'today_total' => $totalCollectedToday,
-                'today_list' => $todayPaymentsList
+                'today_list' => $todayPaymentsList,
+                'today_fuel_expense' => (float)$db->query("SELECT COALESCE(SUM(amount), 0) FROM fuel_expenses WHERE expense_date = '" . date('Y-m-d') . "'")->fetchColumn()
             ]
         ];
         

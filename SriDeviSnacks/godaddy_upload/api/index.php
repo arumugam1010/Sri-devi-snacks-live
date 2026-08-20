@@ -138,6 +138,10 @@ switch ($module) {
         require_once __DIR__ . '/controllers/settings.php';
         handleSettingsRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'fuel-expenses':
+        require_once __DIR__ . '/controllers/fuel_expenses.php';
+        handleFuelExpensesRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'debug-db':
         try {
             $db = getDatabaseConnection();

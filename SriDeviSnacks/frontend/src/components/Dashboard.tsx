@@ -110,9 +110,22 @@ const Dashboard: React.FC = () => {
     return dashboardStats?.collections?.today_list || [];
   }, [dashboardStats]);
 
+  const totalFuelToday = React.useMemo(() => {
+    return dashboardStats?.collections?.today_fuel_expense || 0;
+  }, [dashboardStats]);
+
   const totalCollectedToday = React.useMemo(() => {
-    return todayCollections.reduce((sum: number, item: any) => sum + item.paidAmount, 0);
+    const rawTotal = todayCollections.reduce((sum: number, item: any) => sum + item.paidAmount, 0);
+    return rawTotal - totalFuelToday;
+  }, [todayCollections, totalFuelToday]);
+
+  const totalTablePaidAmount = React.useMemo(() => {
+    return todayCollections.reduce((sum: number, item: any) => {
+      const val = typeof item.paidAmount === 'string' ? parseFloat(item.paidAmount) : item.paidAmount;
+      return sum + (isNaN(val) ? 0 : val);
+    }, 0);
   }, [todayCollections]);
+
 
   const totalGPayToday = React.useMemo(() => {
     return todayCollections
@@ -200,6 +213,11 @@ const Dashboard: React.FC = () => {
     return todayPendingIssued.reduce((sum, item) => sum + item.paidAmount, 0);
   }, [todayPendingIssued]);
 
+  const todaysRevenue = React.useMemo(() => {
+    return totalTablePaidAmount + totalPendingIssuedToday;
+  }, [totalTablePaidAmount, totalPendingIssuedToday]);
+
+
   const StatCard = ({ title, value, icon: Icon, change, color = 'blue', children }: any) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between">
@@ -258,7 +276,7 @@ const Dashboard: React.FC = () => {
         {userRole !== 'STAFF' && (
           <StatCard
             title="Today's Revenue"
-            value={`₹${stats.todaysRevenue.toLocaleString()}`}
+            value={`₹${todaysRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
             change={8.3}
             color="yellow"
@@ -289,6 +307,10 @@ const Dashboard: React.FC = () => {
               <div className="flex justify-between items-center text-xs">
                 <span className="text-gray-500 font-medium">Old Pending Collected:</span>
                 <span className="text-orange-700 font-bold">₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">CNG/Petrol:</span>
+                <span className="text-red-700 font-bold">-₹{totalFuelToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
           </StatCard>
@@ -357,6 +379,7 @@ const Dashboard: React.FC = () => {
                     <span className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded">Bill Save (Cash): ₹{totalBillSaveToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className="text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded">Old Pending Collected: ₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded">CNG/Petrol: -₹{totalFuelToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </span>
                 ) : activeView === 'pending_issued' ? (
                   <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -478,7 +501,7 @@ const Dashboard: React.FC = () => {
                       </td>
                       <td colSpan={2} className="px-6 py-4"></td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 font-bold text-left">
-                        ₹{totalCollectedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₹{totalTablePaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold text-left">
                         ₹{totalPendingBalanceToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

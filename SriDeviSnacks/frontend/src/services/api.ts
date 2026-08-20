@@ -493,3 +493,25 @@ export const employeesAPI = {
     return authenticatedFetch(`${API_BASE_URL}/employees/biometric/list-active`);
   },
 };
+
+// Fuel Expenses API
+export const fuelExpensesAPI = {
+  getTodayFuelExpenses: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/fuel-expenses/today?_t=${Date.now()}`);
+  },
+  getFilteredFuelExpenses: async (params?: { from?: string; to?: string; type?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') queryParams.append(key, value);
+      });
+    }
+    return authenticatedFetch(`${API_BASE_URL}/fuel-expenses?${queryParams}`);
+  },
+  logFuelExpense: async (data: { amount: number; type: string; date?: string }) => {
+    return authenticatedFetch(`${API_BASE_URL}/fuel-expenses`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};

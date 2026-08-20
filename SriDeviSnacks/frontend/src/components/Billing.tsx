@@ -279,8 +279,11 @@
           container.innerHTML = optimizedHtml + `
             <style>
               * {
-                font-family: Arial, Helvetica, sans-serif !important;
-                font-weight: bold !important;
+                font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
+                font-weight: 900 !important;
+                color: #000 !important;
+                -webkit-text-stroke: 0.5px black !important;
+                text-stroke: 0.5px black !important;
               }
               body {
                 width: 100% !important;
@@ -363,8 +366,8 @@
                 padding-left: 12px !important;
               }
               .rupee {
-                color: #777 !important;
-                font-weight: normal !important;
+                color: #000 !important;
+                font-weight: 900 !important;
               }
               .thank-you { 
                 font-size: 34px !important; 
@@ -1800,7 +1803,11 @@
           <title>Print Monthly Bills</title>
           <style>
             * {
-              font-weight: bold !important;
+              font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
+              font-weight: 900 !important;
+              color: #000 !important;
+              -webkit-text-stroke: 0.5px black !important;
+              text-stroke: 0.5px black !important;
             }
             @page {
               size: 80mm auto;
@@ -1898,8 +1905,8 @@
               padding-left: 8px !important;
             }
             .rupee {
-              color: #666 !important;
-              font-weight: normal !important;
+              color: #000 !important;
+              font-weight: 900 !important;
             }
             .dashed-line {
               border-bottom: 1px dashed #000;
@@ -3091,7 +3098,11 @@
                                       <title>Bill - ${shopName}</title>
                                       <style>
                                         * {
-                                          font-weight: bold !important;
+                                          font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
+                                          font-weight: 900 !important;
+                                          color: #000 !important;
+                                          -webkit-text-stroke: 0.5px black !important;
+                                          text-stroke: 0.5px black !important;
                                         }
                                         @page {
                                           size: 80mm auto;
@@ -3117,8 +3128,8 @@
                                           padding-left: 8px !important;
                                         }
                                         .rupee {
-                                          color: #666 !important;
-                                          font-weight: normal !important;
+                                          color: #000 !important;
+                                          font-weight: 900 !important;
                                         }
                                         .bill-header {
                                           margin-bottom: 10px;
@@ -4408,7 +4419,8 @@
                               <title>Bill - ${shopName}</title>
                               <style>
                                 * {
-                                  font-weight: bold !important;
+                                  font-weight: 900 !important;
+                                  color: #000 !important;
                                 }
                                 @page {
                                   size: 80mm auto;
@@ -4991,10 +5003,10 @@
                     <div className="flex justify-between text-sm mb-2 text-gray-600">
                       <span>Total Amount:</span>
                       <span className="font-semibold text-gray-900">
-                        ₹{Math.round(
+                        ₹{getRoundingDetails(
                           currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
                           pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
-                        ).toFixed(2)}
+                        ).finalTotal.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -5069,10 +5081,10 @@
                       } else {
                         currentReceived = parseFloat(receivedAmount || "0");
                       }
-                      const modalTotalAmount = Math.round(
+                      const modalTotalAmount = getRoundingDetails(
                         currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
                         pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
-                      );
+                      ).finalTotal;
                       if (currentReceived > modalTotalAmount) {
                         alert(`Received amount (₹${currentReceived}) cannot be greater than Total Amount (₹${modalTotalAmount})`);
                         return;
@@ -5095,10 +5107,10 @@
                       } else {
                         currentReceived = parseFloat(receivedAmount || "0");
                       }
-                      const modalTotalAmount = Math.round(
+                      const modalTotalAmount = getRoundingDetails(
                         currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
                         pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
-                      );
+                      ).finalTotal;
                       if (currentReceived > modalTotalAmount) {
                         alert(`Received amount (₹${currentReceived}) cannot be greater than Total Amount (₹${modalTotalAmount})`);
                         return;
@@ -5121,10 +5133,10 @@
                       } else {
                         currentReceived = parseFloat(receivedAmount || "0");
                       }
-                      const modalTotalAmount = Math.round(
+                      const modalTotalAmount = getRoundingDetails(
                         currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
                         pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
-                      );
+                      ).finalTotal;
                       if (currentReceived > modalTotalAmount) {
                         alert(`Received amount (₹${currentReceived}) cannot be greater than Total Amount (₹${modalTotalAmount})`);
                         return;
@@ -5212,7 +5224,7 @@
                           }}>
                             <h4 className="font-bold text-gray-900">{draft.shopName}</h4>
                             <p className="text-xs text-gray-500 mt-1">
-                              Day: {draft.day} • Items: {draft.items.length} • Total: ₹{Math.round(draftTotal).toFixed(2)}
+                              Day: {draft.day} • Items: {draft.items.length} • Total: ₹{getRoundingDetails(draftTotal).finalTotal.toFixed(2)}
                             </p>
                             <p className="text-[10px] text-gray-400 mt-0.5">
                               Saved on: {new Date(draft.date).toLocaleString()}

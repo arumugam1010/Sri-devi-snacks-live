@@ -12,10 +12,12 @@ import {
   Warehouse,
   MapPin,
   Users,
-  Printer
+  Printer,
+  Fuel
 } from 'lucide-react';
 import Logo from '../assets/Logo.png';
 import { useAppContext } from '../context/AppContext';
+import { fuelExpensesAPI } from '../services/api';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -28,6 +30,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const location = useLocation();
   const { userRole } = useAppContext();
 
+  // Fuel modal states
+  const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
+  const [fuelAmount, setFuelAmount] = useState('');
+  const [fuelType, setFuelType] = useState('CNG+PETROL');
+  const [fuelDate, setFuelDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fuelSubmitting, setFuelSubmitting] = useState(false);
+  const [fuelError, setFuelError] = useState('');
+  const [fuelSuccess, setFuelSuccess] = useState(false);
+
   const allNavigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Shops', href: '/shops', icon: Store },
@@ -36,6 +47,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { name: 'Billing', href: '/billing', icon: Receipt },
     { name: 'Employees', href: '/employees', icon: Users },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
+    { name: 'Petrol/CNG', onClick: () => setIsFuelModalOpen(true), icon: Fuel },
     { name: 'VTS GPS', href: '/gps-tracking', icon: MapPin },
   ];
 
@@ -50,7 +62,39 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     return true;
   });
 
-  const isActive = (href: string) => location.pathname === href;
+  const isActive = (href?: string) => href ? location.pathname === href : false;
+
+  const handleFuelSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fuelAmount || parseFloat(fuelAmount) <= 0) {
+      setFuelError('Please enter a valid amount');
+      return;
+    }
+    setFuelSubmitting(true);
+    setFuelError('');
+    setFuelSuccess(false);
+    try {
+      await fuelExpensesAPI.logFuelExpense({
+        amount: parseFloat(fuelAmount),
+        type: fuelType,
+        date: fuelDate
+      });
+      setFuelSuccess(true);
+      setFuelAmount('');
+      setTimeout(() => {
+        setIsFuelModalOpen(false);
+        setFuelSuccess(false);
+        // Reload dashboard stats if we are on the dashboard
+        if (window.location.pathname === '/dashboard' || window.location.pathname === '/') {
+          window.location.reload();
+        }
+      }, 1000);
+    } catch (err: any) {
+      setFuelError(err.message || 'Failed to save expense');
+    } finally {
+      setFuelSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -74,17 +118,35 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <nav className="mt-5 px-2 space-y-1">
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
+                const linkClass = `${
+                  isActive(item.href)
+                    ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
+                    : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
+                } group flex items-center px-2 py-2 rounded-md w-full text-left ${
+                  isBilling ? 'text-2xl font-bold' : 'text-base font-medium'
+                }`;
+
+                if (item.onClick) {
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => {
+                        item.onClick();
+                        setSidebarOpen(false);
+                      }}
+                      className={linkClass}
+                    >
+                      <item.icon className="mr-4 h-6 w-6 text-gray-600 group-hover:text-gray-900" />
+                      {item.name}
+                    </button>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.name}
-                    to={item.href}
-                    className={`${
-                      isActive(item.href)
-                        ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
-                        : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-950' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
-                    } group flex items-center px-2 py-2 rounded-md ${
-                      isBilling ? 'text-2xl font-bold' : 'text-base font-medium'
-                    }`}
+                    to={item.href || '#'}
+                    className={linkClass}
                     onClick={() => setSidebarOpen(false)}
                   >
                     <item.icon className={`mr-4 ${isBilling ? 'h-8 w-8' : 'h-6 w-6'}`} />
@@ -102,27 +164,39 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         <div className="flex-1 flex flex-col min-h-0 border-r border-gray-200 bg-white">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
-  <img src={Logo} alt="Sri Devi Snacks Logo" className="h-8 w-8 mr-2" />
-  <span className="text-2xl font-bold text-gray-900">
-    Sri Devi Snacks
-  </span>
-</div>
-
+              <img src={Logo} alt="Sri Devi Snacks Logo" className="h-8 w-8 mr-2" />
+              <span className="text-2xl font-bold text-gray-900">Sri Devi Snacks</span>
+            </div>
 
             <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
+                const linkClass = `${
+                  isActive(item.href)
+                    ? (isBilling ? 'bg-blue-200 text-blue-955' : 'bg-blue-100 text-blue-900')
+                    : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
+                } group flex items-center px-2 py-2 rounded-md w-full text-left ${
+                  isBilling ? 'text-2xl font-bold' : 'text-sm font-medium'
+                }`;
+
+                if (item.onClick) {
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={item.onClick}
+                      className={linkClass}
+                    >
+                      <item.icon className="mr-3 h-5 w-5 text-gray-600 group-hover:text-gray-900" />
+                      {item.name}
+                    </button>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.name}
-                    to={item.href}
-                    className={`${
-                      isActive(item.href)
-                        ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
-                        : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-950' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
-                    } group flex items-center px-2 py-2 rounded-md ${
-                      isBilling ? 'text-2xl font-bold' : 'text-sm font-medium'
-                    }`}
+                    to={item.href || '#'}
+                    className={linkClass}
                   >
                     <item.icon className={`mr-3 ${isBilling ? 'h-8 w-8' : 'h-5 w-5'}`} />
                     {item.name}
@@ -179,6 +253,89 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
           </div>
         </main>
       </div>
+
+      {/* Fuel Expenses Modal */}
+      {isFuelModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center bg-gray-600 bg-opacity-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden border border-gray-200">
+            <div className="bg-blue-600 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Fuel className="h-5 w-5" /> Petrol / CNG Entry
+              </h3>
+              <button onClick={() => setIsFuelModalOpen(false)} className="text-white hover:text-blue-200">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleFuelSubmit} className="p-6 space-y-4">
+              {fuelError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded text-sm font-medium">
+                  {fuelError}
+                </div>
+              )}
+              {fuelSuccess && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded text-sm font-medium">
+                  Saved successfully!
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <select
+                  value={fuelType}
+                  onChange={(e) => setFuelType(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
+                >
+                  <option value="CNG">CNG Only</option>
+                  <option value="PETROL">Petrol Only</option>
+                  <option value="CNG+PETROL">CNG + Petrol</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="Enter amount (e.g. 500)"
+                  value={fuelAmount}
+                  onChange={(e) => setFuelAmount(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={fuelDate}
+                  onChange={(e) => setFuelDate(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsFuelModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={fuelSubmitting}
+                  className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  {fuelSubmitting ? 'Saving...' : 'Save Expense'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

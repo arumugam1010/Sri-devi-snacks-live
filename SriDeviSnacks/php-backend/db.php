@@ -242,6 +242,16 @@ function getDatabaseConnection() {
                     UNIQUE KEY prod_date_unique (product_id, date)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+                // Create fuel_expenses table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_expenses (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    type VARCHAR(50) NOT NULL,
+                    expense_date DATE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_expense_date (expense_date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
                 // Seed daily_stock_history from bill items
                 try {
                     $pdo->exec("

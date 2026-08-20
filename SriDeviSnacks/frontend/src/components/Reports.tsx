@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle, Warehouse } from 'lucide-react';
+import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle, Warehouse, Fuel } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-import { billsAPI, stocksAPI } from '../services/api';
+import { billsAPI, stocksAPI, fuelExpensesAPI } from '../services/api';
 
 const Reports: React.FC = () => {
   const { bills, products, shops } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received' | 'stock_details'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received' | 'stock_details' | 'fuel_expenses'>('daily');
   const [pageStates, setPageStates] = useState<Record<string, number>>({});
   const [returnsSubTab, setReturnsSubTab] = useState<'today' | 'all'>('today');
   const [productsSubTab, setProductsSubTab] = useState<'today' | 'all'>('today');
@@ -19,6 +19,50 @@ const Reports: React.FC = () => {
   const [stockDebugError, setStockDebugError] = useState<string>('');
   const [selectedShop, setSelectedShop] = useState<any>(null);
   const [shopPayments, setShopPayments] = useState<any[]>([]);
+
+  // Fuel Expenses States
+  const [fuelExpenses, setFuelExpenses] = useState<any[]>([]);
+  const [fuelSubTab, setFuelSubTab] = useState<'today' | 'all'>('today');
+  const [fuelFilterFrom, setFuelFilterFrom] = useState<string>('');
+  const [fuelFilterTo, setFuelFilterTo] = useState<string>('');
+  const [fuelFilterType, setFuelFilterType] = useState<string>('');
+  const [fuelTotalAmount, setFuelTotalAmount] = useState<number>(0);
+  const [fuelLoading, setFuelLoading] = useState<boolean>(false);
+
+  const fetchFuelExpenses = () => {
+    setFuelLoading(true);
+    const params: any = {};
+    
+    if (fuelSubTab === 'today') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      params.from = todayStr;
+      params.to = todayStr;
+    } else {
+      if (fuelFilterFrom) params.from = fuelFilterFrom;
+      if (fuelFilterTo) params.to = fuelFilterTo;
+    }
+    if (fuelFilterType) params.type = fuelFilterType;
+
+    fuelExpensesAPI.getFilteredFuelExpenses(params)
+      .then(res => {
+        if (res.success) {
+          setFuelExpenses(res.data.expenses || []);
+          setFuelTotalAmount(res.data.total_amount || 0);
+        }
+      })
+      .catch(err => {
+        console.error("Failed to load fuel expenses:", err);
+      })
+      .finally(() => {
+        setFuelLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    if (activeTab === 'fuel_expenses') {
+      fetchFuelExpenses();
+    }
+  }, [activeTab, fuelSubTab, fuelFilterFrom, fuelFilterTo, fuelFilterType]);
 
   useEffect(() => {
     if (activeTab === 'pending_received') {
@@ -142,6 +186,14 @@ const Reports: React.FC = () => {
           'Product Name': item.productName,
           'Loaded Quantity': item.morningStock,
           'Unit': item.unit
+        }));
+        break;
+      case 'fuel-expenses':
+        dataToExport = fuelExpenses.map(item => ({
+          'Date': new Date(item.expense_date).toLocaleDateString(),
+          'Expense Type': item.type,
+          'Amount (INR)': item.amount,
+          'Logged At': new Date(item.created_at).toLocaleString()
         }));
         break;
       default:
@@ -509,6 +561,7 @@ const Reports: React.FC = () => {
             { key: 'returns', label: 'Returns', icon: Package },
             { key: 'products', label: 'Product Performance', icon: TrendingUp },
             { key: 'stock_details', label: 'Stock Details', icon: Warehouse },
+            { key: 'fuel_expenses', label: 'Petrol/CNG', icon: Fuel },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1421,6 +1474,162 @@ const Reports: React.FC = () => {
                       );
                     });
                   })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Fuel Expenses Tab */}
+        {activeTab === 'fuel_expenses' && (
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Petrol / CNG Expense Report</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Total Fuel Expenses for Selected Period: <span className="font-bold text-red-600">₹{fuelTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleExport('fuel-expenses')}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </button>
+              </div>
+            </div>
+
+            {/* Sub Tabs: Today / All Time */}
+            <div className="flex border-b border-gray-200 mb-6">
+              <button
+                onClick={() => setFuelSubTab('today')}
+                className={`py-2 px-4 border-b-2 font-medium text-sm ${
+                  fuelSubTab === 'today'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setFuelSubTab('all')}
+                className={`py-2 px-4 border-b-2 font-medium text-sm ${
+                  fuelSubTab === 'all'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                All Time / Custom
+              </button>
+            </div>
+
+            {/* Filters */}
+            {fuelSubTab === 'all' && (
+              <div className="flex flex-row flex-wrap items-center gap-3 mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm animate-fadeIn">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Filter className="h-4 w-4 text-gray-500" />
+                  <span className="font-semibold text-gray-800 font-sans">Filters:</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-medium">From:</span>
+                  <input
+                    type="date"
+                    value={fuelFilterFrom}
+                    onChange={(e) => setFuelFilterFrom(e.target.value)}
+                    className="px-3 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-medium">To:</span>
+                  <input
+                    type="date"
+                    value={fuelFilterTo}
+                    onChange={(e) => setFuelFilterTo(e.target.value)}
+                    className="px-3 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-medium">Type:</span>
+                  <select
+                    value={fuelFilterType}
+                    onChange={(e) => setFuelFilterType(e.target.value)}
+                    className="px-3 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  >
+                    <option value="">All Types</option>
+                    <option value="CNG">CNG</option>
+                    <option value="PETROL">Petrol</option>
+                    <option value="CNG+PETROL">CNG + Petrol</option>
+                  </select>
+                </div>
+
+                {(fuelFilterFrom || fuelFilterTo || fuelFilterType) && (
+                  <button
+                    onClick={() => {
+                      setFuelFilterFrom('');
+                      setFuelFilterTo('');
+                      setFuelFilterType('');
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2.5 py-1 hover:bg-blue-50 rounded transition ml-auto"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Table */}
+            <div className="overflow-x-auto border border-gray-200 rounded-lg animate-fadeIn">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Logged At</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {fuelLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
+                        Loading fuel expenses...
+                      </td>
+                    </tr>
+                  ) : fuelExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                        No fuel expenses found for this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    fuelExpenses.map((expense) => (
+                      <tr key={expense.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          {new Date(expense.expense_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            expense.type === 'CNG' ? 'bg-green-100 text-green-800' :
+                            expense.type === 'PETROL' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {expense.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">
+                          ₹{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(expense.created_at).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
