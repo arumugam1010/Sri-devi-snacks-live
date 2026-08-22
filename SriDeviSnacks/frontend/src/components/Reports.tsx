@@ -1,12 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, Download, TrendingUp, DollarSign, Package, ShoppingCart, BarChart3, Filter, CalendarRange, AlertCircle, Warehouse, Fuel } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 
 import { billsAPI, stocksAPI, fuelExpensesAPI } from '../services/api';
+import GPayQRCode from './GPayQRCode';
 
 const Reports: React.FC = () => {
+  const location = useLocation();
   const { bills, products, shops } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received' | 'stock_details' | 'fuel_expenses'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'shops' | 'returns' | 'products' | 'pending' | 'pending_received' | 'stock_details' | 'fuel_expenses'>(
+    location.state?.activeTab || 'daily'
+  );
   const [pageStates, setPageStates] = useState<Record<string, number>>({});
   const [returnsSubTab, setReturnsSubTab] = useState<'today' | 'all'>('today');
   const [productsSubTab, setProductsSubTab] = useState<'today' | 'all'>('today');
@@ -19,6 +24,7 @@ const Reports: React.FC = () => {
   const [stockDebugError, setStockDebugError] = useState<string>('');
   const [selectedShop, setSelectedShop] = useState<any>(null);
   const [shopPayments, setShopPayments] = useState<any[]>([]);
+  const [selectedGPayBill, setSelectedGPayBill] = useState<any>(null);
 
   // Fuel Expenses States
   const [fuelExpenses, setFuelExpenses] = useState<any[]>([]);
@@ -259,6 +265,7 @@ const Reports: React.FC = () => {
     const shopStats = bills.reduce((acc, bill) => {
       if (!acc[bill.shop_id]) {
         acc[bill.shop_id] = {
+          shop_id: bill.shop_id,
           shop_name: bill.shop_name,
           bills: 0,
           total_amount: 0,
@@ -282,7 +289,7 @@ const Reports: React.FC = () => {
         });
       }
       return acc;
-    }, {} as Record<number, { shop_name: string; bills: number; total_amount: number; last_order: string; total_pending: number; pending_bills: any[] }>);
+    }, {} as Record<number, { shop_id: number; shop_name: string; bills: number; total_amount: number; last_order: string; total_pending: number; pending_bills: any[] }>);
 
     return Object.values(shopStats).map(shop => ({
       ...shop,
@@ -945,6 +952,9 @@ const Reports: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Pending Bills Details
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      GPay
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -952,7 +962,7 @@ const Reports: React.FC = () => {
                     if (pendingShopsReport.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
+                          <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500 font-sans">
                             No shops have pending balances!
                           </td>
                         </tr>
@@ -972,12 +982,31 @@ const Reports: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(shop.last_order).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          <div className="text-xs text-gray-500 max-h-32 overflow-y-auto space-y-1">
+                        <td className="px-6 py-4 text-sm text-gray-900 align-top">
+                          <div className="flex flex-col">
                             {shop.pending_bills.map((b: any) => (
-                              <div key={b.billNumber} className="border-t border-gray-100 pt-1 first:border-t-0 first:pt-0">
-                                <span className="font-semibold text-gray-700">Bill #{b.billNumber}</span> ({new Date(b.date).toLocaleDateString()})
+                              <div key={b.billNumber} className="flex flex-col justify-center min-h-[50px] text-xs text-gray-500 border-b border-gray-100 py-2 first:pt-0 last:border-0 last:pb-0">
+                                <div><span className="font-semibold text-gray-700">Bill #{b.billNumber}</span> ({new Date(b.date).toLocaleDateString()})</div>
                                 <div>Purchase: ₹{b.totalAmount.toLocaleString()} | Pending: <span className="font-bold text-red-600">₹{b.pendingAmount.toLocaleString()}</span></div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 align-top">
+                          <div className="flex flex-col">
+                            {shop.pending_bills.map((b: any) => (
+                              <div key={b.billNumber} className="flex items-center justify-start min-h-[50px] border-b border-gray-100 py-2 first:pt-0 last:border-0 last:pb-0">
+                                <button
+                                  onClick={() => setSelectedGPayBill({
+                                    billId: b.billNumber,
+                                    shopId: shop.shop_id,
+                                    shopName: shop.shop_name,
+                                    amount: b.pendingAmount
+                                  })}
+                                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-semibold text-xs shadow-sm whitespace-nowrap"
+                                >
+                                  Pay with GPay (Bill #{b.billNumber})
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -1774,6 +1803,21 @@ const Reports: React.FC = () => {
           </div>
         )}
       </div>
+
+      {selectedGPayBill && (
+        <GPayQRCode
+          billId={selectedGPayBill.billId}
+          shopId={selectedGPayBill.shopId}
+          shopName={selectedGPayBill.shopName}
+          amount={selectedGPayBill.amount}
+          upiId="santhanamvlr@okicici"
+          onClose={() => setSelectedGPayBill(null)}
+          onPaymentSuccess={(txId, paidAmount) => {
+            alert(`Payment of ₹${paidAmount} recorded for Bill #${selectedGPayBill.billId}. Refreshing page...`);
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 };

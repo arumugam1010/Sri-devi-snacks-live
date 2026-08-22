@@ -118,13 +118,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <nav className="mt-5 px-2 space-y-1">
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
-                const linkClass = `${
-                  isActive(item.href)
+                const linkClass = `${isActive(item.href)
                     ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
                     : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
-                } group flex items-center px-2 py-2 rounded-md w-full text-left ${
-                  isBilling ? 'text-2xl font-bold' : 'text-base font-medium'
-                }`;
+                  } group flex items-center px-2 py-2 rounded-md w-full text-left ${isBilling ? 'text-2xl font-bold' : 'text-base font-medium'
+                  }`;
 
                 if (item.onClick) {
                   return (
@@ -171,13 +169,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
-                const linkClass = `${
-                  isActive(item.href)
+                const linkClass = `${isActive(item.href)
                     ? (isBilling ? 'bg-blue-200 text-blue-955' : 'bg-blue-100 text-blue-900')
                     : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
-                } group flex items-center px-2 py-2 rounded-md w-full text-left ${
-                  isBilling ? 'text-2xl font-bold' : 'text-sm font-medium'
-                }`;
+                  } group flex items-center px-2 py-2 rounded-md w-full text-left ${isBilling ? 'text-2xl font-bold' : 'text-sm font-medium'
+                  }`;
 
                 if (item.onClick) {
                   return (
@@ -266,7 +262,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                 <X className="h-6 w-6" />
               </button>
             </div>
-            
+
             <form onSubmit={handleFuelSubmit} className="p-6 space-y-4">
               {fuelError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded text-sm font-medium">
@@ -278,7 +274,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                   Saved successfully!
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
                 <select

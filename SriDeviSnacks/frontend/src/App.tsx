@@ -9,6 +9,7 @@ import Billing from './components/Billing';
 import Reports from './components/Reports';
 import Layout from './components/Layout';
 import Stock from './components/Stock';
+import PendingBalances from './components/PendingBalances';
 import { AppProvider } from './context/AppContext';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -24,7 +25,7 @@ const getBasename = () => {
     const path = window.location.pathname;
     // Check if we are running locally in XAMPP deep folder
     if (path.includes('/godaddy_upload')) {
-       return path.substring(0, path.indexOf('/godaddy_upload') + '/godaddy_upload'.length);
+      return path.substring(0, path.indexOf('/godaddy_upload') + '/godaddy_upload'.length);
     }
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return '/sridevisnacks';
@@ -54,7 +55,7 @@ function App() {
     checkAuthStatus();
   }, []);
 
-  
+
   const logoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -99,12 +100,12 @@ function App() {
 
 
 
-interface UserData {
+  interface UserData {
     id: number;
     name: string;
     email: string;
     role: string;
-}
+  }
 
   const handleLogin = (userData: UserData) => {
     setIsAuthenticated(true);
@@ -113,7 +114,7 @@ interface UserData {
   };
 
   const handleLogout = () => {
-    clearTimeout(logoutTimer.current as  ReturnType<typeof setTimeout>);
+    clearTimeout(logoutTimer.current as ReturnType<typeof setTimeout>);
     setIsAuthenticated(false);
     setUser(null);
     localStorage.removeItem('user');
@@ -121,7 +122,7 @@ interface UserData {
     // Redirect to login page on logout
     window.location.href = getBasename() + '/';
   };
-  
+
   if (isAuthenticated === null) {
     return (
       <Router basename={getBasename()}>
@@ -134,94 +135,102 @@ interface UserData {
     <Router basename={getBasename()}>
       <AppProvider user={user}>
         <Routes>
-          <Route 
-            path="/" 
-            element={!isAuthenticated ? <LandingPage /> : <Navigate to="/dashboard" />} 
+          <Route
+            path="/"
+            element={!isAuthenticated ? <LandingPage /> : <Navigate to="/dashboard" />}
           />
-          <Route 
-            path="/login" 
-            element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} 
+          <Route
+            path="/login"
+            element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />}
           />
           <Route element={isAuthenticated ? <Outlet /> : <Navigate to="/" />}>
-            <Route 
-              path="/dashboard" 
+            <Route
+              path="/dashboard"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Dashboard />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/shops" 
+            <Route
+              path="/shops"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Shops />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/products" 
+            <Route
+              path="/products"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Products />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/billing" 
+            <Route
+              path="/billing"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Billing />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/stock" 
+            <Route
+              path="/stock"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Stock />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/reports" 
+            <Route
+              path="/reports"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Reports />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/gps-tracking" 
+            <Route
+              path="/pending-balances"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <PendingBalances />
+                </Layout>
+              }
+            />
+            <Route
+              path="/gps-tracking"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <VtsGps />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/employees" 
+            <Route
+              path="/employees"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Employees />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/label-printer" 
+            <Route
+              path="/label-printer"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <BarcodeGenerator />
                 </Layout>
-              } 
+              }
             />
-            <Route 
-              path="/day-schedule/:day" 
+            <Route
+              path="/day-schedule/:day"
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <DayScheduleDetails />
                 </Layout>
-              } 
+              }
             />
           </Route>
           <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/"} />} />

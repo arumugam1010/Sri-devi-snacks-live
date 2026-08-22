@@ -52,7 +52,7 @@ const Dashboard: React.FC = () => {
       totalProducts: products.length,
       todaysBills: dashboardStats?.bills?.today || 0,
       todaysRevenue: dashboardStats?.revenue?.today || 0,
-      pendingReturns: dashboardStats?.bills?.pending || 0,
+      pendingReturns: bills.filter(bill => bill.pending_amount > 0).length,
       // activeOrders: bills.filter(bill => bill.status === 'PENDING').length
     });
   }, [products, bills, shops, dashboardStats]);
@@ -218,8 +218,11 @@ const Dashboard: React.FC = () => {
   }, [totalTablePaidAmount, totalPendingIssuedToday]);
 
 
-  const StatCard = ({ title, value, icon: Icon, change, color = 'blue', children }: any) => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  const StatCard = ({ title, value, icon: Icon, change, color = 'blue', children, onClick }: any) => (
+    <div 
+      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
@@ -287,6 +290,7 @@ const Dashboard: React.FC = () => {
           value={stats.pendingReturns}
           icon={TrendingUp}
           color="red"
+          onClick={() => navigate('/pending-balances')}
         />
         {userRole !== 'STAFF' && (
           <StatCard
