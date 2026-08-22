@@ -114,10 +114,14 @@ const Dashboard: React.FC = () => {
     return dashboardStats?.collections?.today_fuel_expense || 0;
   }, [dashboardStats]);
 
+  const totalMakroonToday = React.useMemo(() => {
+    return dashboardStats?.collections?.today_makroon_expense || 0;
+  }, [dashboardStats]);
+
   const totalCollectedToday = React.useMemo(() => {
     const rawTotal = todayCollections.reduce((sum: number, item: any) => sum + item.paidAmount, 0);
-    return rawTotal - totalFuelToday;
-  }, [todayCollections, totalFuelToday]);
+    return rawTotal - totalFuelToday - totalMakroonToday;
+  }, [todayCollections, totalFuelToday, totalMakroonToday]);
 
   const totalTablePaidAmount = React.useMemo(() => {
     return todayCollections.reduce((sum: number, item: any) => {
@@ -316,6 +320,10 @@ const Dashboard: React.FC = () => {
                 <span className="text-gray-500 font-medium">CNG/Petrol:</span>
                 <span className="text-red-700 font-bold">-₹{totalFuelToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">Makroon:</span>
+                <span className="text-pink-700 font-bold">-₹{totalMakroonToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
             </div>
           </StatCard>
         )}
@@ -384,6 +392,7 @@ const Dashboard: React.FC = () => {
                     <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">GPay: ₹{totalGPayToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className="text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded">Old Pending Collected: ₹{totalOldPendingToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded">CNG/Petrol: -₹{totalFuelToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs font-semibold text-pink-700 bg-pink-50 border border-pink-100 px-2 py-0.5 rounded">Makroon: -₹{totalMakroonToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </span>
                 ) : activeView === 'pending_issued' ? (
                   <span className="text-red-700">Total Pending Given Today: ₹{totalPendingIssuedToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

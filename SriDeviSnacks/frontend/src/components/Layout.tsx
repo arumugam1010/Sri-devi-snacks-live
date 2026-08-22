@@ -285,6 +285,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                   <option value="CNG">CNG Only</option>
                   <option value="PETROL">Petrol Only</option>
                   <option value="CNG+PETROL">CNG + Petrol</option>
+                  <option value="MAKROON">Makroon</option>
                 </select>
               </div>
 
