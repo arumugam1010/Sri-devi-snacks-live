@@ -526,7 +526,47 @@ function getShopProducts($shopId) {
                               FROM shop_products sp
                               JOIN products p ON sp.product_id = p.id
                               LEFT JOIN stocks s ON p.id = s.product_id
-                              WHERE sp.shop_id = :shop_id");
+                              WHERE sp.shop_id = :shop_id
+                              ORDER BY CASE p.product_name 
+                                WHEN 'நெய் முறுக்கு' THEN 1
+                                WHEN 'நெய் சில்லி முறுக்கு' THEN 2
+                                WHEN 'தேன் குழல் முறுக்கு' THEN 3
+                                WHEN 'தேன் குழல் சில்லி முறுக்கு' THEN 4
+                                WHEN 'பூண்டு முறுக்கு' THEN 5
+                                WHEN 'பூண்டு சில்லி முறுக்கு' THEN 6
+                                WHEN 'தேங்காய் பால் முறுக்கு' THEN 7
+                                WHEN 'தட்டை' THEN 8
+                                WHEN 'அச்சி முறுக்கு' THEN 9
+                                WHEN 'மிக்சர்' THEN 10
+                                WHEN 'சேவு' THEN 11
+                                WHEN 'சீவல்' THEN 12
+                                WHEN 'பம்பாய் மிக்சர்' THEN 13
+                                WHEN 'ஓமப்பொடி' THEN 14
+                                WHEN 'ஆந்திரா முறுக்கு' THEN 15
+                                WHEN 'பொரி மிக்சர்' THEN 16
+                                WHEN 'காராபூந்தி' THEN 17
+                                WHEN 'கை சுத்து முறுக்கு' THEN 18
+                                WHEN 'தேன் மிட்டாய்' THEN 19
+                                WHEN 'கடலை மிட்டாய்' THEN 20
+                                WHEN 'சீடை' THEN 21
+                                WHEN 'வாழைக்காய் சிப்ஸ்' THEN 22
+                                WHEN 'கிழங்கு குச்சி' THEN 23
+                                WHEN 'கிழங்கு சிப்ஸ்' THEN 24
+                                WHEN 'பழம் சிப்ஸ்' THEN 25
+                                WHEN 'உருளைக்கிழங்கு சிப்ஸ் (Lays)' THEN 26
+                                WHEN 'மஸ்கோத் ஹல்வா' THEN 27
+                                WHEN 'தேங்காய் பர்பி' THEN 28
+                                WHEN 'இனிப்பு காரசேவு' THEN 29
+                                WHEN 'பன்' THEN 30
+                                WHEN 'கிரீம் பன்' THEN 31
+                                WHEN 'தேங்காய் பன்' THEN 32
+                                WHEN 'பிரெட்' THEN 33
+                                WHEN 'தேங்காய் பன் (தோசை பன்)' THEN 34
+                                WHEN 'காரி' THEN 35
+                                WHEN '4 பன்' THEN 36
+                                WHEN 'ஜாம் பன்' THEN 37
+                                ELSE 999 
+                              END ASC");
         $stmt->execute(['shop_id' => $shopId]);
         $rows = $stmt->fetchAll();
         
@@ -582,7 +622,47 @@ function getAllShopProducts() {
                               FROM shop_products sp
                               JOIN products p ON sp.product_id = p.id
                               JOIN shops sh ON sp.shop_id = sh.id
-                              LEFT JOIN stocks s ON p.id = s.product_id");
+                              LEFT JOIN stocks s ON p.id = s.product_id
+                              ORDER BY CASE p.product_name 
+                                WHEN 'நெய் முறுக்கு' THEN 1
+                                WHEN 'நெய் சில்லி முறுக்கு' THEN 2
+                                WHEN 'தேன் குழல் முறுக்கு' THEN 3
+                                WHEN 'தேன் குழல் சில்லி முறுக்கு' THEN 4
+                                WHEN 'பூண்டு முறுக்கு' THEN 5
+                                WHEN 'பூண்டு சில்லி முறுக்கு' THEN 6
+                                WHEN 'தேங்காய் பால் முறுக்கு' THEN 7
+                                WHEN 'தட்டை' THEN 8
+                                WHEN 'அச்சி முறுக்கு' THEN 9
+                                WHEN 'மிக்சர்' THEN 10
+                                WHEN 'சேவு' THEN 11
+                                WHEN 'சீவல்' THEN 12
+                                WHEN 'பம்பாய் மிக்சர்' THEN 13
+                                WHEN 'ஓமப்பொடி' THEN 14
+                                WHEN 'ஆந்திரா முறுக்கு' THEN 15
+                                WHEN 'பொரி மிக்சர்' THEN 16
+                                WHEN 'காராபூந்தி' THEN 17
+                                WHEN 'கை சுத்து முறுக்கு' THEN 18
+                                WHEN 'தேன் மிட்டாய்' THEN 19
+                                WHEN 'கடலை மிட்டாய்' THEN 20
+                                WHEN 'சீடை' THEN 21
+                                WHEN 'வாழைக்காய் சிப்ஸ்' THEN 22
+                                WHEN 'கிழங்கு குச்சி' THEN 23
+                                WHEN 'கிழங்கு சிப்ஸ்' THEN 24
+                                WHEN 'பழம் சிப்ஸ்' THEN 25
+                                WHEN 'உருளைக்கிழங்கு சிப்ஸ் (Lays)' THEN 26
+                                WHEN 'மஸ்கோத் ஹல்வா' THEN 27
+                                WHEN 'தேங்காய் பர்பி' THEN 28
+                                WHEN 'இனிப்பு காரசேவு' THEN 29
+                                WHEN 'பன்' THEN 30
+                                WHEN 'கிரீம் பன்' THEN 31
+                                WHEN 'தேங்காய் பன்' THEN 32
+                                WHEN 'பிரெட்' THEN 33
+                                WHEN 'தேங்காய் பன் (தோசை பன்)' THEN 34
+                                WHEN 'காரி' THEN 35
+                                WHEN '4 பன்' THEN 36
+                                WHEN 'ஜாம் பன்' THEN 37
+                                ELSE 999 
+                              END ASC");
         $stmt->execute();
         $rows = $stmt->fetchAll();
         
