@@ -276,17 +276,27 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select
-                  value={fuelType}
-                  onChange={(e) => setFuelType(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
-                >
-                  <option value="CNG">CNG Only</option>
-                  <option value="PETROL">Petrol Only</option>
-                  <option value="CNG+PETROL">CNG + Petrol</option>
-                  <option value="MAKROON">Makroon</option>
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-4 flex-wrap">
+                  {[
+                    { value: 'CNG', label: 'CNG Only' },
+                    { value: 'PETROL', label: 'Petrol Only' },
+                    { value: 'CNG+PETROL', label: 'CNG + Petrol' },
+                    { value: 'MAKROON', label: 'Makroon' }
+                  ].map((option) => (
+                    <label key={option.value} className="inline-flex items-center cursor-pointer bg-gray-50 border border-gray-200 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors">
+                      <input
+                        type="radio"
+                        name="fuelType"
+                        value={option.value}
+                        checked={fuelType === option.value}
+                        onChange={(e) => setFuelType(e.target.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      />
+                      <span className="ml-2 text-sm text-gray-700 font-medium">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div>
