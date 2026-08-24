@@ -142,6 +142,14 @@ switch ($module) {
         require_once __DIR__ . '/controllers/fuel_expenses.php';
         handleFuelExpensesRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'suppliers':
+        require_once __DIR__ . '/controllers/suppliers.php';
+        handleSuppliersRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
+    case 'purchase-bills':
+        require_once __DIR__ . '/controllers/purchase_bills.php';
+        handlePurchaseBillsRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'debug-db':
         try {
             $db = getDatabaseConnection();

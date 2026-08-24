@@ -13,7 +13,9 @@ import {
   MapPin,
   Users,
   Printer,
-  Fuel
+  Fuel,
+  Truck,
+  FileText
 } from 'lucide-react';
 const Logo = '/Logo.png';
 import { useAppContext } from '../context/AppContext';
@@ -41,6 +43,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
   const allNavigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Suppliers', href: '/suppliers', icon: Truck },
+    { name: 'Purchase Bills', href: '/purchase-bills', icon: FileText },
     { name: 'Shops', href: '/shops', icon: Store },
     { name: 'Products', href: '/products', icon: Package },
     { name: 'Stock', href: '/stock', icon: Warehouse },

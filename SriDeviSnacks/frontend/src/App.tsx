@@ -11,6 +11,8 @@ import ContactSection from './components/landing/ContactSection';
 import Dashboard from './components/Dashboard';
 import Shops from './components/Shops';
 import Products from './components/Products';
+import Suppliers from './components/Suppliers';
+import PurchaseBills from './components/PurchaseBills';
 import Billing from './components/Billing';
 import Reports from './components/Reports';
 import Layout from './components/Layout';
@@ -180,6 +182,22 @@ function App() {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Products />
+                </Layout>
+              }
+            />
+            <Route
+              path="/suppliers"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <Suppliers />
+                </Layout>
+              }
+            />
+            <Route
+              path="/purchase-bills"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <PurchaseBills />
                 </Layout>
               }
             />

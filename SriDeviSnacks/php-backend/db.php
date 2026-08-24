@@ -261,6 +261,51 @@ function getDatabaseConnection() {
                     INDEX idx_expense_date (expense_date)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+                // Create suppliers table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS suppliers (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    contact_info VARCHAR(255) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Create supplier_items table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS supplier_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    supplier_id INT NOT NULL,
+                    item_name VARCHAR(255) NOT NULL,
+                    default_price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+                    gst_rate DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Create purchase_bills table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_bills (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    supplier_id INT NOT NULL,
+                    bill_number VARCHAR(100) NOT NULL,
+                    total_amount DECIMAL(10, 2) NOT NULL,
+                    image_path VARCHAR(255) NULL,
+                    bill_date DATE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Create purchase_bill_items table
+                $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_bill_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bill_id INT NOT NULL,
+                    item_name VARCHAR(255) NOT NULL,
+                    quantity DECIMAL(10, 2) NOT NULL,
+                    price DECIMAL(10, 2) NOT NULL,
+                    gst_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+                    total DECIMAL(10, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (bill_id) REFERENCES purchase_bills(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
                 // Seed daily_stock_history from bill items
                 try {
                     $pdo->exec("

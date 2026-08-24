@@ -14,6 +14,11 @@ const getBaseApiUrl = (): string => {
 };
 const API_BASE_URL = getBaseApiUrl();
 
+export const getBaseUrl = (): string => {
+  // Return the path without the trailing '/api' for serving static uploads
+  return API_BASE_URL.replace(/\/api$/, '');
+};
+
 // Helper function to get auth token
 const getAuthToken = (): string | null => {
   return localStorage.getItem('authToken');
@@ -515,3 +520,67 @@ export const fuelExpensesAPI = {
     });
   },
 };
+
+// Generic API methods for simple endpoints
+const api = {
+  get: async (endpoint: string, options?: RequestInit) => {
+    const data = await authenticatedFetch(`${API_BASE_URL}${endpoint}`, options);
+    return { data };
+  },
+  post: async (endpoint: string, body?: any, options?: RequestInit) => {
+    const isFormData = body instanceof FormData;
+    const fetchOptions: RequestInit = {
+      method: 'POST',
+      ...options,
+    };
+    
+    if (isFormData) {
+      // Don't set Content-Type for FormData, let browser set it with boundary
+      fetchOptions.body = body;
+      // Remove Content-Type if it was set so browser handles boundary
+      if (fetchOptions.headers && 'Content-Type' in fetchOptions.headers) {
+         delete (fetchOptions.headers as any)['Content-Type'];
+      }
+    } else {
+      fetchOptions.body = JSON.stringify(body);
+    }
+    
+    // We need to bypass authenticatedFetch's forced Content-Type: application/json for FormData
+    if (isFormData) {
+      const token = getAuthToken();
+      const headers = new Headers(options?.headers);
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      // Ensure Content-Type is NOT set
+      headers.delete('Content-Type');
+      
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...fetchOptions,
+        headers
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'API request failed');
+      return { data }; // Wrap in { data } to match axios style expected by components
+    }
+
+    const data = await authenticatedFetch(`${API_BASE_URL}${endpoint}`, fetchOptions);
+    return { data }; // Wrap in { data } to match axios style expected by components
+  },
+  put: async (endpoint: string, body: any, options?: RequestInit) => {
+    const data = await authenticatedFetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+      ...options,
+    });
+    return { data };
+  },
+  delete: async (endpoint: string, options?: RequestInit) => {
+    const data = await authenticatedFetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+      ...options,
+    });
+    return { data };
+  },
+};
+
+export default api;
+
