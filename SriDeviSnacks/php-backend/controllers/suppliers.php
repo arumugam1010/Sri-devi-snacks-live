@@ -2,7 +2,7 @@
 
 function handleSuppliersRoute($parts, $method) {
     $db = getDatabaseConnection();
-    requireAdminUser(); // Only Admins can manage suppliers
+    requireSuperAdminUser(); // Only Admins can manage suppliers
 
     $action = $parts[1] ?? '';
     $id = isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : null;
@@ -41,6 +41,7 @@ function handleSuppliersRoute($parts, $method) {
         $input = getJsonInput();
         $name = trim($input['name'] ?? '');
         $contact = trim($input['contact_info'] ?? '');
+        $gst_number = trim($input['gst_number'] ?? '');
         $items = $input['items'] ?? []; // Array of {item_name, default_price, gst_rate}
 
         if (empty($name)) {
@@ -50,8 +51,8 @@ function handleSuppliersRoute($parts, $method) {
         try {
             $db->beginTransaction();
 
-            $stmt = $db->prepare("INSERT INTO suppliers (name, contact_info) VALUES (?, ?)");
-            $stmt->execute([$name, $contact]);
+            $stmt = $db->prepare("INSERT INTO suppliers (name, contact_info, gst_number) VALUES (?, ?, ?)");
+            $stmt->execute([$name, $contact, $gst_number]);
             $supplierId = $db->lastInsertId();
 
             if (is_array($items) && count($items) > 0) {
@@ -76,6 +77,7 @@ function handleSuppliersRoute($parts, $method) {
          $input = getJsonInput();
          $name = trim($input['name'] ?? '');
          $contact = trim($input['contact_info'] ?? '');
+         $gst_number = trim($input['gst_number'] ?? '');
          $items = $input['items'] ?? []; // Array of {item_name, default_price, gst_rate}
  
          if (empty($name)) {
@@ -85,8 +87,8 @@ function handleSuppliersRoute($parts, $method) {
          try {
              $db->beginTransaction();
  
-             $stmt = $db->prepare("UPDATE suppliers SET name = ?, contact_info = ? WHERE id = ?");
-             $stmt->execute([$name, $contact, $id]);
+             $stmt = $db->prepare("UPDATE suppliers SET name = ?, contact_info = ?, gst_number = ? WHERE id = ?");
+             $stmt->execute([$name, $contact, $gst_number, $id]);
              
              // Simple approach: delete existing items and re-insert
              $delStmt = $db->prepare("DELETE FROM supplier_items WHERE supplier_id = ?");

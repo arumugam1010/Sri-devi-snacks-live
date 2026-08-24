@@ -73,6 +73,15 @@ function requireAdminUser() {
     return $user;
 }
 
+// Middleware: Require SUPER_ADMIN
+function requireSuperAdminUser() {
+    $user = getAuthenticatedUser();
+    if (!isset($user['role']) || $user['role'] !== 'SUPER_ADMIN') {
+        sendResponse(false, 'Forbidden: Super Admin access required', null, 403);
+    }
+    return $user;
+}
+
 // Parse request URL relative to the script location
 $requestUri = $_SERVER['REQUEST_URI'];
 $scriptName = $_SERVER['SCRIPT_NAME'];

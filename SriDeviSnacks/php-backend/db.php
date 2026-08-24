@@ -82,6 +82,15 @@ function getDatabaseConnection() {
                     }
                 } catch (\Exception $e) {}
                 
+                // Check and add gst_number to suppliers table
+                try {
+                    $stmt = $pdo->query("SHOW COLUMNS FROM suppliers LIKE 'gst_number'");
+                    $column = $stmt->fetch();
+                    if (!$column) {
+                        $pdo->exec("ALTER TABLE suppliers ADD COLUMN gst_number VARCHAR(50) NULL");
+                    }
+                } catch (\Exception $e) {}
+                
                 // Check and create settings table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
                     setting_key VARCHAR(100) PRIMARY KEY,
@@ -289,9 +298,18 @@ function getDatabaseConnection() {
                     total_amount DECIMAL(10, 2) NOT NULL,
                     image_path VARCHAR(255) NULL,
                     bill_date DATE NOT NULL,
+                    is_gst TINYINT(1) NOT NULL DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                // Check and add is_gst to purchase_bills if missing
+                try {
+                    $stmt = $pdo->query("SHOW COLUMNS FROM purchase_bills LIKE 'is_gst'");
+                    if (!$stmt->fetch()) {
+                        $pdo->exec("ALTER TABLE purchase_bills ADD COLUMN is_gst TINYINT(1) NOT NULL DEFAULT 1");
+                    }
+                } catch (\Exception $e) {}
 
                 // Create purchase_bill_items table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_bill_items (

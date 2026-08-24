@@ -12,6 +12,7 @@ interface Supplier {
   id: number;
   name: string;
   contact_info: string;
+  gst_number?: string;
   items: SupplierItem[];
 }
 
@@ -22,6 +23,7 @@ const Suppliers: React.FC = () => {
   
   const [name, setName] = useState('');
   const [contactInfo, setContactInfo] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
   const [items, setItems] = useState<SupplierItem[]>([
     { item_name: '', default_price: 0, gst_rate: 0 }
   ]);
@@ -68,6 +70,7 @@ const Suppliers: React.FC = () => {
   const resetForm = () => {
     setName('');
     setContactInfo('');
+    setGstNumber('');
     setItems([{ item_name: '', default_price: 0, gst_rate: 0 }]);
     setEditingId(null);
     setShowForm(false);
@@ -76,6 +79,7 @@ const Suppliers: React.FC = () => {
   const handleEdit = (supplier: Supplier) => {
     setName(supplier.name);
     setContactInfo(supplier.contact_info || '');
+    setGstNumber(supplier.gst_number || '');
     setItems(supplier.items.length > 0 ? [...supplier.items] : [{ item_name: '', default_price: 0, gst_rate: 0 }]);
     setEditingId(supplier.id);
     setShowForm(true);
@@ -111,6 +115,7 @@ const Suppliers: React.FC = () => {
       const payload = {
         name,
         contact_info: contactInfo,
+        gst_number: gstNumber,
         items: validItems
       };
 
@@ -182,7 +187,7 @@ const Suppliers: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Name *</label>
                 <input
@@ -195,13 +200,23 @@ const Suppliers: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Info</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Info (Optional)</label>
                 <input
                   type="text"
                   value={contactInfo}
                   onChange={(e) => setContactInfo(e.target.value)}
                   className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
                   placeholder="Phone, Address, or Email"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">GST Number (Optional)</label>
+                <input
+                  type="text"
+                  value={gstNumber}
+                  onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 uppercase"
+                  placeholder="22AAAAA0000A1Z5"
                 />
               </div>
             </div>
@@ -308,6 +323,7 @@ const Suppliers: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items Supplied</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -320,6 +336,9 @@ const Suppliers: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-500">
                       {supplier.contact_info || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700">
+                      {supplier.gst_number || '-'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-2">

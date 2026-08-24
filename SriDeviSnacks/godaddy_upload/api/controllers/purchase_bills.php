@@ -2,7 +2,7 @@
 
 function handlePurchaseBillsRoute($parts, $method) {
     $db = getDatabaseConnection();
-    requireAdminUser();
+    requireSuperAdminUser();
 
     $action = $parts[1] ?? '';
     $id = isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : null;
@@ -51,6 +51,7 @@ function handlePurchaseBillsRoute($parts, $method) {
         $billNumber = trim($_POST['bill_number'] ?? '');
         $billDate = trim($_POST['bill_date'] ?? date('Y-m-d'));
         $totalAmount = isset($_POST['total_amount']) ? (float)$_POST['total_amount'] : 0;
+        $isGst = isset($_POST['is_gst']) ? (int)$_POST['is_gst'] : 1;
         $itemsJson = $_POST['items'] ?? '[]';
         $items = json_decode($itemsJson, true);
         
@@ -81,8 +82,8 @@ function handlePurchaseBillsRoute($parts, $method) {
         try {
             $db->beginTransaction();
             
-            $stmt = $db->prepare("INSERT INTO purchase_bills (supplier_id, bill_number, total_amount, image_path, bill_date) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$supplierId, $billNumber, $totalAmount, $imagePath, $billDate]);
+            $stmt = $db->prepare("INSERT INTO purchase_bills (supplier_id, bill_number, total_amount, image_path, bill_date, is_gst) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$supplierId, $billNumber, $totalAmount, $imagePath, $billDate, $isGst]);
             $billId = $db->lastInsertId();
             
             if (is_array($items) && count($items) > 0) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar } from 'lucide-react';
+import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer } from 'lucide-react';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
 
@@ -31,6 +31,7 @@ interface PurchaseBill {
   total_amount: number;
   bill_date: string;
   image_path: string | null;
+  is_gst: number;
   items?: BillItem[];
 }
 
@@ -39,8 +40,8 @@ const PurchaseBills: React.FC = () => {
   const [bills, setBills] = useState<PurchaseBill[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Tabs: 'form', 'list', 'images'
-  const [activeTab, setActiveTab] = useState<'form' | 'list' | 'images'>('list');
+  // Tabs: 'form', 'gst_list', 'nongst_list', 'images'
+  const [activeTab, setActiveTab] = useState<'form' | 'gst_list' | 'nongst_list' | 'images'>('gst_list');
   
   // Form State
   const [supplierId, setSupplierId] = useState<number | ''>('');
@@ -49,6 +50,7 @@ const PurchaseBills: React.FC = () => {
   const [items, setItems] = useState<BillItem[]>([
     { item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }
   ]);
+  const [isGst, setIsGst] = useState<number>(1);
   const [billImage, setBillImage] = useState<File | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +104,93 @@ const PurchaseBills: React.FC = () => {
     }
   };
 
+  const handlePrintAllBills = () => {
+    if (!selectedMonth) return;
+    const billsToPrint = groupedBills[selectedMonth.fy][selectedMonth.month];
+    
+    // Create a hidden iframe to print without opening a new tab
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    let content = `
+      <html>
+        <head>
+          <title>Print Bills - ${selectedMonth.month} ${selectedMonth.fy}</title>
+          <style>
+            @page { size: A4 portrait; margin: 10mm; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+            .page { 
+              page-break-after: always;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 90vh; /* Adjust height to fit within A4 */
+              box-sizing: border-box;
+            }
+            .page:last-child {
+              page-break-after: auto;
+            }
+            .title { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-align: center; }
+            img { max-width: 100%; max-height: 80vh; object-fit: contain; }
+          </style>
+        </head>
+        <body>
+    `;
+
+    let hasImages = false;
+    billsToPrint.forEach(bill => {
+      if (bill.image_path && !bill.image_path.endsWith('.pdf')) {
+        hasImages = true;
+        content += `
+          <div class="page">
+            <div class="title">Supplier: ${bill.supplier_name} | Bill No: ${bill.bill_number} | Date: ${new Date(bill.bill_date).toLocaleDateString()}</div>
+            <img src="${getBaseUrl()}/${bill.image_path}" />
+          </div>
+        `;
+      }
+    });
+
+    if (!hasImages) {
+      content += `<p style="text-align: center; margin-top: 50px;">No printable images found for this month.</p>`;
+    }
+
+    content += `
+        </body>
+      </html>
+    `;
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(content);
+      doc.close();
+
+      // Wait a moment for images to start loading, then trigger print
+      setTimeout(() => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }
+        // Remove iframe after a generous delay so print dialog doesn't break
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 120000); // 2 minutes
+      }, 1000);
+    } else {
+      document.body.removeChild(iframe);
+      alert("Failed to initialize printing.");
+    }
+  };
+
   const getFinancialYear = (dateStr: string) => {
     const date = new Date(dateStr);
     const month = date.getMonth(); // 0-11
@@ -145,6 +234,16 @@ const PurchaseBills: React.FC = () => {
   const handleSupplierChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = parseInt(e.target.value);
     setSupplierId(id || '');
+    
+    // Auto-detect GST type based on supplier items
+    const supplier = suppliers.find(s => s.id === id);
+    if (supplier && supplier.items && supplier.items.length > 0) {
+      const hasGst = supplier.items.some(item => (item.gst_rate || 0) > 0);
+      setIsGst(hasGst ? 1 : 0);
+    } else {
+      setIsGst(1); // Default to GST if no items
+    }
+
     // Reset items if supplier changes
     setItems([{ item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }]);
   };
@@ -199,6 +298,7 @@ const PurchaseBills: React.FC = () => {
     setSupplierId('');
     setBillNumber('');
     setBillDate(new Date().toISOString().split('T')[0]);
+    setIsGst(1);
     setItems([{ item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }]);
     setBillImage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -218,6 +318,7 @@ const PurchaseBills: React.FC = () => {
     formData.append('bill_number', billNumber);
     formData.append('bill_date', billDate);
     formData.append('total_amount', grandTotal.toString());
+    formData.append('is_gst', isGst.toString());
     formData.append('items', JSON.stringify(validItems));
     
     if (billImage) {
@@ -236,7 +337,7 @@ const PurchaseBills: React.FC = () => {
         setSuccess('Purchase bill added successfully');
         resetForm();
         fetchData();
-        setActiveTab('list');
+        setActiveTab(isGst === 1 ? 'gst_list' : 'nongst_list');
         setTimeout(() => setSuccess(''), 3000);
       }
     } catch (err: any) {
@@ -247,6 +348,17 @@ const PurchaseBills: React.FC = () => {
   };
 
   const selectedSupplier = suppliers.find(s => s.id === supplierId);
+
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  
+  const thisMonthBills = bills.filter(b => {
+    const d = new Date(b.bill_date);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+  
+  const thisMonthGstTotal = thisMonthBills.filter(b => b.is_gst === 1).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+  const thisMonthNonGstTotal = thisMonthBills.filter(b => b.is_gst === 0).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -259,12 +371,18 @@ const PurchaseBills: React.FC = () => {
           <p className="text-gray-500 mt-1">Manage purchase bills and upload bill images.</p>
         </div>
         
-        <div className="flex bg-gray-100 p-1 rounded-lg">
+        <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
           <button
-            onClick={() => setActiveTab('list')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            onClick={() => setActiveTab('gst_list')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'gst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            All Bills
+            GST Bills
+          </button>
+          <button
+            onClick={() => setActiveTab('nongst_list')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'nongst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Non-GST Bills
           </button>
           <button
             onClick={() => setActiveTab('form')}
@@ -299,7 +417,7 @@ const PurchaseBills: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Header Info */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
                 <select
@@ -334,6 +452,40 @@ const PurchaseBills: React.FC = () => {
                   onChange={(e) => setBillDate(e.target.value)}
                   className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bill Type *</label>
+                <div className="flex space-x-4 mt-2">
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input 
+                      type="radio" 
+                      className="form-radio text-indigo-600 focus:ring-indigo-500" 
+                      name="isGst" 
+                      value="1" 
+                      checked={isGst === 1} 
+                      onChange={() => setIsGst(1)} 
+                    />
+                    <span className="ml-2 text-sm text-gray-700 font-medium">GST</span>
+                  </label>
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input 
+                      type="radio" 
+                      className="form-radio text-indigo-600 focus:ring-indigo-500" 
+                      name="isGst" 
+                      value="0" 
+                      checked={isGst === 0} 
+                      onChange={() => {
+                        setIsGst(0);
+                        setItems(items.map(item => ({
+                          ...item,
+                          gst_percentage: 0,
+                          total: calculateTotal(item.quantity, item.price, 0)
+                        })));
+                      }} 
+                    />
+                    <span className="ml-2 text-sm text-gray-700 font-medium">Non-GST</span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -410,9 +562,10 @@ const PurchaseBills: React.FC = () => {
                             type="number"
                             min="0"
                             step="0.01"
-                            value={item.gst_percentage || ''}
+                            value={isGst === 0 ? 0 : (item.gst_percentage || '')}
                             onChange={(e) => handleItemChange(index, 'gst_percentage', parseFloat(e.target.value) || 0)}
-                            className="w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            className={`w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 ${isGst === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                            disabled={isGst === 0}
                           />
                         </td>
                         <td className="py-2 pr-2">
@@ -497,12 +650,44 @@ const PurchaseBills: React.FC = () => {
         </div>
       )}
 
-      {/* LIST TAB */}
-      {activeTab === 'list' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+
+
+      {/* LIST TABS */}
+      {(activeTab === 'gst_list' || activeTab === 'nongst_list') && (
+        <div className="space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-indigo-500">
+              <div>
+                <p className="text-sm font-medium text-gray-500">This Month GST</p>
+                <p className="text-2xl font-bold text-gray-900">₹{thisMonthGstTotal.toFixed(2)}</p>
+              </div>
+              <div className="bg-indigo-50 p-3 rounded-full">
+                <FileText className="w-6 h-6 text-indigo-600" />
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-gray-400">
+              <div>
+                <p className="text-sm font-medium text-gray-500">This Month Non-GST</p>
+                <p className="text-2xl font-bold text-gray-900">₹{thisMonthNonGstTotal.toFixed(2)}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-full">
+                <FileText className="w-6 h-6 text-gray-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* List Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-gray-700">
+                {activeTab === 'gst_list' ? 'GST Bills' : 'Non-GST Bills'}
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
@@ -511,16 +696,16 @@ const PurchaseBills: React.FC = () => {
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Bill Image</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {bills.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                      No purchase bills found.
-                    </td>
-                  </tr>
-                ) : (
-                  bills.map((bill) => (
-                    <tr key={bill.id} className="hover:bg-gray-50">
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {bills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        No purchase bills found in this category.
+                      </td>
+                    </tr>
+                  ) : (
+                    bills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).map((bill) => (
+                      <tr key={bill.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(bill.bill_date).toLocaleDateString()}
                       </td>
@@ -547,9 +732,10 @@ const PurchaseBills: React.FC = () => {
                       </td>
                     </tr>
                   ))
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -579,12 +765,22 @@ const PurchaseBills: React.FC = () => {
                   <div className="p-6">
                     {selectedMonth && selectedMonth.fy === fy ? (
                       <div>
-                        <button 
-                          onClick={() => setSelectedMonth(null)}
-                          className="mb-6 inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                          ← Back to Months
-                        </button>
+                        <div className="flex justify-between items-center mb-6">
+                          <button 
+                            onClick={() => setSelectedMonth(null)}
+                            className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            ← Back to Months
+                          </button>
+                          
+                          <button 
+                            onClick={handlePrintAllBills}
+                            className="inline-flex items-center text-sm font-medium text-white hover:bg-indigo-700 bg-indigo-600 px-4 py-2 rounded-lg shadow-sm transition-colors"
+                          >
+                            <Printer className="w-4 h-4 mr-2" />
+                            Print All Bills
+                          </button>
+                        </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-2">
                           Purchase Bills - {selectedMonth.month}
                         </h3>

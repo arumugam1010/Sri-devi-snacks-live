@@ -57,7 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
   // Filter navigation based on user role
   const navigation = allNavigation.filter(item => {
-    if (item.name === 'VTS GPS' || item.name === 'Employees' || item.name === 'Label Printer') {
+    if (['VTS GPS', 'Employees', 'Label Printer', 'Suppliers', 'Purchase Bills'].includes(item.name)) {
       return userRole === 'SUPER_ADMIN';
     }
     if (userRole === 'STAFF') {
