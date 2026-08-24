@@ -17,7 +17,7 @@ interface DaySchedule {
   shops: Shop[];
 }
 
-const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const WeeklySchedule: React.FC = () => {
   const { weeklySchedule, setWeeklySchedule } = useAppContext();

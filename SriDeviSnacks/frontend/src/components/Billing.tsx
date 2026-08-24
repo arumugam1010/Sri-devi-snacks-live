@@ -519,7 +519,7 @@
 
 
     // Days of week for dropdown
-    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 
 
@@ -1803,28 +1803,26 @@
           <title>Print Monthly Bills</title>
           <style>
             * {
-              font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
-              font-weight: 900 !important;
+              font-family: Arial, Helvetica, sans-serif !important;
               color: #000 !important;
-              -webkit-text-stroke: 0.5px black !important;
-              text-stroke: 0.5px black !important;
             }
             @page {
-              size: 80mm auto;
-              margin: 0;
+              size: A4;
+              margin: 5mm;
             }
             body {
               font-family: Arial, Helvetica, sans-serif;
               margin: 0;
               padding: 0;
-              line-height: 1.3;
-              font-size: 17px;
+              line-height: 1.2;
+              font-size: 11px;
             }
             .single-bill {
-              width: 80mm;
-              padding: 2mm 0mm;
+              width: 100%;
+              padding: 0;
               box-sizing: border-box;
               page-break-after: always;
+              page-break-inside: avoid;
             }
             .single-bill:last-child {
               page-break-after: avoid;
@@ -1835,74 +1833,74 @@
             .header-row {
               display: flex;
               justify-content: space-between;
-              margin-bottom: 10px;
-              font-size: 15px;
+              margin-bottom: 5px;
+              font-size: 11px;
             }
             .company-name {
-              font-size: 28px;
+              font-size: 18px;
               font-weight: bold;
               text-align: center;
-              margin-bottom: 5px;
+              margin-bottom: 2px;
             }
             .company-address, .company-city {
               text-align: center;
-              font-size: 15px;
-              margin-bottom: 3px;
+              font-size: 11px;
+              margin-bottom: 1px;
             }
             .shop-info, .shop-gst {
-              margin-bottom: 5px;
-              font-size: 15px;
+              margin-bottom: 2px;
+              font-size: 11px;
             }
             .bill-items {
               width: 100%;
               border-collapse: collapse;
-              margin-bottom: 15px;
+              margin-bottom: 5px;
             }
             .bill-items th {
-              font-size: 15px !important;
-              padding: 5px 3px;
+              font-size: 11px !important;
+              padding: 2px 1px;
               text-align: left;
               border: 1px solid #ccc;
               background-color: #f8f9fa;
               font-weight: bold;
             }
             .bill-items td {
-              font-size: 17px !important;
-              padding: 5px 3px;
+              font-size: 11px !important;
+              padding: 2px 1px;
               text-align: left;
               border: 1px solid #ccc;
             }
             .product-name-cell {
-              font-size: 20px !important;
+              font-size: 12px !important;
               font-weight: bold !important;
             }
             .bill-totals {
               width: 100%;
-              margin-top: 10px;
+              margin-top: 5px;
             }
             .total-row {
               display: flex;
               justify-content: space-between;
-              padding: 3px 0;
-              font-size: 15px;
+              padding: 1px 0;
+              font-size: 11px;
             }
             .final-total-row {
-              font-size: 28px !important;
+              font-size: 16px !important;
               font-weight: bold !important;
-              padding: 5px 0;
+              padding: 2px 0;
             }
             .final-total-row div {
-              font-size: 28px !important;
+              font-size: 16px !important;
               font-weight: bold !important;
             }
             .qty-col {
               border-right: 1px solid #000 !important;
-              padding-right: 8px !important;
+              padding-right: 4px !important;
             }
             .price-col {
               border-right: 1px solid #000 !important;
-              padding-right: 8px !important;
-              padding-left: 8px !important;
+              padding-right: 4px !important;
+              padding-left: 4px !important;
             }
             .rupee {
               color: #000 !important;
@@ -1910,21 +1908,21 @@
             }
             .dashed-line {
               border-bottom: 1px dashed #000;
-              margin: 8px 0;
+              margin: 2px 0;
             }
             .double-dark-line {
               border-top: 3px double #000;
-              margin: 8px 0;
+              margin: 2px 0;
             }
             .dark-line {
               border-top: 2px solid #000;
-              margin: 8px 0;
+              margin: 2px 0;
             }
             .thank-you {
               text-align: center;
-              margin-top: 15px;
+              margin-top: 5px;
               font-weight: bold;
-              font-size: 17px;
+              font-size: 12px;
             }
             .payment-details {
               margin-top: 10px;
@@ -1935,8 +1933,8 @@
             .status-pending { color: #ca8a04; }
             @media print {
               .single-bill {
-                padding: 4mm 2mm;
-                width: 72mm;
+                padding: 0;
+                width: 100%;
               }
             }
           </style>
@@ -2812,6 +2810,7 @@
                       <option value="">Select a day...</option>
                       {daysOfWeek.map(day => {
                         const dayLabels: { [key: string]: string } = {
+                          'Sunday': 'ஞாயிறு (Sunday)',
                           'Monday': 'திங்கள் (Monday)',
                           'Tuesday': 'செவ்வாய் (Tuesday)',
                           'Wednesday': 'புதன் (Wednesday)',

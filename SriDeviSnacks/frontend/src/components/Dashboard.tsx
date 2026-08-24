@@ -166,7 +166,41 @@ const Dashboard: React.FC = () => {
     }, 0);
   }, [todayCollections]);
 
-  const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns'>('received');
+  const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns' | 'gst_bills'>('received');
+  const [gstStartDate, setGstStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [gstEndDate, setGstEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const gstBillsList = React.useMemo(() => {
+    return bills.filter(bill => {
+      const shop = shops.find(s => s.id === bill.shop_id);
+      const shopHasGst = shop && shop.gst && shop.gst.trim() !== '';
+      
+      if (!shopHasGst) return false;
+      
+      const bDate = new Date(bill.bill_date);
+      if (gstStartDate) {
+        const sDate = new Date(gstStartDate);
+        sDate.setHours(0,0,0,0);
+        if (bDate < sDate) return false;
+      }
+      if (gstEndDate) {
+        const eDate = new Date(gstEndDate);
+        eDate.setHours(23,59,59,999);
+        if (bDate > eDate) return false;
+      }
+      return true;
+    }).sort((a, b) => new Date(b.bill_date).getTime() - new Date(a.bill_date).getTime());
+  }, [bills, shops, gstStartDate, gstEndDate]);
+
+  const totalGstBillAmount = React.useMemo(() => {
+    return gstBillsList.reduce((sum, bill) => sum + bill.total_amount, 0);
+  }, [gstBillsList]);
+
+  const totalGstTaxAmount = React.useMemo(() => {
+    return gstBillsList.reduce((sum, bill) => {
+      return sum + (bill.items ? bill.items.reduce((itemSum: number, item: any) => itemSum + (item.sgst || 0) + (item.cgst || 0), 0) : 0);
+    }, 0);
+  }, [gstBillsList]);
 
   const todayReturns = React.useMemo(() => {
     const returns: any[] = [];
@@ -224,33 +258,30 @@ const Dashboard: React.FC = () => {
 
   const StatCard = ({ title, value, icon: Icon, change, color = 'blue', children, onClick }: any) => (
     <div 
-      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col h-full ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
       onClick={onClick}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-          {children}
-          {/* {change && (
-            <div className="flex items-center mt-2">
-              <ArrowUp className="h-4 w-4 text-green-500 mr-1" />
-              <span className="text-sm text-green-600">+{change}%</span>
-              <span className="text-sm text-gray-500 ml-1">from yesterday</span> 
-            </div>
-          )} */}
+          <p className="text-xs font-medium text-gray-500">{title}</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{value}</p>
         </div>
-        <div className={`p-3 rounded-full bg-${color}-100`}>
-          <Icon className={`h-6 w-6 text-${color}-600`} />
+        <div className={`p-2 rounded-full bg-${color}-100 flex-shrink-0`}>
+          <Icon className={`h-5 w-5 text-${color}-600`} />
         </div>
       </div>
+      {children && (
+        <div className="mt-auto pt-3 text-sm">
+          {children}
+        </div>
+      )}
     </div>
   );
 
   if (loading || contextLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading dashboard...</div>
+        <div className="text-gray-500 animate-pulse font-medium text-lg">Loading dashboard data...</div>
       </div>
     );
   }
@@ -258,7 +289,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4">
         <StatCard
           title="Total Shops"
           value={stats.totalShops}
@@ -295,6 +326,13 @@ const Dashboard: React.FC = () => {
           icon={TrendingUp}
           color="red"
           onClick={() => navigate('/pending-balances')}
+        />
+        <StatCard
+          title="GST Bills"
+          value={gstBillsList.length}
+          icon={Receipt}
+          color="indigo"
+          onClick={() => setActiveView('gst_bills')}
         />
         {userRole !== 'STAFF' && (
           <StatCard
@@ -428,13 +466,24 @@ const Dashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setActiveView('pending_issued')}
-                  className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                  className={`relative inline-flex items-center px-4 py-2 border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
                     activeView === 'pending_issued'
                       ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
                       : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   Today Pending Given Shop ({todayPendingIssued.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('gst_bills')}
+                  className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                    activeView === 'gst_bills'
+                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  GST Bills ({gstBillsList.length})
                 </button>
               </div>
             </div>
@@ -524,6 +573,60 @@ const Dashboard: React.FC = () => {
                   </tfoot>
                 )}
               </table>
+            ) : activeView === 'gst_bills' ? (
+              <div className="p-4">
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+                    <input type="date" value={gstStartDate} onChange={(e) => setGstStartDate(e.target.value)} className="border-gray-300 rounded-md text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+                    <input type="date" value={gstEndDate} onChange={(e) => setGstEndDate(e.target.value)} className="border-gray-300 rounded-md text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+                  </div>
+                </div>
+                <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop GST</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill No</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax (SGST+CGST)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {gstBillsList.length === 0 ? (
+                      <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">No GST bills found for this date range.</td></tr>
+                    ) : (
+                      gstBillsList.map((bill, idx) => {
+                         const shop = shops.find(s => s.id === bill.shop_id);
+                         const tax = bill.items ? bill.items.reduce((sum, item) => sum + (item.sgst || 0) + (item.cgst || 0), 0) : 0;
+                         return (
+                           <tr key={bill.id} className="hover:bg-gray-50">
+                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(bill.bill_date).toLocaleDateString()}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bill.shop_name}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{shop?.gst || '-'}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{bill.id}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">₹{bill.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">₹{tax.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                           </tr>
+                         )
+                      })
+                    )}
+                  </tbody>
+                  {gstBillsList.length > 0 && (
+                    <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                      <tr>
+                        <td colSpan={4} className="px-6 py-4 text-right">Total:</td>
+                        <td className="px-6 py-4 text-left text-blue-700">₹{totalGstBillAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td className="px-6 py-4 text-left text-red-700">₹{totalGstTaxAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
             ) : activeView === 'pending_issued' ? (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">

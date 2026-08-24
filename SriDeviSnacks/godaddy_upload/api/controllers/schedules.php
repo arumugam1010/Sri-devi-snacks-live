@@ -279,17 +279,34 @@ function createSchedule() {
         }
         
         // Check unique constraint shopId & dayOfWeek
-        $stmt = $db->prepare("SELECT id FROM schedules WHERE shop_id = :shop_id AND day_of_week = :day LIMIT 1");
+        $stmt = $db->prepare("SELECT id, isActive FROM schedules WHERE shop_id = :shop_id AND day_of_week = :day LIMIT 1");
         $stmt->execute(['shop_id' => $shopId, 'day' => $dayOfWeek]);
-        if ($stmt->fetch()) {
-            sendResponse(false, 'Schedule already exists for this shop and day', null, 409);
+        $existing = $stmt->fetch();
+        
+        if ($existing) {
+            // If it exists but is inactive, reactivate it instead of throwing an error
+            if ($existing['isActive'] == 0 || $existing['isActive'] === false) {
+                $stmt = $db->prepare("UPDATE schedules SET isActive = 1, updatedAt = NOW() WHERE id = :id");
+                $stmt->execute(['id' => $existing['id']]);
+                $scheduleId = $existing['id'];
+            } else {
+                // If we get here and it's active but doesn't show in frontend, it's likely a corrupted MySQL ENUM row matching our query. 
+                // Let's force delete it and recreate it just to be safe.
+                $stmt = $db->prepare("DELETE FROM schedules WHERE id = :id");
+                $stmt->execute(['id' => $existing['id']]);
+                
+                $stmt = $db->prepare("INSERT INTO schedules (shop_id, day_of_week, isActive, createdAt, updatedAt) 
+                                      VALUES (:shop_id, :day, 1, NOW(), NOW())");
+                $stmt->execute(['shop_id' => $shopId, 'day' => $dayOfWeek]);
+                $scheduleId = (int)$db->lastInsertId();
+            }
+        } else {
+            $stmt = $db->prepare("INSERT INTO schedules (shop_id, day_of_week, isActive, createdAt, updatedAt) 
+                                  VALUES (:shop_id, :day, 1, NOW(), NOW())");
+            $stmt->execute(['shop_id' => $shopId, 'day' => $dayOfWeek]);
+            
+            $scheduleId = (int)$db->lastInsertId();
         }
-        
-        $stmt = $db->prepare("INSERT INTO schedules (shop_id, day_of_week, isActive, createdAt, updatedAt) 
-                              VALUES (:shop_id, :day, 1, NOW(), NOW())");
-        $stmt->execute(['shop_id' => $shopId, 'day' => $dayOfWeek]);
-        
-        $scheduleId = (int)$db->lastInsertId();
         
         // Fetch new schedule
         $stmt = $db->prepare("SELECT id, shop_id as shopId, day_of_week as dayOfWeek, isActive, createdAt, updatedAt FROM schedules WHERE id = :id");

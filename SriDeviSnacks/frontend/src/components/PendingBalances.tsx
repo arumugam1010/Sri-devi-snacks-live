@@ -5,8 +5,11 @@ import { billsAPI } from '../services/api';
 import GPayQRCode from './GPayQRCode';
 
 const PendingBalances: React.FC = () => {
-  const { bills } = useAppContext();
+  const { bills, refreshData } = useAppContext();
   const [selectedGPayBill, setSelectedGPayBill] = useState<any>(null);
+  const [selectedCashBill, setSelectedCashBill] = useState<any>(null);
+  const [cashAmount, setCashAmount] = useState<string>('');
+  const [isCashSubmitting, setIsCashSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const pendingShopsReport = useMemo(() => {
@@ -77,6 +80,42 @@ const PendingBalances: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleCashPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCashBill || !cashAmount || parseFloat(cashAmount) <= 0) return;
+    
+    const amountToCollect = parseFloat(cashAmount);
+    if (amountToCollect > selectedCashBill.amount) {
+      alert("Collected amount cannot be greater than pending amount!");
+      return;
+    }
+
+    setIsCashSubmitting(true);
+    try {
+      const newReceivedAmount = selectedCashBill.receivedAmount + amountToCollect;
+      
+      const response = await billsAPI.updateBill(selectedCashBill.billId, {
+        receivedAmount: newReceivedAmount,
+        paymentMode: 'CASH'
+      });
+
+      if (response.success) {
+        alert("Cash collected successfully!");
+        setSelectedCashBill(null);
+        setCashAmount('');
+        // Refresh data to update pending balances and dashboard stats
+        await refreshData();
+      } else {
+        alert("Failed to collect cash: " + (response.message || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error collecting cash:", error);
+      alert("Failed to collect cash");
+    } finally {
+      setIsCashSubmitting(false);
+    }
   };
 
   return (
@@ -168,18 +207,35 @@ const PendingBalances: React.FC = () => {
                               <div><span className="font-semibold text-gray-700">Bill #{b.billNumber}</span> ({new Date(b.date).toLocaleDateString()})</div>
                               <div>Purchase: ₹{b.totalAmount.toLocaleString()} | Pending: <span className="font-bold text-red-600">₹{b.pendingAmount.toLocaleString()}</span></div>
                             </div>
-                            <button
-                              onClick={() => setSelectedGPayBill({
-                                billId: b.billNumber,
-                                shopId: shop.shop_id,
-                                shopName: shop.shop_name,
-                                amount: b.pendingAmount,
-                                receivedAmount: b.receivedAmount
-                              })}
-                              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-semibold text-xs shadow-sm whitespace-nowrap self-start xl:self-auto"
-                            >
-                              Pay with GPay (Bill #{b.billNumber})
-                            </button>
+                            <div className="flex gap-2 self-start xl:self-auto flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setSelectedCashBill({
+                                    billId: b.billNumber,
+                                    shopId: shop.shop_id,
+                                    shopName: shop.shop_name,
+                                    amount: b.pendingAmount,
+                                    receivedAmount: b.receivedAmount
+                                  });
+                                  setCashAmount(b.pendingAmount.toString());
+                                }}
+                                className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition font-semibold text-xs shadow-sm whitespace-nowrap"
+                              >
+                                Pay with Cash
+                              </button>
+                              <button
+                                onClick={() => setSelectedGPayBill({
+                                  billId: b.billNumber,
+                                  shopId: shop.shop_id,
+                                  shopName: shop.shop_name,
+                                  amount: b.pendingAmount,
+                                  receivedAmount: b.receivedAmount
+                                })}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-semibold text-xs shadow-sm whitespace-nowrap"
+                              >
+                                Pay with GPay (Bill #{b.billNumber})
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -220,6 +276,73 @@ const PendingBalances: React.FC = () => {
             }
           }}
         />
+      )}
+      {selectedCashBill && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-auto relative overflow-hidden">
+            <div className="bg-green-600 p-4 text-center">
+              <h3 className="text-xl font-bold text-white">Cash Collection</h3>
+              <p className="text-green-100 text-sm mt-1">Bill #{selectedCashBill.billId}</p>
+            </div>
+            
+            <form onSubmit={handleCashPayment} className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                  <div className="text-gray-900 font-medium bg-gray-50 p-2 rounded border border-gray-200">
+                    {selectedCashBill.shopName}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Pending</label>
+                  <div className="text-red-600 font-bold bg-red-50 p-2 rounded border border-red-100">
+                    ₹{selectedCashBill.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="cashAmount" className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount Collected (₹)
+                  </label>
+                  <input
+                    type="number"
+                    id="cashAmount"
+                    min="1"
+                    max={selectedCashBill.amount}
+                    step="0.01"
+                    required
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 font-medium text-lg"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCashBill(null);
+                    setCashAmount('');
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition"
+                  disabled={isCashSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCashSubmitting}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50"
+                >
+                  {isCashSubmitting ? 'Processing...' : 'Confirm'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

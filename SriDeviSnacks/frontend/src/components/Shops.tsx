@@ -78,7 +78,8 @@ const Shops: React.FC = () => {
               Wednesday: [],
               Thursday: [],
               Friday: [],
-              Saturday: []
+              Saturday: [],
+              Sunday: []
             };
 
             // Backend returns schedules grouped by day, so we need to iterate through each day
@@ -291,7 +292,7 @@ const Shops: React.FC = () => {
         setWeeklySchedule(updatedSchedule);
         setShowShopSelector(false); // Close the modal after successful assignment
       } else {
-        alert(response.message || 'Failed to assign shop to schedule');
+        alert("Backend returned error: " + (response.message || 'Failed to assign shop to schedule'));
       }
     } catch (err: any) {
       alert(err.message || 'Error assigning shop to schedule');
@@ -345,7 +346,7 @@ const Shops: React.FC = () => {
     }
   };
 
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   return (
     <div className="space-y-6">

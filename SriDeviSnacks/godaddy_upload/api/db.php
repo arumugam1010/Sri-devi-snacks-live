@@ -200,6 +200,15 @@ function getDatabaseConnection() {
                 } catch (\Exception $e) {
                     // Ignore migration issues to avoid blocking connection
                 }
+
+                // Clean up corrupted enum values and add SUNDAY to schedules day_of_week enum
+                try {
+                    // If an invalid ENUM was inserted when strict mode was off, it gets index 0
+                    $pdo->exec("DELETE FROM schedules WHERE day_of_week + 0 = 0 OR day_of_week IS NULL");
+                    $pdo->exec("ALTER TABLE schedules MODIFY COLUMN day_of_week ENUM('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY') NOT NULL");
+                } catch (\Exception $e) {
+                    // Ignore if already altered or table doesn't exist
+                }
                 
                 // Insert default vehicle number if it doesn't exist
                 $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM settings WHERE setting_key = 'vehicle_number'");

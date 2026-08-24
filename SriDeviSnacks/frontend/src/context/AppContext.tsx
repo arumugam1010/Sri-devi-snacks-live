@@ -124,7 +124,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
   const [shops, setShops] = useState<Shop[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(
-    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => ({ day, shops: [] }))
+    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => ({ day, shops: [] }))
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,11 +158,43 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
       setLoading(true);
       setError(null);
       try {
-        // Fetch products
-        const productsResponse = await productsAPI.getProducts({ limit: 1000 });
+        // Fire all independent queries in parallel
+        const [
+          productsRes,
+          stocksRes,
+          shopsRes,
+          schedulesRes,
+          billsRes,
+          shopProductsRes,
+          settingsRes
+        ] = await Promise.all([
+          productsAPI.getProducts({ limit: 1000 }),
+          stocksAPI.getStocks(),
+          shopsAPI.getShops({ limit: 1000 }),
+          schedulesAPI.getSchedules(),
+          billsAPI.getBills({ limit: 1000 }),
+          shopsAPI.getAllShopProducts(),
+          settingsAPI.getSettings()
+        ]);
+
+        let fetchedShops: any[] = [];
+        if (shopsRes.success) {
+          fetchedShops = shopsRes.data.map((shop: any) => ({
+            id: shop.id,
+            shop_name: shop.shopName,
+            address: shop.address,
+            contact: shop.contact,
+            email: shop.email,
+            gst: shop.gstNumber,
+            status: shop.status.toLowerCase(),
+            created_date: new Date(shop.createdAt).toISOString().split('T')[0],
+          }));
+          setShops(fetchedShops);
+        }
+
         let productsData: any[] = [];
-        if (productsResponse.success) {
-          productsData = productsResponse.data.map((p: any) => ({
+        if (productsRes.success) {
+          productsData = productsRes.data.map((p: any) => ({
             id: p.id,
             product_name: p.productName,
             unit: p.unit,
@@ -170,7 +202,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
             created_date: p.createdAt,
             gst: p.gst,
             quantity: p.stocks?.[0]?.quantity || 0,
-            rate: p.price || 0,  // Use price from products as rate
+            rate: p.price || 0,
             hsn_code: p.hsnCode,
             price: p.price || 0,
             stockId: p.stocks?.[0]?.id || null,
@@ -178,116 +210,90 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           }));
         }
 
-      // Fetch stocks and merge with products
-      const stocksResponse = await stocksAPI.getStocks();
-      if (stocksResponse.success) {
-        const stocksData = stocksResponse.data;
-        productsData = productsData.map(product => {
-          const stock = stocksData.find((s: any) => s.productId === product.id);
-          if (stock) {
-            return {
-              ...product,
-              quantity: stock.quantity,
-              stockId: stock.id,
-              soldToday: stock.soldToday || 0,
-              morningStock: stock.morningStock,
-            };
-          }
-          return product;
-        });
-      }
+        if (stocksRes.success) {
+          const stocksData = stocksRes.data;
+          productsData = productsData.map(product => {
+            const stock = stocksData.find((s: any) => s.productId === product.id);
+            if (stock) {
+              return {
+                ...product,
+                quantity: stock.quantity,
+                stockId: stock.id,
+                soldToday: stock.soldToday || 0,
+                morningStock: stock.morningStock,
+              };
+            }
+            return product;
+          });
+        }
+        setProducts(productsData);
 
-      setProducts(productsData);
+        if (schedulesRes.success) {
+          const scheduleData = schedulesRes.data;
+          
+          const mapScheduleShop = (s: any) => {
+            const shop = fetchedShops.find((shop: any) => shop.id === s.shop?.id);
+            if (shop) return shop;
+            if (s.shop) {
+              return {
+                id: s.shop.id,
+                shop_name: s.shop.shopName || s.shop.shop_name,
+                address: s.shop.address,
+                contact: s.shop.contact,
+                email: s.shop.email,
+                gst: s.shop.gstNumber || s.shop.gst,
+                status: s.shop.status?.toLowerCase(),
+                created_date: s.shop.createdAt ? new Date(s.shop.createdAt).toISOString().split('T')[0] : (s.shop.created_date || ''),
+              };
+            }
+            return null;
+          };
 
-      // Fetch shops first
-      const shopsResponse = await shopsAPI.getShops({ limit: 1000 });
-      let fetchedShops: any[] = [];
-      if (shopsResponse.success) {
-        fetchedShops = shopsResponse.data.map((shop: any) => ({
-          id: shop.id,
-          shop_name: shop.shopName,
-          address: shop.address,
-          contact: shop.contact,
-          email: shop.email,
-          gst: shop.gstNumber,
-          status: shop.status.toLowerCase(),
-          created_date: new Date(shop.createdAt).toISOString().split('T')[0],
-        }));
-        setShops(fetchedShops);
-      }
+          const weeklyScheduleData: DaySchedule[] = [
+            { day: 'Monday', shops: scheduleData.MONDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Tuesday', shops: scheduleData.TUESDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Wednesday', shops: scheduleData.WEDNESDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Thursday', shops: scheduleData.THURSDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Friday', shops: scheduleData.FRIDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Saturday', shops: scheduleData.SATURDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+            { day: 'Sunday', shops: scheduleData.SUNDAY?.map(mapScheduleShop).filter(Boolean) || [] },
+          ];
+          setWeeklySchedule(weeklyScheduleData);
+        }
 
-      // Fetch schedules and populate with shop data
-      const schedulesResponse = await schedulesAPI.getSchedules();
-      if (schedulesResponse.success) {
-        const scheduleData = schedulesResponse.data;
-        
-        const mapScheduleShop = (s: any) => {
-          const shop = fetchedShops.find((shop: any) => shop.id === s.shop?.id);
-          if (shop) return shop;
-          if (s.shop) {
-            return {
-              id: s.shop.id,
-              shop_name: s.shop.shopName || s.shop.shop_name,
-              address: s.shop.address,
-              contact: s.shop.contact,
-              email: s.shop.email,
-              gst: s.shop.gstNumber || s.shop.gst,
-              status: s.shop.status?.toLowerCase(),
-              created_date: s.shop.createdAt ? new Date(s.shop.createdAt).toISOString().split('T')[0] : (s.shop.created_date || ''),
-            };
-          }
-          return null;
-        };
+        if (billsRes.success) {
+          setBills(billsRes.data.map((b: any) => ({
+            id: b.id.toString(),
+            bill_number: b.billNumber,
+            shop_id: b.shopId,
+            shop_name: b.shop.shopName,
+            bill_date: b.billDate,
+            total_amount: b.totalAmount,
+            received_amount: b.receivedAmount,
+            pending_amount: b.pendingAmount,
+            status: b.status,
+            payment_mode: b.payment_mode,
+            cash_amount: b.cash_amount,
+            gpay_amount: b.gpay_amount,
+            updated_at: b.updatedAt,
+            created_at: b.createdAt,
+            user_name: b.user?.name,
+            items: b.billItems.map((item: any) => ({
+              product_id: item.productId,
+              product_name: item.product.productName,
+              quantity: item.quantity,
+              price: item.rate,
+              rate: item.rate,
+              amount: item.amount,
+              sgst: item.sgst,
+              cgst: item.cgst,
+              hsnCode: item.hsnCode,
+            })),
+          })));
+        }
 
-        const weeklyScheduleData: DaySchedule[] = [
-          { day: 'Monday', shops: scheduleData.MONDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-          { day: 'Tuesday', shops: scheduleData.TUESDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-          { day: 'Wednesday', shops: scheduleData.WEDNESDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-          { day: 'Thursday', shops: scheduleData.THURSDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-          { day: 'Friday', shops: scheduleData.FRIDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-          { day: 'Saturday', shops: scheduleData.SATURDAY?.map(mapScheduleShop).filter(Boolean) || [] },
-        ];
-        setWeeklySchedule(weeklyScheduleData);
-      }
-
-      // Fetch bills
-      const billsResponse = await billsAPI.getBills({ limit: 1000 });
-      if (billsResponse.success) {
-        setBills(billsResponse.data.map((b: any) => ({
-          id: b.id.toString(),
-          bill_number: b.billNumber,
-          shop_id: b.shopId,
-          shop_name: b.shop.shopName,
-          bill_date: b.billDate,
-          total_amount: b.totalAmount,
-          received_amount: b.receivedAmount,
-          pending_amount: b.pendingAmount,
-          status: b.status,
-          payment_mode: b.payment_mode,
-          cash_amount: b.cash_amount,
-          gpay_amount: b.gpay_amount,
-          updated_at: b.updatedAt,
-          created_at: b.createdAt,
-          user_name: b.user?.name,
-          items: b.billItems.map((item: any) => ({
-            product_id: item.productId,
-            product_name: item.product.productName,
-            quantity: item.quantity,
-            price: item.rate,
-            rate: item.rate,
-            amount: item.amount,
-            sgst: item.sgst,
-            cgst: item.cgst,
-            hsnCode: item.hsnCode,
-          })),
-        })));
-      }
-
-      // Fetch shop products in a single call to ensure shopPricing is preloaded on all pages (like Billing)
-      try {
-        const response = await shopsAPI.getAllShopProducts();
-        if (response.success) {
-          const fetchedShopProducts: ShopProduct[] = response.data.map((sp: any) => ({
+        if (shopProductsRes.success) {
+          const fetchedShopProducts: ShopProduct[] = shopProductsRes.data.map((sp: any) => ({
             id: sp.id,
             shop_id: sp.shopId,
             product_id: sp.productId,
@@ -300,59 +306,29 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           }));
           setShopProducts(fetchedShopProducts);
         }
-      } catch (shopProductsErr) {
-        console.error('Failed to fetch shop products:', shopProductsErr);
-      }
 
-      // Fetch settings
-      try {
-        const settingsResponse = await settingsAPI.getSettings();
-        if (settingsResponse.success && settingsResponse.data) {
-          if (settingsResponse.data.vehicle_number !== undefined) {
-            setVehicleNumber(settingsResponse.data.vehicle_number);
-          }
-          if (settingsResponse.data.whatsapp_enabled !== undefined) {
-            setWhatsappEnabled(settingsResponse.data.whatsapp_enabled);
-          }
-          if (settingsResponse.data.whatsapp_phone !== undefined) {
-            setWhatsappPhone(settingsResponse.data.whatsapp_phone);
-          }
-          if (settingsResponse.data.whatsapp_provider !== undefined) {
-            setWhatsappProvider(settingsResponse.data.whatsapp_provider);
-          }
-          if (settingsResponse.data.whatsapp_api_token !== undefined) {
-            setWhatsappToken(settingsResponse.data.whatsapp_api_token);
-          }
-          if (settingsResponse.data.whatsapp_instance_id !== undefined) {
-            setWhatsappInstanceId(settingsResponse.data.whatsapp_instance_id);
-          }
-          if (settingsResponse.data.low_stock_threshold !== undefined) {
-            setLowStockThreshold(Number(settingsResponse.data.low_stock_threshold));
-          }
-          if (settingsResponse.data.sms_enabled !== undefined) {
-            setSmsEnabled(settingsResponse.data.sms_enabled);
-          }
-          if (settingsResponse.data.sms_phone !== undefined) {
-            setSmsPhone(settingsResponse.data.sms_phone);
-          }
-          if (settingsResponse.data.sms_api_key !== undefined) {
-            setSmsApiKey(settingsResponse.data.sms_api_key);
-          }
-          
+        if (settingsRes.success && settingsRes.data) {
+          if (settingsRes.data.vehicle_number !== undefined) setVehicleNumber(settingsRes.data.vehicle_number);
+          if (settingsRes.data.whatsapp_enabled !== undefined) setWhatsappEnabled(settingsRes.data.whatsapp_enabled);
+          if (settingsRes.data.whatsapp_phone !== undefined) setWhatsappPhone(settingsRes.data.whatsapp_phone);
+          if (settingsRes.data.whatsapp_provider !== undefined) setWhatsappProvider(settingsRes.data.whatsapp_provider);
+          if (settingsRes.data.whatsapp_api_token !== undefined) setWhatsappToken(settingsRes.data.whatsapp_api_token);
+          if (settingsRes.data.whatsapp_instance_id !== undefined) setWhatsappInstanceId(settingsRes.data.whatsapp_instance_id);
+          if (settingsRes.data.low_stock_threshold !== undefined) setLowStockThreshold(Number(settingsRes.data.low_stock_threshold));
+          if (settingsRes.data.sms_enabled !== undefined) setSmsEnabled(settingsRes.data.sms_enabled);
+          if (settingsRes.data.sms_phone !== undefined) setSmsPhone(settingsRes.data.sms_phone);
+          if (settingsRes.data.sms_api_key !== undefined) setSmsApiKey(settingsRes.data.sms_api_key);
           
           const todayStr = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
-          if (settingsResponse.data.route_save_date === todayStr) {
-            if (settingsResponse.data.route_day) {
-              setRouteDay(settingsResponse.data.route_day);
+          if (settingsRes.data.route_save_date === todayStr) {
+            if (settingsRes.data.route_day) {
+              setRouteDay(settingsRes.data.route_day);
             }
-            if (settingsResponse.data.today_route) {
-              setTodayRoute(settingsResponse.data.today_route);
+            if (settingsRes.data.today_route) {
+              setTodayRoute(settingsRes.data.today_route);
             }
           }
         }
-      } catch (settingsErr) {
-        console.error('Failed to fetch settings:', settingsErr);
-      }
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
     } finally {
