@@ -15,8 +15,7 @@ const getBaseApiUrl = (): string => {
 const API_BASE_URL = getBaseApiUrl();
 
 export const getBaseUrl = (): string => {
-  // Return the path without the trailing '/api' for serving static uploads
-  return API_BASE_URL.replace(/\/api$/, '');
+  return API_BASE_URL;
 };
 
 // Helper function to get auth token

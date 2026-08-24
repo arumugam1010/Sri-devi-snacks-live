@@ -563,32 +563,90 @@ const PurchaseBills: React.FC = () => {
                 
                 {expandedFY === fy && (
                   <div className="p-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                      {Object.keys(groupedBills[fy]).map(month => {
-                        const monthBills = groupedBills[fy][month];
-                        const totalAmount = monthBills.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
-                        
-                        return (
-                          <div 
-                            key={month} 
-                            className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group"
-                            onClick={() => setSelectedMonth({fy, month})}
-                          >
-                            <div className="absolute top-0 right-0 bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-bl-lg">
-                              {monthBills.length} bills
+                    {selectedMonth && selectedMonth.fy === fy ? (
+                      <div>
+                        <button 
+                          onClick={() => setSelectedMonth(null)}
+                          className="mb-6 inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          ← Back to Months
+                        </button>
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-2">
+                          Purchase Bills - {selectedMonth.month}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {groupedBills[selectedMonth.fy][selectedMonth.month].map(bill => (
+                            <div key={bill.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
+                              <div className="h-48 bg-gray-200 relative">
+                                {bill.image_path?.endsWith('.pdf') ? (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                                    <div className="text-center">
+                                      <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                                      <span className="text-sm font-medium text-gray-500">PDF Document</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <img 
+                                    src={`${getBaseUrl()}/${bill.image_path}`} 
+                                    alt={`Bill ${bill.bill_number}`} 
+                                    className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                    onClick={() => window.open(`${getBaseUrl()}/${bill.image_path}`, '_blank')}
+                                  />
+                                )}
+                              </div>
+                              <div className="p-4">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <p className="text-xs text-gray-500 font-medium">{new Date(bill.bill_date).toLocaleDateString()}</p>
+                                    <h4 className="font-bold text-gray-900">{bill.supplier_name}</h4>
+                                  </div>
+                                  <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded">
+                                    ₹{parseFloat(bill.total_amount.toString()).toFixed(2)}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mb-3">Bill No: <span className="font-medium text-gray-900">{bill.bill_number}</span></p>
+                                
+                                <a 
+                                  href={`${getBaseUrl()}/${bill.image_path}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block w-full text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-sm py-2 rounded-lg border border-indigo-100 transition-colors"
+                                >
+                                  Open Full Image
+                                </a>
+                              </div>
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-4">{month}</h3>
-                            <div className="space-y-1 text-sm">
-                              <p className="text-gray-500">Total Purchase:</p>
-                              <p className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(2)}</p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {Object.keys(groupedBills[fy]).map(month => {
+                          const monthBills = groupedBills[fy][month];
+                          const totalAmount = monthBills.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+                          
+                          return (
+                            <div 
+                              key={month} 
+                              className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group"
+                              onClick={() => setSelectedMonth({fy, month})}
+                            >
+                              <div className="absolute top-0 right-0 bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-bl-lg">
+                                {monthBills.length} bills
+                              </div>
+                              <h3 className="text-xl font-bold text-gray-900 mb-4">{month}</h3>
+                              <div className="space-y-1 text-sm">
+                                <p className="text-gray-500">Total Purchase:</p>
+                                <p className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(2)}</p>
+                              </div>
+                              <div className="mt-4 text-sm text-indigo-600 font-medium group-hover:underline">
+                                Click to view all bills
+                              </div>
                             </div>
-                            <div className="mt-4 text-sm text-indigo-600 font-medium group-hover:underline">
-                              Click to view all bills
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -597,70 +655,6 @@ const PurchaseBills: React.FC = () => {
         </div>
       )}
 
-      {/* MONTH MODAL FOR IMAGES */}
-      {selectedMonth && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-              <h2 className="text-xl font-bold text-gray-900">
-                Purchase Bills - {selectedMonth.month} ({selectedMonth.fy})
-              </h2>
-              <button 
-                onClick={() => setSelectedMonth(null)}
-                className="text-gray-400 hover:text-gray-600 bg-white rounded-full p-1 border border-gray-200"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-grow bg-gray-100">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {groupedBills[selectedMonth.fy][selectedMonth.month].map(bill => (
-                  <div key={bill.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-                    <div className="h-48 bg-gray-200 relative">
-                      {bill.image_path?.endsWith('.pdf') ? (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                          <div className="text-center">
-                            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                            <span className="text-sm font-medium text-gray-500">PDF Document</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <img 
-                          src={`${getBaseUrl()}/${bill.image_path}`} 
-                          alt={`Bill ${bill.bill_number}`} 
-                          className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => window.open(`${getBaseUrl()}/${bill.image_path}`, '_blank')}
-                        />
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="text-xs text-gray-500 font-medium">{new Date(bill.bill_date).toLocaleDateString()}</p>
-                          <h4 className="font-bold text-gray-900">{bill.supplier_name}</h4>
-                        </div>
-                        <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded">
-                          ₹{parseFloat(bill.total_amount.toString()).toFixed(2)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600">Bill No: <span className="font-medium text-gray-900">{bill.bill_number}</span></p>
-                      
-                      <a 
-                        href={`${getBaseUrl()}/${bill.image_path}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-3 block w-full text-center bg-gray-50 hover:bg-gray-100 text-indigo-600 font-medium text-sm py-2 rounded-lg border border-gray-200 transition-colors"
-                      >
-                        Open Full Image
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
