@@ -6,17 +6,17 @@ const ServicesSection: React.FC = () => {
     {
       icon: <PackageSearch className="h-10 w-10 text-orange-600" />,
       title: 'Bulk Orders for Retailers',
-      description: 'We supply our premium snacks at competitive wholesale prices to supermarkets, grocery stores, and local vendors. Our bulk packaging ensures maximum freshness and shelf-life, empowering your business with high-quality products your customers will love.',
+      description: 'We supply our premium machine-made snacks to over 500+ retail shops and wholesale suppliers. Our advanced manufacturing and bulk packaging ensures maximum freshness, perfect consistency, and high capacity for your business.',
     },
     {
       icon: <CalendarHeart className="h-10 w-10 text-orange-600" />,
       title: 'Special Event Catering',
-      description: 'Make your weddings, festivals, and corporate events memorable with our authentic traditional snacks. We offer customized snack boxes and sweet assortments tailored to your specific event requirements, bringing the taste of Vallioor to your celebrations.',
+      description: 'Make your weddings and festivals memorable with our exclusive hand-twisted Kai Suthu Murukku and traditional Laddu. We take special orders tailored to your events, bringing the authentic taste of Vallioor to your celebrations.',
     },
     {
       icon: <Truck className="h-10 w-10 text-orange-600" />,
-      title: 'Reliable Door Delivery',
-      description: 'Enjoy the convenience of having fresh, crispy snacks delivered right to your doorstep. We partner with reliable delivery networks to ensure fast, safe, and secure transportation across our service areas, guaranteeing that you receive our products in perfect condition.',
+      title: 'Reliable Delivery Network',
+      description: 'Enjoy the convenience of having fresh, crispy snacks delivered. We partner with reliable delivery networks to ship our beloved snacks far beyond Vallioor, proudly reaching customers and shops in Chennai, Coimbatore, Hosur, and Mumbai.',
     },
     {
       icon: <Gift className="h-10 w-10 text-orange-600" />,

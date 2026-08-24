@@ -29,7 +29,7 @@ const PublicLayout: React.FC = () => {
                 <span className="text-2xl font-bold text-white tracking-tight">Sri Devi Snacks</span>
               </Link>
               <p className="text-gray-400 leading-relaxed text-sm pr-4">
-                Established in May 2021 by A. Santhanam, Sri Devi Snacks brings the authentic, traditional taste of Vallioor straight to your home. We are dedicated to uncompromising quality and timeless recipes.
+                Established in May 2020 by A. Santhanam, Sri Devi Snacks brings the authentic, traditional taste of Vallioor straight to your home. From a small local unit, we now proudly serve over 500+ shops across Chennai, Coimbatore, Hosur, and Mumbai, combining advanced machinery with timeless recipes.
               </p>
             </div>
 
