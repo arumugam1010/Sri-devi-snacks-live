@@ -61,10 +61,26 @@ const PurchaseBills: React.FC = () => {
   const [groupedBills, setGroupedBills] = useState<Record<string, Record<string, PurchaseBill[]>>>({});
   const [expandedFY, setExpandedFY] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<{fy: string, month: string} | null>(null);
+  const [selectedBillForView, setSelectedBillForView] = useState<PurchaseBill | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleViewBill = async (billId: number) => {
+    setViewLoading(true);
+    try {
+      const res = await api.get(`/purchase-bills/${billId}`);
+      if (res.data.success) {
+        setSelectedBillForView(res.data.data);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch bill details");
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -519,14 +535,12 @@ const PurchaseBills: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
                         {bill.image_path ? (
-                          <a 
-                            href={`${getBaseUrl()}/${bill.image_path}`} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full"
+                          <button 
+                            onClick={() => handleViewBill(bill.id)}
+                            className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full cursor-pointer"
                           >
                             <ImageIcon className="w-4 h-4 mr-1" /> View
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-gray-400 italic">No image</span>
                         )}
@@ -655,6 +669,126 @@ const PurchaseBills: React.FC = () => {
         </div>
       )}
 
+
+      {/* VIEW BILL DETAILS MODAL */}
+      {(selectedBillForView || viewLoading) && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                <FileText className="w-6 h-6 mr-2 text-indigo-600" />
+                {viewLoading ? 'Loading Bill Details...' : `Purchase Bill: ${selectedBillForView?.bill_number}`}
+              </h2>
+              <button 
+                onClick={() => setSelectedBillForView(null)}
+                className="text-gray-400 hover:text-gray-600 bg-white rounded-full p-1 border border-gray-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {!viewLoading && selectedBillForView && (
+              <div className="p-0 overflow-y-auto flex-grow bg-gray-100 flex flex-col md:flex-row">
+                {/* Left side: Bill Details */}
+                <div className="w-full md:w-1/2 p-6 bg-white border-r border-gray-200 overflow-y-auto">
+                  <div className="mb-6 flex justify-between items-start">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium">Supplier</p>
+                      <h3 className="text-lg font-bold text-gray-900">{selectedBillForView.supplier_name}</h3>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-500 font-medium">Date</p>
+                      <p className="font-bold text-gray-900">{new Date(selectedBillForView.bill_date).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  
+                  <h4 className="font-bold text-gray-700 mb-3 border-b border-gray-200 pb-2">Items Purchased</h4>
+                  
+                  {selectedBillForView.items && selectedBillForView.items.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead>
+                          <tr>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">Item</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Qty</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Price</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">GST %</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {selectedBillForView.items.map((item, idx) => (
+                            <tr key={idx} className="text-sm text-gray-700">
+                              <td className="px-2 py-2">{item.item_name}</td>
+                              <td className="px-2 py-2 text-right">{item.quantity}</td>
+                              <td className="px-2 py-2 text-right">₹{parseFloat(item.price.toString()).toFixed(2)}</td>
+                              <td className="px-2 py-2 text-right">{item.gst_percentage}%</td>
+                              <td className="px-2 py-2 text-right font-medium text-gray-900">₹{parseFloat(item.total.toString()).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={4} className="px-2 py-3 text-right font-bold text-gray-700">Grand Total:</td>
+                            <td className="px-2 py-3 text-right font-bold text-indigo-700 text-lg">
+                              ₹{parseFloat(selectedBillForView.total_amount.toString()).toFixed(2)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 italic">No items found for this bill.</p>
+                  )}
+                </div>
+                
+                {/* Right side: Image */}
+                <div className="w-full md:w-1/2 bg-gray-100 p-6 flex flex-col items-center justify-center min-h-[400px]">
+                  {selectedBillForView.image_path ? (
+                    <div className="w-full h-full flex flex-col">
+                      <div className="flex-grow flex items-center justify-center overflow-hidden rounded-lg border border-gray-300 bg-gray-200">
+                        {selectedBillForView.image_path.endsWith('.pdf') ? (
+                          <div className="text-center">
+                            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-2" />
+                            <span className="text-gray-500 font-medium">PDF Document</span>
+                          </div>
+                        ) : (
+                          <img 
+                            src={`${getBaseUrl()}/${selectedBillForView.image_path}`} 
+                            alt="Original Bill" 
+                            className="max-w-full max-h-[60vh] object-contain cursor-zoom-in hover:opacity-95"
+                            onClick={() => window.open(`${getBaseUrl()}/${selectedBillForView.image_path}`, '_blank')}
+                          />
+                        )}
+                      </div>
+                      <a 
+                        href={`${getBaseUrl()}/${selectedBillForView.image_path}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-4 w-full text-center bg-white hover:bg-gray-50 text-indigo-600 font-medium py-3 rounded-xl border border-gray-300 shadow-sm transition-colors"
+                      >
+                        Open Image in New Tab
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-400">
+                      <ImageIcon className="w-16 h-16 mx-auto mb-3 opacity-50" />
+                      <p>No image was uploaded for this bill.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {viewLoading && (
+              <div className="p-12 text-center flex-grow bg-gray-100 flex items-center justify-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+                <span className="ml-3 text-lg text-gray-600 font-medium">Loading details...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );
