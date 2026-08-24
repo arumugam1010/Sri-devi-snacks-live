@@ -5,6 +5,7 @@ import PublicLayout from './components/landing/PublicLayout';
 import HeroSection from './components/landing/HeroSection';
 import AboutSection from './components/landing/AboutSection';
 import ProductsSection from './components/landing/ProductsSection';
+import ProductDetail from './components/landing/ProductDetail';
 import ServicesSection from './components/landing/ServicesSection';
 import ContactSection from './components/landing/ContactSection';
 import Dashboard from './components/Dashboard';
@@ -146,6 +147,7 @@ function App() {
               <Route path="/" element={<HeroSection />} />
               <Route path="/about" element={<AboutSection />} />
               <Route path="/our-products" element={<ProductsSection />} />
+              <Route path="/product/:id" element={<ProductDetail />} />
               <Route path="/services" element={<ServicesSection />} />
               <Route path="/contact" element={<ContactSection />} />
             </Route>

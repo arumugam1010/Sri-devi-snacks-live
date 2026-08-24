@@ -18,10 +18,10 @@ const Home: React.FC = () => {
   };
 
   const topProducts = [
-    { id: 1, name: 'Seeval', image: '/assets/seeval.jpeg', price: '₹60 / 200g' },
-    { id: 2, name: 'Bombay Mixture', image: '/assets/bombay_mixture.jpeg', price: '₹60 / 200g' },
-    { id: 3, name: 'Omapodi', image: '/assets/omapodi.jpeg', price: '₹60 / 200g' },
-    { id: 4, name: 'Ghee Murukku', image: '/assets/ghee_murukku.jpeg', price: '₹50 / 150g' },
+    { id: 18, name: 'Seeval', image: '/assets/seeval.jpeg', price: '₹60 / 200g' },
+    { id: 3, name: 'Bombay Mixture', image: '/assets/bombay_mixture.jpeg', price: '₹60 / 200g' },
+    { id: 15, name: 'Omapodi', image: '/assets/omapodi.jpeg', price: '₹60 / 200g' },
+    { id: 8, name: 'Ghee Murukku', image: '/assets/ghee_murukku.jpeg', price: '₹50 / 150g' },
   ];
 
   const faqs = [
@@ -105,7 +105,7 @@ const Home: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {topProducts.map((product) => (
-              <div key={product.id} className="group cursor-pointer" onClick={() => navigate('/our-products')}>
+              <div key={product.id} className="group cursor-pointer" onClick={() => navigate(`/product/${product.id}`)}>
                 <div className="relative overflow-hidden bg-white mb-6">
                   <img src={product.image} alt={product.name} className="w-full h-[400px] object-cover transform group-hover:scale-105 transition-transform duration-700" />
                   <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
