@@ -45,10 +45,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { name: 'Products', href: '/products', icon: Package },
     { name: 'Stock', href: '/stock', icon: Warehouse },
     { name: 'Billing', href: '/billing', icon: Receipt },
-    { name: 'Employees', href: '/employees', icon: Users },
+    // { name: 'Employees', href: '/employees', icon: Users },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Petrol/CNG', onClick: () => setIsFuelModalOpen(true), icon: Fuel },
-    { name: 'VTS GPS', href: '/gps-tracking', icon: MapPin },
+    // { name: 'VTS GPS', href: '/gps-tracking', icon: MapPin },
   ];
 
   // Filter navigation based on user role
