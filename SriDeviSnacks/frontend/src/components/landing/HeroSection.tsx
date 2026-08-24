@@ -74,9 +74,9 @@ const Home: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center gap-16">
           <div className="md:w-1/2">
             <h2 className="text-xs font-bold text-[#ab8c52] tracking-[0.2em] uppercase mb-4">Our Roots</h2>
-            <h3 className="text-5xl text-[#160f0f] mb-8 leading-tight">Born in Vallioor <br/>in 2021</h3>
+            <h3 className="text-5xl text-[#160f0f] mb-8 leading-tight">Born in Vallioor <br/>in May 2020</h3>
             <p className="text-[#766c69] mb-8 leading-relaxed font-light text-lg">
-              Started by A. Santhanam (S/O K. Arumugam) with a simple mission: to bring the nostalgic, homemade taste of Tamil Nadu snacks to every household. What began as a small local venture has grown into a beloved brand, known for strict adherence to quality and traditional preparation methods.
+              Started by A. Santhanam as a small unit, Sri Devi Snacks has grown gradually to supply over 500+ shops and wholesale suppliers. While all our regular snacks are precisely crafted using advanced machinery for ultimate hygiene and scale, we exclusively handcraft special Kai Suthu Murukku and Laddu for weddings. Today, our reach extends to Chennai, Coimbatore, Hosur, and Mumbai.
             </p>
             <button onClick={() => navigate('/about')} className="text-[#160f0f] border-b border-[#160f0f] pb-1 font-medium hover:text-[#ab8c52] hover:border-[#ab8c52] transition-colors uppercase tracking-widest text-xs">
               Read the full story
@@ -145,8 +145,8 @@ const Home: React.FC = () => {
             </div>
             <div className="flex flex-col items-center">
               <CheckCircle className="w-12 h-12 text-[#ab8c52] mb-6" strokeWidth={1} />
-              <h4 className="text-xl text-[#160f0f] mb-3">Handcrafted Daily</h4>
-              <p className="text-[#766c69] font-light text-sm leading-relaxed">Our snacks are made in small batches every single day to guarantee crunch and freshness.</p>
+              <h4 className="text-xl text-[#160f0f] mb-3">Precision Machine Made</h4>
+              <p className="text-[#766c69] font-light text-sm leading-relaxed">All our regular snacks are prepared using advanced machinery to ensure perfect consistency and ultimate hygiene.</p>
             </div>
             <div className="flex flex-col items-center">
               <CheckCircle className="w-12 h-12 text-[#ab8c52] mb-6" strokeWidth={1} />

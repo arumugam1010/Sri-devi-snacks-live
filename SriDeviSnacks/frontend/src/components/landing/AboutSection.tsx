@@ -35,13 +35,13 @@ const AboutSection: React.FC = () => {
               Our Humble Beginnings
             </h3>
             <p className="text-lg text-gray-700 leading-relaxed">
-              Founded in <strong>May 2020</strong> by <strong>A. Santhanam</strong> (S/O K. Arumugam) in the vibrant town of <strong>Vallioor</strong>, Sri Devi Snacks was born out of a profound love for traditional South Indian culinary heritage. 
+              Founded in <strong>May 2020</strong> by <strong>A. Santhanam</strong>, Sri Devi Snacks began as a small, humble unit in Vallioor. Through dedication and a commitment to quality, we have gradually grown into a trusted name in the snack industry. 
             </p>
             <p className="text-lg text-gray-700 leading-relaxed">
-              What started as a modest endeavor to share authentic, homemade-style snacks with the local community quickly blossomed into a beloved brand. A. Santhanam's vision was simple yet powerful: to preserve the timeless recipes passed down through generations and make them accessible to everyone without compromising on quality or taste.
+              To ensure perfect consistency and ultimate hygiene, <strong>all our regular products are manufactured using advanced machinery</strong>. What started by supplying to a few small local shops has now expanded massively. Today, we proudly supply our premium snacks to <strong>over 500+ shops and wholesale suppliers</strong>.
             </p>
             <p className="text-lg text-gray-700 leading-relaxed">
-              Today, from our headquarters at 128c, Santhanamari Amman Kovil Street, Vallioor, we proudly serve a diverse range of crispy murukkus, flavorful mixtures, and delightful sweets that capture the essence of Tamil Nadu's rich snack culture.
+              While we embrace technology for scale, we also honor tradition. For marriages and special occasions, we exclusively handcraft our famous <strong>Kai Suthu Murukku</strong> and traditional <strong>Laddu</strong>. Our reach has grown far beyond Vallioor, with our beloved snacks now being shipped to <strong>Chennai, Coimbatore, Hosur, and Mumbai</strong>.
             </p>
           </div>
         </div>
@@ -54,19 +54,19 @@ const AboutSection: React.FC = () => {
               <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
                 <ShieldCheck className="h-10 w-10 text-orange-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Uncompromising Quality</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Precision Machine Made</h3>
               <p className="text-gray-600 text-lg leading-relaxed">
-                We use only the finest, premium ingredients. Every batch is meticulously crafted to ensure the highest standards of hygiene and taste.
+                All our products are manufactured using advanced machinery, ensuring perfect consistency, strict hygiene, and premium quality in every bite.
               </p>
             </div>
             
             <div className="text-center">
               <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Leaf className="h-10 w-10 text-orange-600" />
+                <Users className="h-10 w-10 text-orange-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Authentic Recipes</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Trusted by 500+ Shops</h3>
               <p className="text-gray-600 text-lg leading-relaxed">
-                Our snacks are made using traditional, time-honored recipes that retain the original, nostalgic flavors of Vallioor.
+                From a small local unit to a major distributor, our snacks are now the trusted choice for over 500 retail shops and wholesale suppliers.
               </p>
             </div>
             
@@ -74,9 +74,9 @@ const AboutSection: React.FC = () => {
               <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Heart className="h-10 w-10 text-orange-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Made with Love</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Special for Marriages</h3>
               <p className="text-gray-600 text-lg leading-relaxed">
-                Just like a mother's cooking, our snacks are prepared with immense care and passion, ensuring a delightful crunch in every bite.
+                We take special orders for marriages, exclusively handcrafting traditional Kai Suthu Murukku and Laddu. Now shipping to Chennai, Coimbatore, Hosur, and Mumbai.
               </p>
             </div>
           </div>
