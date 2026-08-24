@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'; // Import necessary modules
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Login from './components/Login';
-import LandingPage from './components/LandingPage';
+import PublicLayout from './components/landing/PublicLayout';
+import HeroSection from './components/landing/HeroSection';
+import AboutSection from './components/landing/AboutSection';
+import ProductsSection from './components/landing/ProductsSection';
+import ServicesSection from './components/landing/ServicesSection';
+import ContactSection from './components/landing/ContactSection';
 import Dashboard from './components/Dashboard';
 import Shops from './components/Shops';
 import Products from './components/Products';
@@ -135,10 +140,18 @@ function App() {
     <Router basename={getBasename()}>
       <AppProvider user={user}>
         <Routes>
-          <Route
-            path="/"
-            element={!isAuthenticated ? <LandingPage /> : <Navigate to="/dashboard" />}
-          />
+          {/* Public Routes */}
+          {!isAuthenticated ? (
+            <Route element={<PublicLayout />}>
+              <Route path="/" element={<HeroSection />} />
+              <Route path="/about" element={<AboutSection />} />
+              <Route path="/our-products" element={<ProductsSection />} />
+              <Route path="/services" element={<ServicesSection />} />
+              <Route path="/contact" element={<ContactSection />} />
+            </Route>
+          ) : (
+            <Route path="/" element={<Navigate to="/dashboard" />} />
+          )}
           <Route
             path="/login"
             element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />}

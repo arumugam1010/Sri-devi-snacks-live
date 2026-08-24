@@ -1,0 +1,94 @@
+import React from 'react';
+import { Outlet, Link } from 'react-router-dom';
+import Navbar from './Navbar';
+import { MapPin, Phone, Mail, Clock } from 'lucide-react';
+const Logo = '/Logo.png';
+
+const PublicLayout: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-white flex flex-col font-sans">
+      {/* Navigation */}
+      <Navbar />
+
+      {/* Main Content Area */}
+      <main className="flex-grow pt-20">
+        <Outlet />
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-gray-300 pt-16 pb-8 border-t border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+            
+            {/* Column 1: Company Info */}
+            <div className="space-y-4">
+              <Link to="/" className="flex items-center space-x-3 mb-4">
+                <div className="bg-white p-1 rounded-full">
+                  <img src={Logo} alt="Sri Devi Snacks Logo" className="h-10 w-10 object-contain" />
+                </div>
+                <span className="text-2xl font-bold text-white tracking-tight">Sri Devi Snacks</span>
+              </Link>
+              <p className="text-gray-400 leading-relaxed text-sm pr-4">
+                Established in May 2021 by A. Santhanam, Sri Devi Snacks brings the authentic, traditional taste of Vallioor straight to your home. We are dedicated to uncompromising quality and timeless recipes.
+              </p>
+            </div>
+
+            {/* Column 2: Quick Links */}
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-6 uppercase tracking-wider">Explore</h3>
+              <ul className="space-y-3">
+                <li><Link to="/" className="hover:text-orange-500 transition-colors duration-200">Home</Link></li>
+                <li><Link to="/about" className="hover:text-orange-500 transition-colors duration-200">Our Story</Link></li>
+                <li><Link to="/our-products" className="hover:text-orange-500 transition-colors duration-200">Snacks & Sweets</Link></li>
+                <li><Link to="/services" className="hover:text-orange-500 transition-colors duration-200">Services</Link></li>
+                <li><Link to="/contact" className="hover:text-orange-500 transition-colors duration-200">Contact Us</Link></li>
+              </ul>
+            </div>
+
+            {/* Column 3: Contact Details */}
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-6 uppercase tracking-wider">Contact Us</h3>
+              <ul className="space-y-4">
+                <li className="flex items-start">
+                  <MapPin className="h-5 w-5 text-orange-500 mr-3 mt-1 flex-shrink-0" />
+                  <span className="text-sm">
+                    128c, Santhanamari Amman Kovil Street,<br />
+                    Vallioor, Tirunelveli - 627117,<br />
+                    Tamil Nadu
+                  </span>
+                </li>
+                <li className="flex items-center">
+                  <Phone className="h-5 w-5 text-orange-500 mr-3 flex-shrink-0" />
+                  <span className="text-sm">+91 88078 10021<br/>+91 99432 06339</span>
+                </li>
+                <li className="flex items-center">
+                  <Mail className="h-5 w-5 text-orange-500 mr-3 flex-shrink-0" />
+                  <span className="text-sm">info@sridevisnacks.com</span>
+                </li>
+                <li className="flex items-start">
+                  <Clock className="h-5 w-5 text-orange-500 mr-3 mt-1 flex-shrink-0" />
+                  <span className="text-sm">
+                    <strong>Working Hours:</strong><br />
+                    Monday - Sunday<br />
+                    9:00 AM - 9:00 PM
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+          </div>
+          
+          <div className="border-t border-gray-800 pt-8 mt-8 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
+            <p>&copy; {new Date().getFullYear()} Sri Devi Snacks. All rights reserved.</p>
+            <div className="flex space-x-6 mt-4 md:mt-0">
+              <a href="#" className="hover:text-white transition-colors duration-200">Privacy Policy</a>
+              <a href="#" className="hover:text-white transition-colors duration-200">Terms of Service</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default PublicLayout;

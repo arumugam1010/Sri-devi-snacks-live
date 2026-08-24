@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit, Trash2, Package, IndianRupee, Warehouse, FileText, Printer, AlertTriangle, Sun } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { stocksAPI, settingsAPI } from '../services/api';
-import Logo from '../assets/Logo.png';
+const Logo = '/Logo.png';
 import html2canvas from 'html2canvas';
 
 let logoBase64String = '';
@@ -22,14 +22,14 @@ interface Product {
 }
 
 const Stock: React.FC = () => {
-  const { 
-    products, 
-    setProducts, 
-    refreshData, 
-    userRole, 
-    vehicleNumber, 
-    routeDay, 
-    todayRoute, 
+  const {
+    products,
+    setProducts,
+    refreshData,
+    userRole,
+    vehicleNumber,
+    routeDay,
+    todayRoute,
     updateAppSetting,
     updateAppSettingsBulk,
     whatsappEnabled,
@@ -42,7 +42,7 @@ const Stock: React.FC = () => {
     smsPhone,
     smsApiKey
   } = useAppContext();
-  
+
   const [tempVehicleNumber, setTempVehicleNumber] = useState(vehicleNumber);
   const [tempRouteDay, setTempRouteDay] = useState(routeDay);
   const [tempTodayRoute, setTempTodayRoute] = useState(todayRoute);
@@ -147,7 +147,7 @@ const Stock: React.FC = () => {
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.unit.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     if (showLowStockOnly) {
       return matchesSearch && product.quantity <= lowStockThreshold;
     }
@@ -277,7 +277,7 @@ const Stock: React.FC = () => {
 
   const handleProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (editingProduct) {
       setProducts(products.map(product =>
         product.id === editingProduct.id
@@ -480,7 +480,7 @@ const Stock: React.FC = () => {
     const doc = iframe.contentWindow?.document || iframe.contentDocument;
     if (doc) {
       doc.open();
-      
+
       const optimizedHtml = htmlContent
         .replace(/size:\s*80mm\s*auto/gi, 'size: auto')
         .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
@@ -557,16 +557,16 @@ const Stock: React.FC = () => {
           </thead>
           <tbody>
             ${products.filter(p => (p.morningStock ?? (p.quantity + (p.soldToday || 0))) > 0).map(p => {
-              const morningQty = p.morningStock ?? (p.quantity + (p.soldToday || 0));
-              const val = morningQty * getProductRate(p.id);
-              return `
+      const morningQty = p.morningStock ?? (p.quantity + (p.soldToday || 0));
+      const val = morningQty * getProductRate(p.id);
+      return `
                 <tr>
                   <td>${p.product_name} (${p.unit})</td>
                   <td class="right">${morningQty}</td>
                   <td class="right">${val.toFixed(2)}</td>
                 </tr>
               `;
-            }).join('')}
+    }).join('')}
             <tr class="total-row">
               <td colspan="2">Total Value:</td>
               <td class="right">₹${totalMorningValue.toFixed(2)}</td>
@@ -586,7 +586,7 @@ const Stock: React.FC = () => {
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
-        container.style.width = '800px'; 
+        container.style.width = '800px';
         container.style.backgroundColor = '#ffffff';
         container.innerHTML = htmlContent + '<style>body { width: 100% !important; padding: 20px !important; font-size: 18px !important; } table { font-size: 16px !important; } .logo { width: 100px !important; }</style>';
         document.body.appendChild(container);
@@ -619,7 +619,7 @@ const Stock: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-900">Stock Management</h2>
           <p className="text-gray-600 mt-1">Manage product quantities and rates</p>
         </div>
-    
+
       </div>
 
       {/* Total Stock Value */}
@@ -654,7 +654,7 @@ const Stock: React.FC = () => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
-        
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -667,11 +667,10 @@ const Stock: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-            className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold border transition ${
-              showLowStockOnly 
-                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' 
+            className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold border transition ${showLowStockOnly
+                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+              }`}
           >
             <AlertTriangle className={`h-4 w-4 mr-2 ${showLowStockOnly ? 'text-red-600' : 'text-gray-500'}`} />
             Low Stock ({products.filter(p => p.quantity <= lowStockThreshold).length})
@@ -700,7 +699,7 @@ const Stock: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Value (₹)
                 </th>
-              
+
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -725,7 +724,7 @@ const Stock: React.FC = () => {
                         {product.unit}
                       </span>
                     </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {editingQuantityId === product.id ? (
                         <div className="flex items-center space-x-2">
                           <input
@@ -787,17 +786,17 @@ const Stock: React.FC = () => {
                         </div>
                       )}
                     </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <IndianRupee className="h-4 w-4 text-green-600 mr-1" />
-                    <span className="text-sm font-medium text-gray-900">{getProductRate(product.id)}</span>
-                  </div>
-                </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <IndianRupee className="h-4 w-4 text-green-600 mr-1" />
+                        <span className="text-sm font-medium text-gray-900">{getProductRate(product.id)}</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
                       ₹{getProductValue(product).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    
+
                     </td>
                   </tr>
                 );
@@ -1001,7 +1000,7 @@ const Stock: React.FC = () => {
                         <textarea value={todayRoute} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700" rows={2} />
                       )}
                     </div>
-                    
+
                     {/* 
                     {userRole === 'SUPER_ADMIN' && (
                       <>
@@ -1127,7 +1126,7 @@ const Stock: React.FC = () => {
                       </>
                     )}
                     */}
-                    
+
                     {(userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') && (
                       <button
                         type="button"
@@ -1205,7 +1204,7 @@ const Stock: React.FC = () => {
                 </svg>
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1">
               <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
                 <thead className="bg-gray-50">
@@ -1243,7 +1242,7 @@ const Stock: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            
+
             <div className="p-4 border-t border-gray-200 bg-blue-50 flex justify-between items-center">
               <span className="text-lg font-bold text-blue-800">Total Morning Stock Value:</span>
               <span className="text-2xl font-bold text-blue-800">

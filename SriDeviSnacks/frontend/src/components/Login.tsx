@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User } from 'lucide-react';
 import { authAPI } from '../services/api';
-import Logo from '../assets/Logo.png';
+const Logo = '/Logo.png';
 
 interface LoginProps {
   onLogin: (userData: any) => void;

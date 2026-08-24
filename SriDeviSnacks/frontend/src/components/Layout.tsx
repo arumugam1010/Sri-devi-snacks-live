@@ -15,7 +15,7 @@ import {
   Printer,
   Fuel
 } from 'lucide-react';
-import Logo from '../assets/Logo.png';
+const Logo = '/Logo.png';
 import { useAppContext } from '../context/AppContext';
 import { fuelExpensesAPI } from '../services/api';
 
@@ -119,8 +119,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
                 const linkClass = `${isActive(item.href)
-                    ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
-                    : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
+                  ? (isBilling ? 'bg-blue-200 text-blue-950' : 'bg-blue-100 text-blue-900')
+                  : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
                   } group flex items-center px-2 py-2 rounded-md w-full text-left ${isBilling ? 'text-2xl font-bold' : 'text-base font-medium'
                   }`;
 
@@ -170,8 +170,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
               {navigation.map((item) => {
                 const isBilling = item.name === 'Billing';
                 const linkClass = `${isActive(item.href)
-                    ? (isBilling ? 'bg-blue-200 text-blue-955' : 'bg-blue-100 text-blue-900')
-                    : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
+                  ? (isBilling ? 'bg-blue-200 text-blue-955' : 'bg-blue-100 text-blue-900')
+                  : (isBilling ? 'text-gray-900 hover:bg-gray-100 hover:text-gray-955' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900')
                   } group flex items-center px-2 py-2 rounded-md w-full text-left ${isBilling ? 'text-2xl font-bold' : 'text-sm font-medium'
                   }`;
 
