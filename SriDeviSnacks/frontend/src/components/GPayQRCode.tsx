@@ -40,11 +40,16 @@ const GPayQRCode: React.FC<GPayQRCodeProps> = ({
   };
 
   const handlePaymentSuccess = () => {
+    const parsedAmount = parseFloat(amount) || 0;
+    if (parsedAmount > initialAmount) {
+      alert(`Entered amount (₹${parsedAmount}) cannot exceed the bill amount (₹${initialAmount})`);
+      return;
+    }
     const txId = generateTransactionId();
     setTransactionId(txId);
     setPaymentStatus('success');
     setTimeout(() => {
-      onPaymentSuccess(txId, parseFloat(amount) || 0);
+      onPaymentSuccess(txId, parsedAmount);
       onClose();
     }, 2000);
   };

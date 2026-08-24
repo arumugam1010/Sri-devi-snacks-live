@@ -35,7 +35,7 @@ const AboutSection: React.FC = () => {
               Our Humble Beginnings
             </h3>
             <p className="text-lg text-gray-700 leading-relaxed">
-              Founded in <strong>May 2021</strong> by <strong>A. Santhanam</strong> (S/O K. Arumugam) in the vibrant town of <strong>Vallioor</strong>, Sri Devi Snacks was born out of a profound love for traditional South Indian culinary heritage. 
+              Founded in <strong>May 2020</strong> by <strong>A. Santhanam</strong> (S/O K. Arumugam) in the vibrant town of <strong>Vallioor</strong>, Sri Devi Snacks was born out of a profound love for traditional South Indian culinary heritage. 
             </p>
             <p className="text-lg text-gray-700 leading-relaxed">
               What started as a modest endeavor to share authentic, homemade-style snacks with the local community quickly blossomed into a beloved brand. A. Santhanam's vision was simple yet powerful: to preserve the timeless recipes passed down through generations and make them accessible to everyone without compromising on quality or taste.

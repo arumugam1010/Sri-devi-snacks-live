@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Menu, X, User } from 'lucide-react';
 const Logo = '/Logo.png';
 
 const Navbar: React.FC = () => {
@@ -11,58 +11,51 @@ const Navbar: React.FC = () => {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 50) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
-      }
+      setIsScrolled(window.scrollY > 20);
     };
-
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const navLinks = [
     { name: 'Home', path: '/' },
-    { name: 'About', path: '/about' },
-    { name: 'Products', path: '/our-products' },
+    { name: 'Our Story', path: '/about' },
+    { name: 'Shop', path: '/our-products' },
     { name: 'Services', path: '/services' },
     { name: 'Contact', path: '/contact' },
   ];
 
   return (
-    <nav
-      className={`fixed w-full z-50 transition-all duration-300 ${
-        isScrolled || location.pathname !== '/' ? 'bg-white shadow-md py-2' : 'bg-transparent py-4'
-      }`}
-    >
+    <nav className={`fixed w-full z-50 transition-all duration-500 ${isScrolled ? 'bg-[#faf2e7]/90 backdrop-blur-md shadow-sm py-2' : 'bg-[#faf2e7] py-4'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center">
-          <Link to="/" className="flex items-center cursor-pointer">
-            <img src={Logo} alt="Logo" className="h-10 w-10 mr-2" />
-            <span className={`text-xl font-bold ${isScrolled || location.pathname !== '/' ? 'text-gray-900' : 'text-gray-900 drop-shadow-md'}`}>
+        <div className="flex justify-between items-center h-16">
+          
+          {/* Logo */}
+          <Link to="/" className="flex items-center space-x-3 group">
+            <img src={Logo} alt="Sri Devi Snacks" className="h-12 w-12 object-contain transition-transform duration-500 group-hover:scale-105 mix-blend-multiply" />
+            <span className="text-2xl font-bold text-[#160f0f] tracking-wide" style={{ fontFamily: "'Playfair Display', serif" }}>
               Sri Devi Snacks
             </span>
           </Link>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:flex items-center space-x-8">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-10">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
-                className={`font-medium hover:text-orange-600 transition-colors ${
-                  location.pathname === link.path ? 'text-orange-600' : (isScrolled || location.pathname !== '/' ? 'text-gray-600' : 'text-gray-800')
-                }`}
+                className={`text-sm tracking-widest uppercase transition-colors duration-300 font-medium ${location.pathname === link.path ? 'text-[#6e3c61]' : 'text-[#766c69] hover:text-[#160f0f]'}`}
               >
                 {link.name}
               </Link>
             ))}
-            <button
+            
+            <button 
               onClick={() => navigate('/login')}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2 rounded-lg font-medium transition-colors shadow-sm"
+              className="flex items-center space-x-2 bg-[#6e3c61] text-white px-6 py-2.5 rounded-full hover:bg-[#5e3352] transition-colors duration-300 shadow-sm text-sm tracking-widest uppercase font-medium"
             >
-              Login
+              <User className="w-4 h-4" />
+              <span>Login</span>
             </button>
           </div>
 
@@ -70,9 +63,9 @@ const Navbar: React.FC = () => {
           <div className="md:hidden flex items-center">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="text-gray-800 focus:outline-none"
+              className="text-[#160f0f] focus:outline-none p-2"
             >
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </div>
@@ -80,26 +73,24 @@ const Navbar: React.FC = () => {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-white shadow-lg absolute w-full left-0 top-full">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+        <div className="md:hidden bg-[#faf2e7] border-t border-[#e6ddcb] absolute w-full shadow-lg">
+          <div className="px-4 pt-2 pb-6 space-y-1">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`block w-full text-left px-3 py-2 font-medium hover:text-orange-600 hover:bg-gray-50 rounded-md ${
-                  location.pathname === link.path ? 'text-orange-600 bg-orange-50' : 'text-gray-800'
-                }`}
+                className={`block px-3 py-4 text-center text-sm tracking-widest uppercase border-b border-[#e6ddcb]/50 ${location.pathname === link.path ? 'text-[#6e3c61] font-bold' : 'text-[#766c69]'}`}
               >
                 {link.name}
               </Link>
             ))}
-            <button
+            <button 
               onClick={() => {
-                setIsMobileMenuOpen(false);
                 navigate('/login');
+                setIsMobileMenuOpen(false);
               }}
-              className="block w-full text-left px-3 py-2 text-orange-600 font-bold hover:bg-orange-50 rounded-md"
+              className="w-full mt-4 bg-[#6e3c61] text-white px-3 py-4 rounded-xl font-medium tracking-widest uppercase text-sm"
             >
               Login
             </button>
