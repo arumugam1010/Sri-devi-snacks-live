@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 const Logo = '/Logo.png';
-const SnacksBg = '/snacks.png';
+const SnacksBg = '/assets/snacks.png';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();

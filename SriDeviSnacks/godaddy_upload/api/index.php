@@ -82,6 +82,15 @@ function requireSuperAdminUser() {
     return $user;
 }
 
+// Middleware: Require SUPER_ADMIN or ACCOUNTS
+function requireSuperAdminOrAccounts() {
+    $user = getAuthenticatedUser();
+    if (!isset($user['role']) || !in_array($user['role'], ['SUPER_ADMIN', 'ACCOUNTS'])) {
+        sendResponse(false, 'Forbidden: Restricted access', null, 403);
+    }
+    return $user;
+}
+
 // Parse request URL relative to the script location
 $requestUri = $_SERVER['REQUEST_URI'];
 $scriptName = $_SERVER['SCRIPT_NAME'];
@@ -130,6 +139,10 @@ switch ($module) {
     case 'stocks':
         require_once __DIR__ . '/controllers/stocks.php';
         handleStocksRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
+    case 'gst-filings':
+        require_once __DIR__ . '/controllers/gst_filings.php';
+        handleGstFilingsRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
     case 'bills':
         require_once __DIR__ . '/controllers/bills.php';

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Truck, Plus, Save, X, Edit, Trash2, Box } from 'lucide-react';
 import api from '../services/api';
+import { useAppContext } from '../context/AppContext';
 
 interface SupplierItem {
   item_name: string;
@@ -20,6 +21,7 @@ const Suppliers: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const { userRole } = useAppContext();
   
   const [name, setName] = useState('');
   const [contactInfo, setContactInfo] = useState('');
@@ -151,7 +153,7 @@ const Suppliers: React.FC = () => {
           </h1>
           <p className="text-gray-500 mt-1">Manage suppliers and the raw materials they provide.</p>
         </div>
-        {!showForm && (
+        {!showForm && userRole !== 'ACCOUNTS' && (
           <button
             onClick={() => setShowForm(true)}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center"
@@ -325,7 +327,9 @@ const Suppliers: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items Supplied</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  {userRole !== 'ACCOUNTS' && (
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -353,20 +357,22 @@ const Suppliers: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(supplier)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4"
-                      >
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(supplier.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </td>
+                    {userRole !== 'ACCOUNTS' && (
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          onClick={() => handleEdit(supplier)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-4"
+                        >
+                          <Edit className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(supplier.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

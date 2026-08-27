@@ -498,6 +498,18 @@ export const employeesAPI = {
   },
 };
 
+export const gstFilingsAPI = {
+  getFilings: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/gst-filings`);
+  },
+  toggleFiling: async (monthYear: string, isFiled: boolean) => {
+    return authenticatedFetch(`${API_BASE_URL}/gst-filings`, {
+      method: 'POST',
+      body: JSON.stringify({ month_year: monthYear, is_filed: isFiled }),
+    });
+  },
+};
+
 // Fuel Expenses API
 export const fuelExpensesAPI = {
   getTodayFuelExpenses: async () => {

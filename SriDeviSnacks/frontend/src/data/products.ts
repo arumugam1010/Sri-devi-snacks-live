@@ -2,7 +2,6 @@ export const productsList = [
   { id: 1, name: 'Achi Murukku', image: '/assets/achi_murukku.jpeg', price: '₹60 / Pack', description: 'Crispy, sweet, and traditional Achi Murukku.' },
   { id: 2, name: 'Andhra Murukku', image: '/assets/andhra_murukku.jpeg', price: '₹60 / 200g', description: 'Spicy and crunchy Andhra style Murukku.' },
   { id: 3, name: 'Bombay Mixture', image: '/assets/bombay_mixture.jpeg', price: '₹60 / 200g', description: 'Classic Bombay Mixture loaded with authentic flavors.' },
-  { id: 4, name: 'Traditional Halwa', image: '/assets/halwa.jpeg', price: '₹45 / 100g', description: 'Rich, melt-in-the-mouth traditional Halwa.' },
   { id: 5, name: 'Coconut Milk Murukku', image: '/assets/coconut_milk_murukku.jpeg', price: '₹50 / 150g', description: 'Delicate Murukku made with fresh coconut milk.' },
   { id: 6, name: 'Garlic Chilli Murukku', image: '/assets/garlic_chilli_murukku.jpeg', price: '₹50 / 150g', description: 'A fiery blend of garlic and chilli.' },
   { id: 7, name: 'Garlic Murukku', image: '/assets/garlic_murukku.jpeg', price: '₹50 / 150g', description: 'Crunchy Murukku infused with rich garlic flavor.' },

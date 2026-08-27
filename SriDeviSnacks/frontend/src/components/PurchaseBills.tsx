@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer } from 'lucide-react';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
+import { useAppContext } from '../context/AppContext';
 
 interface SupplierItem {
   id?: number;
@@ -39,6 +40,7 @@ const PurchaseBills: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [bills, setBills] = useState<PurchaseBill[]>([]);
   const [loading, setLoading] = useState(true);
+  const { userRole } = useAppContext();
   
   // Tabs: 'form', 'gst_list', 'nongst_list', 'images'
   const [activeTab, setActiveTab] = useState<'form' | 'gst_list' | 'nongst_list' | 'images'>('gst_list');
@@ -209,8 +211,6 @@ const PurchaseBills: React.FC = () => {
       "July", "August", "September", "October", "November", "December"];
 
     billsData.forEach(bill => {
-      if (!bill.image_path) return; // Only group bills with images for the gallery
-      
       const fy = getFinancialYear(bill.bill_date);
       const monthIdx = new Date(bill.bill_date).getMonth();
       const monthName = monthNames[monthIdx];
@@ -349,16 +349,12 @@ const PurchaseBills: React.FC = () => {
 
   const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
+  const filteredBills = selectedMonth && groupedBills[selectedMonth.fy] && groupedBills[selectedMonth.fy][selectedMonth.month] 
+    ? groupedBills[selectedMonth.fy][selectedMonth.month]
+    : [];
   
-  const thisMonthBills = bills.filter(b => {
-    const d = new Date(b.bill_date);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-  
-  const thisMonthGstTotal = thisMonthBills.filter(b => b.is_gst === 1).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
-  const thisMonthNonGstTotal = thisMonthBills.filter(b => b.is_gst === 0).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+  const thisMonthGstTotal = filteredBills.filter(b => b.is_gst === 1).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+  const thisMonthNonGstTotal = filteredBills.filter(b => b.is_gst === 0).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -384,12 +380,14 @@ const PurchaseBills: React.FC = () => {
           >
             Non-GST Bills
           </button>
-          <button
-            onClick={() => setActiveTab('form')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'form' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Add New Bill
-          </button>
+          {userRole !== 'ACCOUNTS' && (
+            <button
+              onClick={() => setActiveTab('form')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'form' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Add New Bill
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('images')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'images' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -413,7 +411,7 @@ const PurchaseBills: React.FC = () => {
       )}
 
       {/* FORM TAB */}
-      {activeTab === 'form' && (
+      {activeTab === 'form' && userRole !== 'ACCOUNTS' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Header Info */}
@@ -655,101 +653,168 @@ const PurchaseBills: React.FC = () => {
       {/* LIST TABS */}
       {(activeTab === 'gst_list' || activeTab === 'nongst_list') && (
         <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-indigo-500">
-              <div>
-                <p className="text-sm font-medium text-gray-500">This Month GST</p>
-                <p className="text-2xl font-bold text-gray-900">₹{thisMonthGstTotal.toFixed(2)}</p>
+          {!selectedMonth ? (
+            Object.keys(groupedBills).length === 0 ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
+                <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+                No purchase bills added yet.
               </div>
-              <div className="bg-indigo-50 p-3 rounded-full">
-                <FileText className="w-6 h-6 text-indigo-600" />
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-gray-400">
-              <div>
-                <p className="text-sm font-medium text-gray-500">This Month Non-GST</p>
-                <p className="text-2xl font-bold text-gray-900">₹{thisMonthNonGstTotal.toFixed(2)}</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-full">
-                <FileText className="w-6 h-6 text-gray-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* List Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-700">
-                {activeTab === 'gst_list' ? 'GST Bills' : 'Non-GST Bills'}
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill No.</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Bill Image</th>
-                </tr>
-              </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {bills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                        No purchase bills found in this category.
-                      </td>
-                    </tr>
-                  ) : (
-                    bills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).map((bill) => (
-                      <tr key={bill.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(bill.bill_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                        {bill.supplier_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {bill.bill_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                        ₹{parseFloat(bill.total_amount.toString()).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                        {bill.image_path ? (
-                          <button 
-                            onClick={() => handleViewBill(bill.id)}
-                            className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full cursor-pointer"
-                          >
-                            <ImageIcon className="w-4 h-4 mr-1" /> View
-                          </button>
-                        ) : (
-                          <span className="text-gray-400 italic">No image</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+            ) : (
+              Object.keys(groupedBills).sort().reverse().map(fy => (
+                <div key={fy} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div 
+                    className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-100"
+                    onClick={() => setExpandedFY(expandedFY === fy ? null : fy)}
+                  >
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                      <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
+                      Financial Year {fy}
+                    </h2>
+                  </div>
+                  
+                  {expandedFY === fy && (
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {Object.keys(groupedBills[fy]).map(month => {
+                          const monthBills = groupedBills[fy][month].filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
+                          if (monthBills.length === 0) return null;
+                          
+                          const totalAmount = monthBills.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+                          
+                          return (
+                            <div 
+                              key={month} 
+                              className={`border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group bg-gray-50 border-gray-100`}
+                              onClick={() => setSelectedMonth({fy, month})}
+                            >
+                              <div className="absolute top-0 right-0 bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-bl-lg">
+                                {monthBills.length} bills
+                              </div>
+                              <h3 className="text-xl font-bold text-gray-900 mb-4">{month}</h3>
+                              <div className="space-y-1 text-sm">
+                                <p className="text-gray-500">Total Purchase:</p>
+                                <p className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(2)}</p>
+                              </div>
+                              <div className="mt-4 text-sm text-indigo-600 font-medium group-hover:underline">
+                                Click to view all bills
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+              ))
+            )
+          ) : (
+            <>
+              <div className="mb-4">
+                <button 
+                  onClick={() => setSelectedMonth(null)}
+                  className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  ← Back to Financial Years
+                </button>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-indigo-500">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Selected Month GST</p>
+                    <p className="text-2xl font-bold text-gray-900">₹{thisMonthGstTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="bg-indigo-50 p-3 rounded-full">
+                    <FileText className="w-6 h-6 text-indigo-600" />
+                  </div>
+                </div>
+                
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-gray-400">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Selected Month Non-GST</p>
+                    <p className="text-2xl font-bold text-gray-900">₹{thisMonthNonGstTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-full">
+                    <FileText className="w-6 h-6 text-gray-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* List Table */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                  <h3 className="font-bold text-gray-700">
+                    {activeTab === 'gst_list' ? 'GST Bills' : 'Non-GST Bills'} - {selectedMonth.month} {selectedMonth.fy}
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill No.</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Bill Image</th>
+                    </tr>
+                  </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                            No purchase bills found in this category.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).map((bill) => (
+                          <tr key={bill.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(bill.bill_date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                            {bill.supplier_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {bill.bill_number}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                            ₹{parseFloat(bill.total_amount.toString()).toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                            {bill.image_path ? (
+                              <button 
+                                onClick={() => handleViewBill(bill.id)}
+                                className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full cursor-pointer"
+                              >
+                                <ImageIcon className="w-4 h-4 mr-1" /> View
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 italic">No image</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {/* IMAGES GALLERY TAB */}
       {activeTab === 'images' && (
         <div className="space-y-8">
-          {Object.keys(groupedBills).length === 0 ? (
+          {Object.keys(groupedBills).filter(fy => Object.values(groupedBills[fy]).flat().some(b => b.image_path)).length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
               <ImageIcon className="mx-auto h-12 w-12 text-gray-300 mb-4" />
               No bill images uploaded yet.
             </div>
           ) : (
-            Object.keys(groupedBills).sort().reverse().map(fy => (
+            Object.keys(groupedBills).filter(fy => Object.values(groupedBills[fy]).flat().some(b => b.image_path)).sort().reverse().map(fy => (
               <div key={fy} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div 
                   className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-100"
@@ -785,7 +850,7 @@ const PurchaseBills: React.FC = () => {
                           Purchase Bills - {selectedMonth.month}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {groupedBills[selectedMonth.fy][selectedMonth.month].map(bill => (
+                          {groupedBills[selectedMonth.fy][selectedMonth.month].filter(b => b.image_path).map(bill => (
                             <div key={bill.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
                               <div className="h-48 bg-gray-200 relative">
                                 {bill.image_path?.endsWith('.pdf') ? (
@@ -831,8 +896,8 @@ const PurchaseBills: React.FC = () => {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {Object.keys(groupedBills[fy]).map(month => {
-                          const monthBills = groupedBills[fy][month];
+                        {Object.keys(groupedBills[fy]).filter(m => groupedBills[fy][m].some(b => b.image_path)).map(month => {
+                          const monthBills = groupedBills[fy][month].filter(b => b.image_path);
                           const totalAmount = monthBills.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
                           
                           return (

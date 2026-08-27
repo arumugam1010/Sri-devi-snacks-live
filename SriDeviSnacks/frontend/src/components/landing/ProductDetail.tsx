@@ -49,15 +49,48 @@ const ProductDetail: React.FC = () => {
               <h1 className="text-4xl md:text-5xl text-[#160f0f] mb-4 font-bold">{product.name}</h1>
               <p className="text-2xl text-[#ab8c52] mb-8 font-medium">{product.price}</p>
               
-              <div className="mb-10">
+              <div className="mb-8">
                 <h3 className="text-sm uppercase tracking-widest text-[#766c69] mb-3 font-bold">Description</h3>
                 <p className="text-[#160f0f] text-lg leading-relaxed font-light">
                   {product.description || `Experience the authentic taste of Vallioor with our premium ${product.name}. Made fresh daily with the finest ingredients and time-honored traditional recipes.`}
                 </p>
               </div>
 
+              <div className="mb-8">
+                <h3 className="text-sm uppercase tracking-widest text-[#766c69] mb-4 font-bold">Why You'll Love It</h3>
+                <ul className="space-y-3">
+                  <li className="flex items-center text-[#160f0f]">
+                    <span className="w-2 h-2 bg-[#ab8c52] rounded-full mr-3"></span>
+                    Authentic Vallioor Recipe
+                  </li>
+                  <li className="flex items-center text-[#160f0f]">
+                    <span className="w-2 h-2 bg-[#ab8c52] rounded-full mr-3"></span>
+                    100% Vegetarian & Freshly Made
+                  </li>
+                  <li className="flex items-center text-[#160f0f]">
+                    <span className="w-2 h-2 bg-[#ab8c52] rounded-full mr-3"></span>
+                    No Artificial Preservatives
+                  </li>
+                  <li className="flex items-center text-[#160f0f]">
+                    <span className="w-2 h-2 bg-[#ab8c52] rounded-full mr-3"></span>
+                    Crispy, Crunchy & Delicious
+                  </li>
+                </ul>
+              </div>
+
+              <div className="mb-10 grid grid-cols-2 gap-4">
+                <div className="bg-[#faf2e7] p-4 rounded-xl border border-[#e6ddcb]">
+                  <h4 className="text-sm font-bold text-[#160f0f] mb-1">Shelf Life</h4>
+                  <p className="text-sm text-[#766c69]">30 Days</p>
+                </div>
+                <div className="bg-[#faf2e7] p-4 rounded-xl border border-[#e6ddcb]">
+                  <h4 className="text-sm font-bold text-[#160f0f] mb-1">Storage</h4>
+                  <p className="text-sm text-[#766c69]">Cool & Dry Place</p>
+                </div>
+              </div>
+
               {/* Order Section */}
-              <div className="space-y-4">
+              <div className="space-y-4 pt-4 border-t border-[#e6ddcb]">
                 {orderStatus === 'idle' ? (
                   <button 
                     onClick={() => setOrderStatus('coming_soon')}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Store, Package, Receipt, TrendingUp, DollarSign, Users, ShoppingCart, ArrowUp, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { dashboardAPI } from '../services/api';
+import api, { dashboardAPI } from '../services/api';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -12,10 +12,20 @@ const Dashboard: React.FC = () => {
   // State for dashboard stats from backend
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [purchaseBillsStats, setPurchaseBillsStats] = useState({ gst: 0, nonGst: 0, total: 0 });
 
   // Calculate stats from context data (for other stats not from backend)
   const totalProducts = products.length;
   const pendingBills = bills.filter(bill => bill.status === 'PENDING').length;
+  
+  const thisMonthSalesBillsCount = React.useMemo(() => {
+    const today = new Date();
+    return bills.filter(bill => {
+      if (!bill.bill_date) return false;
+      const bDate = new Date(bill.bill_date);
+      return bDate.getMonth() === today.getMonth() && bDate.getFullYear() === today.getFullYear();
+    }).length;
+  }, [bills]);
 
   const [stats, setStats] = useState({
     totalShops: shops.filter(shop => shop.status === 'active').length,
@@ -26,14 +36,45 @@ const Dashboard: React.FC = () => {
     // activeOrders: pendingBills
   });
 
+  const { gstFilings } = useAppContext();
+  
+  const currentMonthYearStr = React.useMemo(() => {
+    const today = new Date();
+    const month = today.toLocaleString('default', { month: 'long' });
+    const year = today.getMonth() >= 3 ? `${today.getFullYear()}-${today.getFullYear()+1}` : `${today.getFullYear()-1}-${today.getFullYear()}`;
+    return `${month} ${year}`;
+  }, []);
+  
+  const isCurrentMonthGstFiled = React.useMemo(() => {
+    return gstFilings?.some(f => f.month_year === currentMonthYearStr) || false;
+  }, [gstFilings, currentMonthYearStr]);
+
   // Fetch dashboard stats from backend
   useEffect(() => {
     const fetchDashboardStats = async () => {
       try {
         setLoading(true);
-        const response = await dashboardAPI.getDashboard();
-        if (response.success) {
-          setDashboardStats(response.data);
+        if (userRole === 'ACCOUNTS') {
+          const pbResponse = await api.get('/purchase-bills');
+          if (pbResponse.data.success) {
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+            let gstCount = 0;
+            let nonGstCount = 0;
+            pbResponse.data.data.forEach((bill: any) => {
+               const billDate = new Date(bill.bill_date);
+               if (billDate.getMonth() === currentMonth && billDate.getFullYear() === currentYear) {
+                 if (bill.is_gst === 1) gstCount++;
+                 else nonGstCount++;
+               }
+            });
+            setPurchaseBillsStats({ gst: gstCount, nonGst: nonGstCount, total: gstCount + nonGstCount });
+          }
+        } else {
+          const response = await dashboardAPI.getDashboard();
+          if (response.success) {
+            setDashboardStats(response.data);
+          }
         }
       } catch (error) {
         console.error('Failed to fetch dashboard stats:', error);
@@ -286,6 +327,54 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  if (userRole === 'ACCOUNTS') {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="This Month GST Purchase Bills"
+            value={purchaseBillsStats.gst}
+            icon={Receipt}
+            color="indigo"
+          />
+          <StatCard
+            title="This Month Non-GST Purchase Bills"
+            value={purchaseBillsStats.nonGst}
+            icon={Receipt}
+            color="yellow"
+          />
+          <StatCard
+            title="This Month Total Purchase Bills"
+            value={purchaseBillsStats.total}
+            icon={Receipt}
+            color="green"
+          />
+          <StatCard
+            title="This Month Sales Bills"
+            value={thisMonthSalesBillsCount}
+            icon={Receipt}
+            color="blue"
+          >
+            {isCurrentMonthGstFiled && (
+              <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
+                  GST Filed for {currentMonthYearStr}
+                </span>
+              </div>
+            )}
+          </StatCard>
+          <StatCard
+            title="GST Bills"
+            value={gstBillsList.length}
+            icon={Receipt}
+            color="indigo"
+            onClick={() => setActiveView('gst_bills')}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
@@ -311,6 +400,22 @@ const Dashboard: React.FC = () => {
           change={12.5}
           color="purple"
         />
+        {userRole !== 'SUPER_ADMIN' && (
+          <StatCard
+            title="This Month Bills"
+            value={thisMonthSalesBillsCount}
+            icon={Receipt}
+            color="indigo"
+          >
+            {isCurrentMonthGstFiled && (
+              <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
+                  GST Filed for {currentMonthYearStr}
+                </span>
+              </div>
+            )}
+          </StatCard>
+        )}
         {userRole !== 'STAFF' && (
           <StatCard
             title="Today's Revenue"

@@ -219,6 +219,20 @@ function getDatabaseConnection() {
                     // Ignore if already altered or table doesn't exist
                 }
                 
+                // Add ACCOUNTS role to users table enum if it's not there
+                try {
+                    $pdo->exec("ALTER TABLE users MODIFY COLUMN role ENUM('SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER', 'ACCOUNTS') NOT NULL DEFAULT 'USER'");
+                } catch (\Exception $e) {
+                    // Ignore
+                }
+
+                // Create gst_filings table for tracking GST filed months
+                $pdo->exec("CREATE TABLE IF NOT EXISTS gst_filings (
+                    month_year VARCHAR(50) PRIMARY KEY,
+                    is_filed BOOLEAN NOT NULL DEFAULT 1,
+                    filed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )");
+                
                 // Insert default vehicle number if it doesn't exist
                 $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM settings WHERE setting_key = 'vehicle_number'");
                 $checkStmt->execute();

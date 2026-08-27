@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { productsAPI, billsAPI, schedulesAPI, shopsAPI, stocksAPI, settingsAPI } from '../services/api';
+import { productsAPI, billsAPI, schedulesAPI, shopsAPI, stocksAPI, settingsAPI, gstFilingsAPI } from '../services/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
@@ -101,6 +101,8 @@ interface AppContextType {
   smsApiKey: string;
   updateAppSetting: (key: string, value: string) => Promise<void>;
   updateAppSettingsBulk: (settings: Array<{ key: string; value: string }>) => Promise<void>;
+  gstFilings: any[];
+  setGstFilings: (filings: any[]) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -123,6 +125,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
   const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [gstFilings, setGstFilings] = useState<any[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(
     ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => ({ day, shops: [] }))
   );
@@ -166,7 +169,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           schedulesRes,
           billsRes,
           shopProductsRes,
-          settingsRes
+          settingsRes,
+          gstFilingsRes
         ] = await Promise.all([
           productsAPI.getProducts({ limit: 1000 }),
           stocksAPI.getStocks(),
@@ -174,7 +178,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           schedulesAPI.getSchedules(),
           billsAPI.getBills({ limit: 1000 }),
           shopsAPI.getAllShopProducts(),
-          settingsAPI.getSettings()
+          settingsAPI.getSettings(),
+          (user?.role === 'SUPER_ADMIN' || user?.role === 'ACCOUNTS') ? gstFilingsAPI.getFilings() : Promise.resolve({ success: true, data: [] })
         ]);
 
         let fetchedShops: any[] = [];
@@ -329,6 +334,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
             }
           }
         }
+        
+        if (gstFilingsRes && gstFilingsRes.success) {
+          setGstFilings(gstFilingsRes.data || []);
+        }
+
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
     } finally {
@@ -561,6 +571,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
     smsApiKey,
     updateAppSetting,
     updateAppSettingsBulk,
+    gstFilings,
+    setGstFilings,
   };
 
   return (

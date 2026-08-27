@@ -2,7 +2,7 @@
 
 function handleSuppliersRoute($parts, $method) {
     $db = getDatabaseConnection();
-    requireSuperAdminUser(); // Only Admins can manage suppliers
+    requireSuperAdminOrAccounts(); // Only Admins and Accounts can manage suppliers
 
     $action = $parts[1] ?? '';
     $id = isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : null;

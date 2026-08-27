@@ -2,7 +2,7 @@
 
 function handlePurchaseBillsRoute($parts, $method) {
     $db = getDatabaseConnection();
-    requireSuperAdminUser();
+    requireSuperAdminOrAccounts();
 
     $action = $parts[1] ?? '';
     $id = isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : null;
