@@ -209,7 +209,8 @@ const Products: React.FC = () => {
     unit: 'kg',
     gst: '', // default gst value as string
     hsn_code: '', // HSN code field
-    price: '' // Product price field as string
+    price: '', // Product price field as string
+    mrp: '' // MRP field as string
   });
 
   const filteredProducts = paginatedProducts.filter(product =>
@@ -313,7 +314,8 @@ const Products: React.FC = () => {
       unit: 'kg',
       gst: '', // default gst value as string
       hsn_code: '', // HSN code field
-      price: '' // Product price field as string
+      price: '', // Product price field as string
+      mrp: '' // MRP field as string
     });
     setPreviewImage(null);
     setEditingProduct(null);
@@ -322,12 +324,19 @@ const Products: React.FC = () => {
 
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
+    
+    // Calculate MRP based on base price and GST
+    const gstPercent = product.gst || 0;
+    const basePrice = product.price || 0;
+    const mrp = basePrice + (basePrice * (gstPercent / 100));
+
     setProductForm({
       product_name: product.product_name,
       unit: product.unit,
       gst: product.gst.toString(),
       hsn_code: product.hsn_code,
-      price: product.price.toString()
+      price: product.price.toString(),
+      mrp: mrp > 0 ? mrp.toFixed(2) : ''
     });
     const storedImage = product.image || productImages[product.id] || productImages[product.product_name] || null;
     setPreviewImage(storedImage);
@@ -1092,13 +1101,45 @@ const Products: React.FC = () => {
                       max="100"
                       placeholder="0"
                       value={productForm.gst}
-                      onChange={(e) => setProductForm({ ...productForm, gst: e.target.value })}
+                      onChange={(e) => {
+                        const newGst = e.target.value;
+                        const mrpVal = parseFloat(productForm.mrp) || 0;
+                        const gstVal = parseFloat(newGst) || 0;
+                        let newBasePrice = productForm.price;
+                        if (mrpVal > 0) {
+                          newBasePrice = (mrpVal / (1 + (gstVal / 100))).toFixed(2);
+                        }
+                        setProductForm({ ...productForm, gst: newGst, price: newBasePrice });
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price (₹)
+                    MRP (Inclusive of GST)
+                  </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0"
+                      value={productForm.mrp}
+                      onChange={(e) => {
+                        const newMrp = e.target.value;
+                        const mrpVal = parseFloat(newMrp) || 0;
+                        const gstVal = parseFloat(productForm.gst) || 0;
+                        let newBasePrice = '';
+                        if (mrpVal > 0) {
+                          newBasePrice = (mrpVal / (1 + (gstVal / 100))).toFixed(2);
+                        }
+                        setProductForm({ ...productForm, mrp: newMrp, price: newBasePrice });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Base Price (₹) (Auto-calculated)
                   </label>
                     <input
                       type="number"
@@ -1106,8 +1147,17 @@ const Products: React.FC = () => {
                       step="0.01"
                       placeholder="0"
                       value={productForm.price}
-                      onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => {
+                        const newBasePrice = e.target.value;
+                        const basePriceVal = parseFloat(newBasePrice) || 0;
+                        const gstVal = parseFloat(productForm.gst) || 0;
+                        let newMrp = '';
+                        if (basePriceVal > 0) {
+                          newMrp = (basePriceVal + (basePriceVal * (gstVal / 100))).toFixed(2);
+                        }
+                        setProductForm({ ...productForm, price: newBasePrice, mrp: newMrp });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
                     />
                 </div>
                 <div>
