@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer } from 'lucide-react';
+import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer, Download } from 'lucide-react';
+import { utils, writeFile } from 'xlsx';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
 import { useAppContext } from '../context/AppContext';
@@ -355,6 +356,29 @@ const PurchaseBills: React.FC = () => {
   
   const thisMonthGstTotal = filteredBills.filter(b => b.is_gst === 1).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
   const thisMonthNonGstTotal = filteredBills.filter(b => b.is_gst === 0).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+
+  const handleExportExcel = () => {
+    if (!selectedMonth) return;
+    const billsToExport = filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
+    const dataForExcel = billsToExport.map(bill => ({
+      'Date': new Date(bill.bill_date).toLocaleDateString(),
+      'Supplier': bill.supplier_name,
+      'Bill No.': bill.bill_number,
+      'Total Amount': parseFloat(bill.total_amount.toString()).toFixed(2),
+      'GST Type': bill.is_gst === 1 ? 'GST' : 'Non-GST'
+    }));
+    
+    const fileName = `${activeTab === 'gst_list' ? 'GST_Bills' : 'Non_GST_Bills'}_${selectedMonth.month}_${selectedMonth.fy}`;
+    try {
+      const worksheet = utils.json_to_sheet(dataForExcel);
+      const workbook = utils.book_new();
+      utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+      writeFile(workbook, `${fileName}.xlsx`);
+    } catch (error) {
+      console.error("Excel export error:", error);
+      alert("Failed to export Excel. " + (error as Error).message);
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -747,6 +771,12 @@ const PurchaseBills: React.FC = () => {
                   <h3 className="font-bold text-gray-700">
                     {activeTab === 'gst_list' ? 'GST Bills' : 'Non-GST Bills'} - {selectedMonth.month} {selectedMonth.fy}
                   </h3>
+                  <button 
+                    onClick={handleExportExcel}
+                    className="inline-flex items-center text-sm font-medium text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Download className="w-4 h-4 mr-2" /> Export Excel
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">

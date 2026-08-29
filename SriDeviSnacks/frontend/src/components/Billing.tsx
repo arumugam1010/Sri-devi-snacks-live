@@ -1,5 +1,6 @@
   import React, { useState } from 'react';
-  import { Search, Plus, Trash2, Receipt, RotateCcw, Calculator, ShoppingCart, Eye, CreditCard, Loader, Package, Printer } from 'lucide-react';
+  import { Search, Plus, Trash2, Receipt, RotateCcw, Calculator, ShoppingCart, Eye, CreditCard, Loader, Package, Printer, Download } from 'lucide-react';
+  import { utils, writeFile } from 'xlsx';
   import { useAppContext } from '../context/AppContext';
   import { billsAPI, shopsAPI, gstFilingsAPI } from '../services/api';
   import GPayQRCode from './GPayQRCode';
@@ -2230,6 +2231,29 @@
         win.print();
       }, 500);
     };
+
+    const handleExportExcel = (monthBills: Bill[], monthName: string) => {
+      const dataForExcel = monthBills.map(bill => ({
+        'Date': new Date(bill.bill_date).toLocaleDateString(),
+        'Shop Name': bill.shop_name,
+        'Bill No': bill.id,
+        'Total Amount': bill.total_amount,
+        'Received Amount': bill.received_amount,
+        'Pending Amount': bill.pending_amount,
+        'Status': bill.status
+      }));
+      
+      try {
+        const worksheet = utils.json_to_sheet(dataForExcel);
+        const workbook = utils.book_new();
+        utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        writeFile(workbook, `Billing_${monthName.replace(/\s+/g, '_')}.xlsx`);
+      } catch (error) {
+        console.error("Excel export error:", error);
+        alert("Failed to export Excel. " + (error as Error).message);
+      }
+    };
+
     const handleExportPDF = async (billIds: string[], monthName: string) => {
     setIsExportingPDF(true);
     try {
@@ -3070,6 +3094,13 @@
                                   {isExportingPDF ? <Loader className="animate-spin h-4 w-4 mr-1.5" /> : <Package className="h-4 w-4 mr-1.5" />}
                                   {isExportingPDF ? (exportProgress || 'Exporting...') : 'Export PDF'}
                                 </button>
+                                <button
+                                  onClick={() => handleExportExcel(sortedMonthBills, monthYearStr)}
+                                  className={`inline-flex items-center px-4 py-2 border border-transparent text-xs font-bold rounded-lg text-white ml-2 shadow transition-all duration-200 ease-in-out transform hover:-translate-y-0.5 bg-green-600 hover:bg-green-700 hover:shadow-md`}
+                                >
+                                  <Download className="h-4 w-4 mr-1.5" />
+                                  Export Excel
+                                </button>
                                 </>
                               )}
                             </>
@@ -3211,12 +3242,33 @@
                                 </span>
                               </div>
 
-                              {userRole !== 'STAFF' && (
-                                <div className="text-sm text-gray-600">
-                                  <p>Total: ₹{monthBills.reduce((sum, bill) => sum + bill.total_amount, 0).toFixed(2)}</p>
-                                  <p>Pending: ₹{monthBills.reduce((sum, bill) => sum + bill.pending_amount, 0).toFixed(2)}</p>
-                                </div>
-                              )}
+                              {userRole !== 'STAFF' && (() => {
+                                const total = monthBills.reduce((sum, bill) => sum + bill.total_amount, 0);
+                                const pending = monthBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
+                                const gstBillAmount = monthBills.reduce((sum, bill) => {
+                                  const shop = allShops.find(s => s.id === bill.shop_id);
+                                  if (shop && shop.gst && shop.gst.trim() !== '') {
+                                    return sum + bill.total_amount;
+                                  }
+                                  return sum;
+                                }, 0);
+                                const cashBillAmount = monthBills.reduce((sum, bill) => {
+                                  const shop = allShops.find(s => s.id === bill.shop_id);
+                                  if (!shop || !shop.gst || shop.gst.trim() === '') {
+                                    return sum + bill.total_amount;
+                                  }
+                                  return sum;
+                                }, 0);
+
+                                return (
+                                  <div className="text-sm text-gray-600 space-y-1">
+                                    <p>GST Bill: ₹{gstBillAmount.toFixed(2)}</p>
+                                    <p>Cash Bill: ₹{cashBillAmount.toFixed(2)}</p>
+                                    <p>Total: ₹{total.toFixed(2)}</p>
+                                    <p>Pending: ₹{pending.toFixed(2)}</p>
+                                  </div>
+                                );
+                              })()}
 
                               <div className="mt-3 text-xs text-gray-500">
                                 Click to view all bills
