@@ -595,9 +595,9 @@ const api = {
 
 export const bakeryProductsAPI = {
   getProducts: async () => authenticatedFetch(`${API_BASE_URL}/bakery-products`),
-  createProduct: async (data: { name: string; price: number; image?: string | null }) => 
+  createProduct: async (data: { name: string; price: number; image?: string | null; stock?: number }) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-products`, { method: 'POST', body: JSON.stringify(data) }),
-  updateProduct: async (id: number, data: { name: string; price: number; image?: string | null }) => 
+  updateProduct: async (id: number, data: { name: string; price: number; image?: string | null; stock?: number }) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteProduct: async (id: number) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-products/${id}`, { method: 'DELETE' }),

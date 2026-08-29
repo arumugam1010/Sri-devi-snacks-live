@@ -39,7 +39,7 @@ function handleBakeryProductsRoute($parts, $method) {
 function getBakeryProductsList() {
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("SELECT id, name, price, image, created_at as createdAt, updated_at as updatedAt FROM bakery_products ORDER BY id DESC");
+        $stmt = $db->prepare("SELECT id, name, price, image, stock, created_at as createdAt, updated_at as updatedAt FROM bakery_products ORDER BY id DESC");
         $stmt->execute();
         $products = $stmt->fetchAll();
         
@@ -47,6 +47,7 @@ function getBakeryProductsList() {
         foreach ($products as &$p) {
             $p['id'] = (int)$p['id'];
             $p['price'] = (float)$p['price'];
+            $p['stock'] = (int)($p['stock'] ?? 0);
         }
 
         sendResponse(true, 'Bakery products fetched successfully', $products);
@@ -69,21 +70,23 @@ function createBakeryProduct() {
 
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("INSERT INTO bakery_products (name, price, image) VALUES (:name, :price, :image)");
+        $stmt = $db->prepare("INSERT INTO bakery_products (name, price, image, stock) VALUES (:name, :price, :image, :stock)");
         $stmt->execute([
             ':name' => $name,
             ':price' => $price,
-            ':image' => $image
+            ':image' => $image,
+            ':stock' => $stock
         ]);
         
         $id = $db->lastInsertId();
         
-        $fetchStmt = $db->prepare("SELECT id, name, price, image, created_at as createdAt, updated_at as updatedAt FROM bakery_products WHERE id = :id");
+        $fetchStmt = $db->prepare("SELECT id, name, price, image, stock, created_at as createdAt, updated_at as updatedAt FROM bakery_products WHERE id = :id");
         $fetchStmt->execute([':id' => $id]);
         $product = $fetchStmt->fetch();
         
         $product['id'] = (int)$product['id'];
         $product['price'] = (float)$product['price'];
+        $product['stock'] = (int)($product['stock'] ?? 0);
 
         sendResponse(true, 'Bakery product created successfully', $product, 201);
     } catch (\PDOException $e) {
@@ -102,14 +105,16 @@ function updateBakeryProduct($id) {
     $name = trim($data['name']);
     $price = (float)$data['price'];
     $image = $data['image'] ?? null;
+    $stock = (int)($data['stock'] ?? 0);
 
     $db = getDatabaseConnection();
     try {
-        $stmt = $db->prepare("UPDATE bakery_products SET name = :name, price = :price, image = :image WHERE id = :id");
+        $stmt = $db->prepare("UPDATE bakery_products SET name = :name, price = :price, image = :image, stock = :stock WHERE id = :id");
         $stmt->execute([
             ':name' => $name,
             ':price' => $price,
             ':image' => $image,
+            ':stock' => $stock,
             ':id' => $id
         ]);
         
@@ -123,12 +128,13 @@ function updateBakeryProduct($id) {
             }
         }
         
-        $fetchStmt = $db->prepare("SELECT id, name, price, image, created_at as createdAt, updated_at as updatedAt FROM bakery_products WHERE id = :id");
+        $fetchStmt = $db->prepare("SELECT id, name, price, image, stock, created_at as createdAt, updated_at as updatedAt FROM bakery_products WHERE id = :id");
         $fetchStmt->execute([':id' => $id]);
         $product = $fetchStmt->fetch();
         
         $product['id'] = (int)$product['id'];
         $product['price'] = (float)$product['price'];
+        $product['stock'] = (int)($product['stock'] ?? 0);
 
         sendResponse(true, 'Bakery product updated successfully', $product);
     } catch (\PDOException $e) {

@@ -136,6 +136,7 @@ function createBakeryBill() {
         $billId = $db->lastInsertId();
         
         $itemStmt = $db->prepare("INSERT INTO bakery_bill_items (bill_id, product_id, product_name, quantity, price, total) VALUES (:bill_id, :product_id, :product_name, :quantity, :price, :total)");
+        $stockStmt = $db->prepare("UPDATE bakery_products SET stock = GREATEST(0, stock - :quantity) WHERE id = :product_id");
         
         foreach ($data['items'] as $item) {
             $itemStmt->execute([
@@ -145,6 +146,11 @@ function createBakeryBill() {
                 ':quantity' => $item['quantity'],
                 ':price' => $item['price'],
                 ':total' => $item['total']
+            ]);
+            
+            $stockStmt->execute([
+                ':quantity' => $item['quantity'],
+                ':product_id' => $item['product_id']
             ]);
         }
 

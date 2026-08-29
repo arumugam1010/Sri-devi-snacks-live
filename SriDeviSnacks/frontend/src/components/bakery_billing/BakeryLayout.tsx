@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import BakeryProducts from './BakeryProducts';
 import BakeryBilling from './BakeryBilling';
 import BakeryBillsList from './BakeryBillsList';
+import BakeryStock from './BakeryStock';
 import BakeryDashboard from './BakeryDashboard';
 const Logo = '/Logo.png';
 
@@ -13,12 +14,13 @@ interface BakeryLayoutProps {
 }
 
 export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'bills'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', name: 'Bakery Products', icon: Package },
+    { id: 'stock', name: 'Bakery Stock', icon: Package },
     { id: 'bills', name: 'Bakery Bills', icon: FileText },
     { id: 'billing', name: 'Bakery Billing', icon: Receipt },
   ] as const;
@@ -27,6 +29,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
     switch (activeTab) {
       case 'billing': return <BakeryBilling />;
       case 'products': return <BakeryProducts />;
+      case 'stock': return <BakeryStock />;
       case 'bills': return <BakeryBillsList />;
       case 'dashboard': return <BakeryDashboard />;
       default:

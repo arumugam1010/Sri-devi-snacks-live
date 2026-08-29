@@ -9,6 +9,7 @@ interface BakeryProduct {
   name: string;
   price: number;
   image: string | null;
+  stock: number;
 }
 
 interface BillItem {
@@ -140,6 +141,7 @@ export default function BakeryBilling() {
       setCustomerName('');
       setCustomerPhone('');
       setPaidAmount('');
+      fetchProducts(); // Refresh stock
       
       // Delay to allow React to render the print section before calling print()
       setTimeout(() => {
@@ -148,6 +150,36 @@ export default function BakeryBilling() {
 
     } catch (err: any) {
       alert(err.message || "Failed to save bill");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveAsPending = async () => {
+    if (billItems.length === 0) return;
+    
+    try {
+      setSubmitting(true);
+      const payload = {
+        items: billItems,
+        total_amount: totalAmount,
+        paid_amount: 0,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        location_name: currentLocation
+      };
+      
+      await bakeryBillsAPI.createBill(payload);
+      
+      setIsPaymentModalOpen(false);
+      setBillItems([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setPaidAmount('');
+      fetchProducts(); // Refresh stock
+
+    } catch (err: any) {
+      alert(err.message || "Failed to save bill as pending");
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +261,7 @@ export default function BakeryBilling() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 pb-4">
-          {products.map(product => (
+          {products.filter(p => p.stock > 0).map(product => (
             <div 
               key={product.id} 
               onClick={() => handleProductClick(product)}
@@ -250,9 +282,9 @@ export default function BakeryBilling() {
               </div>
             </div>
           ))}
-          {products.length === 0 && (
+          {products.filter(p => p.stock > 0).length === 0 && (
             <div className="col-span-full text-center text-gray-500 py-10">
-              No products available. Add some in the Products tab.
+              No products with stock available. Update stock in the Bakery Stock tab.
             </div>
           )}
         </div>
@@ -383,6 +415,14 @@ export default function BakeryBilling() {
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md transition-colors"
                 >
                   Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAsPending}
+                  disabled={submitting}
+                  className="px-4 py-2 bg-yellow-500 text-white font-bold rounded-md hover:bg-yellow-600 flex items-center transition-colors disabled:opacity-50"
+                >
+                  {submitting ? 'Saving...' : 'Save as Pending'}
                 </button>
                 <button
                   type="button"
