@@ -606,7 +606,7 @@ export const bakeryProductsAPI = {
 export const bakeryBillsAPI = {
   getBills: async () => authenticatedFetch(`${API_BASE_URL}/bakery-bills`),
   getBill: async (id: number) => authenticatedFetch(`${API_BASE_URL}/bakery-bills/${id}`),
-  createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string }) => 
+  createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string; location_name?: string }) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-bills`, { method: 'POST', body: JSON.stringify(data) }),
 };
 

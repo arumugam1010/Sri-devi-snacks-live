@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import BakeryProducts from './BakeryProducts';
 import BakeryBilling from './BakeryBilling';
 import BakeryBillsList from './BakeryBillsList';
+import BakeryDashboard from './BakeryDashboard';
 const Logo = '/Logo.png';
 
 interface BakeryLayoutProps {
@@ -27,15 +28,9 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
       case 'billing': return <BakeryBilling />;
       case 'products': return <BakeryProducts />;
       case 'bills': return <BakeryBillsList />;
-      case 'dashboard':
+      case 'dashboard': return <BakeryDashboard />;
       default:
-        return (
-          <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200 text-center">
-            <LayoutDashboard className="mx-auto h-12 w-12 text-blue-500 mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Bakery Dashboard</h2>
-            <p className="text-gray-500">Welcome to the Bakery Billing System. Use the sidebar to manage products and create bills.</p>
-          </div>
-        );
+        return null;
     }
   };
 

@@ -1,6 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI } from '../../services/api';
+
+// Predefined branches with dummy coordinates (needs actual lat/lng)
+const BRANCHES = [
+  { name: 'Main Branch', lat: 13.0827, lng: 80.2707 },
+  { name: 'Tambaram Branch', lat: 12.9229, lng: 80.1275 },
+  { name: 'Thoraipakkam Outlet', lat: 12.9349, lng: 80.2334 },
+];
+
+function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  const d = R * c * 1000; // Distance in meters
+  return d;
+}
 
 interface BakeryProduct {
   id: number;
@@ -32,9 +52,45 @@ export default function BakeryBilling() {
   const printRef = useRef<HTMLDivElement>(null);
   const [printBillData, setPrintBillData] = useState<any>(null);
 
+  const [currentLocation, setCurrentLocation] = useState<string>('Main Branch');
+  const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
+
   useEffect(() => {
     fetchProducts();
+    detectLocation();
   }, []);
+
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Geolocation is not supported by your browser');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        let closestBranch = BRANCHES[0].name;
+        let minDistance = Infinity;
+
+        BRANCHES.forEach(branch => {
+          const distance = getDistanceFromLatLonInMeters(latitude, longitude, branch.lat, branch.lng);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestBranch = branch.name;
+          }
+        });
+
+        // If closest branch is within 500 meters, auto-select it. Otherwise just set it anyway as best guess.
+        setCurrentLocation(closestBranch);
+        setLocationStatus(`GPS Auto-selected (${Math.round(minDistance)}m away)`);
+      },
+      (error) => {
+        console.warn('Geolocation error:', error);
+        setLocationStatus('GPS failed or denied. Using default.');
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
 
   const fetchProducts = async () => {
     try {
@@ -88,7 +144,8 @@ export default function BakeryBilling() {
         total_amount: totalAmount,
         paid_amount: paid,
         customer_name: customerName,
-        customer_phone: customerPhone
+        customer_phone: customerPhone,
+        location_name: currentLocation
       };
       
       const res = await bakeryBillsAPI.createBill(payload);
@@ -170,8 +227,31 @@ export default function BakeryBilling() {
     <div className="flex h-[calc(100vh-8rem)] bg-gray-50 -m-6">
       
       {/* Products Grid */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Bakery Products</h2>
+      <div className="flex-1 p-6 overflow-y-auto flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Bakery Products</h2>
+          
+          {/* Location Selector */}
+          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 flex items-center">
+            <MapPin className="w-5 h-5 text-blue-500 mr-2" />
+            <div className="flex flex-col">
+              <select 
+                value={currentLocation}
+                onChange={(e) => {
+                  setCurrentLocation(e.target.value);
+                  setLocationStatus('Manually selected');
+                }}
+                className="text-sm font-bold text-gray-900 border-none bg-transparent focus:ring-0 cursor-pointer p-0 pr-4"
+              >
+                {BRANCHES.map(b => (
+                  <option key={b.name} value={b.name}>{b.name}</option>
+                ))}
+              </select>
+              <span className="text-[10px] text-gray-400 mt-0.5">{locationStatus}</span>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {products.map(product => (
             <div 

@@ -44,6 +44,7 @@ function getBakeryBillsList() {
             $b['total_amount'] = (float)$b['total_amount'];
             $b['paid_amount'] = (float)$b['paid_amount'];
             $b['pending_amount'] = (float)$b['pending_amount'];
+            $b['location_name'] = $b['location_name'] ?? null;
             
             // Get items
             $itemStmt = $db->prepare("SELECT * FROM bakery_bill_items WHERE bill_id = :bill_id");
@@ -82,6 +83,7 @@ function getBakeryBillById($id) {
         $bill['total_amount'] = (float)$bill['total_amount'];
         $bill['paid_amount'] = (float)$bill['paid_amount'];
         $bill['pending_amount'] = (float)$bill['pending_amount'];
+        $bill['location_name'] = $bill['location_name'] ?? null;
         
         $itemStmt = $db->prepare("SELECT * FROM bakery_bill_items WHERE bill_id = :bill_id");
         $itemStmt->execute([':bill_id' => $bill['id']]);
@@ -115,18 +117,20 @@ function createBakeryBill() {
     $pendingAmount = $totalAmount - $paidAmount;
     $customerName = $data['customer_name'] ?? null;
     $customerPhone = $data['customer_phone'] ?? null;
+    $locationName = $data['location_name'] ?? null;
 
     $db = getDatabaseConnection();
     try {
         $db->beginTransaction();
 
-        $stmt = $db->prepare("INSERT INTO bakery_bills (total_amount, paid_amount, pending_amount, customer_name, customer_phone) VALUES (:total_amount, :paid_amount, :pending_amount, :customer_name, :customer_phone)");
+        $stmt = $db->prepare("INSERT INTO bakery_bills (total_amount, paid_amount, pending_amount, customer_name, customer_phone, location_name) VALUES (:total_amount, :paid_amount, :pending_amount, :customer_name, :customer_phone, :location_name)");
         $stmt->execute([
             ':total_amount' => $totalAmount,
             ':paid_amount' => $paidAmount,
             ':pending_amount' => $pendingAmount,
             ':customer_name' => $customerName,
-            ':customer_phone' => $customerPhone
+            ':customer_phone' => $customerPhone,
+            ':location_name' => $locationName
         ]);
         
         $billId = $db->lastInsertId();
