@@ -15,7 +15,8 @@ import {
   Printer,
   Fuel,
   Truck,
-  FileText
+  FileText,
+  Coffee
 } from 'lucide-react';
 const Logo = '/Logo.png';
 import { useAppContext } from '../context/AppContext';
@@ -51,6 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { name: 'Billing', href: '/billing', icon: Receipt },
     // { name: 'Employees', href: '/employees', icon: Users },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
+    { name: 'Bakery Billing', href: '/bakery-billing', icon: Coffee },
     { name: 'Petrol/CNG', onClick: () => setIsFuelModalOpen(true), icon: Fuel },
     // { name: 'VTS GPS', href: '/gps-tracking', icon: MapPin },
   ];
@@ -60,7 +62,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     if (userRole === 'ACCOUNTS') {
       return ['Dashboard', 'Suppliers', 'Purchase Bills', 'Billing'].includes(item.name);
     }
-    if (['VTS GPS', 'Employees', 'Label Printer', 'Suppliers', 'Purchase Bills'].includes(item.name)) {
+    if (['VTS GPS', 'Employees', 'Label Printer', 'Suppliers', 'Purchase Bills', 'Bakery Billing'].includes(item.name)) {
       return userRole === 'SUPER_ADMIN';
     }
     if (userRole === 'STAFF') {

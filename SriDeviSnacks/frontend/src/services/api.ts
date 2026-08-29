@@ -593,5 +593,22 @@ const api = {
   },
 };
 
+export const bakeryProductsAPI = {
+  getProducts: async () => authenticatedFetch(`${API_BASE_URL}/bakery-products`),
+  createProduct: async (data: { name: string; price: number; image?: string | null }) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-products`, { method: 'POST', body: JSON.stringify(data) }),
+  updateProduct: async (id: number, data: { name: string; price: number; image?: string | null }) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteProduct: async (id: number) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-products/${id}`, { method: 'DELETE' }),
+};
+
+export const bakeryBillsAPI = {
+  getBills: async () => authenticatedFetch(`${API_BASE_URL}/bakery-bills`),
+  getBill: async (id: number) => authenticatedFetch(`${API_BASE_URL}/bakery-bills/${id}`),
+  createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string }) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-bills`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
 export default api;
 

@@ -25,6 +25,7 @@ import DayScheduleDetails from './components/DayScheduleDetails';
 import VtsGps from './components/VtsGps';
 import Employees from './components/Employees';
 import BarcodeGenerator from './components/BarcodeGenerator';
+import BakeryLayout from './components/bakery_billing/BakeryLayout';
 
 
 
@@ -206,6 +207,14 @@ function App() {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Billing />
+                </Layout>
+              }
+            />
+            <Route
+              path="/bakery-billing"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <BakeryLayout />
                 </Layout>
               }
             />

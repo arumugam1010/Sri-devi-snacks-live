@@ -233,6 +233,39 @@ function getDatabaseConnection() {
                     filed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )");
                 
+                // Create bakery tables
+                $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_products (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    price DECIMAL(10, 2) NOT NULL,
+                    image LONGTEXT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_bills (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    total_amount DECIMAL(10, 2) NOT NULL,
+                    paid_amount DECIMAL(10, 2) NOT NULL,
+                    pending_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                    customer_name VARCHAR(100) NULL,
+                    customer_phone VARCHAR(20) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_bill_items (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bill_id INT NOT NULL,
+                    product_id INT NOT NULL,
+                    product_name VARCHAR(255) NOT NULL,
+                    quantity INT NOT NULL,
+                    price DECIMAL(10, 2) NOT NULL,
+                    total DECIMAL(10, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (bill_id) REFERENCES bakery_bills(id) ON DELETE CASCADE,
+                    FOREIGN KEY (product_id) REFERENCES bakery_products(id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+                
                 // Insert default vehicle number if it doesn't exist
                 $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM settings WHERE setting_key = 'vehicle_number'");
                 $checkStmt->execute();
