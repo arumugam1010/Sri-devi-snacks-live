@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Package, Receipt } from 'lucide-react';
+import { Package, Receipt, FileText } from 'lucide-react';
 import BakeryProducts from './BakeryProducts';
 import BakeryBilling from './BakeryBilling';
+import BakeryBillsList from './BakeryBillsList';
 
 export default function BakeryLayout() {
-  const [activeTab, setActiveTab] = useState<'billing' | 'products'>('billing');
+  const [activeTab, setActiveTab] = useState<'billing' | 'products' | 'bills'>('billing');
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)]">
@@ -33,12 +34,25 @@ export default function BakeryLayout() {
           <Package className="w-5 h-5 mr-2" />
           Bakery Products
         </button>
+
+        <button
+          onClick={() => setActiveTab('bills')}
+          className={`flex items-center pb-2 border-b-2 font-medium transition-colors ${
+            activeTab === 'bills' 
+              ? 'border-blue-600 text-blue-600' 
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <FileText className="w-5 h-5 mr-2" />
+          Bakery Bills
+        </button>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
         {activeTab === 'billing' && <BakeryBilling />}
         {activeTab === 'products' && <BakeryProducts />}
+        {activeTab === 'bills' && <BakeryBillsList />}
       </div>
     </div>
   );
