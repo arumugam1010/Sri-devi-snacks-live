@@ -224,15 +224,15 @@ export default function BakeryBilling() {
   if (loading) return <div>Loading...</div>;
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] bg-gray-50 -m-6">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] lg:h-[calc(100vh-8rem)] bg-gray-50 -m-4 sm:-m-6 overflow-hidden">
       
       {/* Products Grid */}
-      <div className="flex-1 p-6 overflow-y-auto flex flex-col">
-        <div className="flex justify-between items-center mb-6">
+      <div className="flex-1 p-4 lg:p-6 overflow-y-auto flex flex-col min-h-0">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <h2 className="text-2xl font-bold text-gray-800">Bakery Products</h2>
           
           {/* Location Selector */}
-          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 flex items-center">
+          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 flex items-center w-full sm:w-auto">
             <MapPin className="w-5 h-5 text-blue-500 mr-2" />
             <div className="flex flex-col">
               <select 
@@ -252,7 +252,7 @@ export default function BakeryBilling() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 pb-4">
           {products.map(product => (
             <div 
               key={product.id} 
@@ -283,7 +283,7 @@ export default function BakeryBilling() {
       </div>
 
       {/* Bill Cart */}
-      <div className="w-96 bg-white border-l border-gray-200 flex flex-col shadow-xl z-10">
+      <div className="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] lg:shadow-xl z-10 h-[45vh] lg:h-auto shrink-0">
         <div className="p-4 bg-gray-800 text-white flex items-center justify-between">
           <div className="flex items-center">
             <ShoppingCart className="h-5 w-5 mr-2" />

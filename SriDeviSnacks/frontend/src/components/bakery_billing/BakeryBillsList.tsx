@@ -73,7 +73,7 @@ export default function BakeryBillsList() {
         </button>
         
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <div className="bg-gray-50 px-4 md:px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-0">
             <div className="flex items-center">
               <Calendar className="h-5 w-5 text-gray-500 mr-2" />
               <h3 className="text-lg font-bold text-gray-900">{selectedMonth}</h3>
