@@ -40,7 +40,7 @@ export default function BakeryBilling() {
     try {
       setLoading(true);
       const res = await bakeryProductsAPI.getProducts();
-      setProducts(res.data.data || []);
+      setProducts(res.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -95,7 +95,7 @@ export default function BakeryBilling() {
       
       // Setup for printing
       setPrintBillData({
-        id: res.data.data.id,
+        id: res.data.id,
         ...payload,
         date: new Date().toLocaleString()
       });

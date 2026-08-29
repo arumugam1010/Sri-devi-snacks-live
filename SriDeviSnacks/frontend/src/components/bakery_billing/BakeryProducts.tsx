@@ -27,7 +27,7 @@ export default function BakeryProducts() {
     try {
       setLoading(true);
       const res = await bakeryProductsAPI.getProducts();
-      setProducts(res.data.data || []);
+      setProducts(res.data || []);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load products');
