@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Package, Receipt, FileText, LayoutDashboard, ArrowLeft, Menu, LogOut } from 'lucide-react';
+import { Package, Receipt, FileText, LayoutDashboard, ArrowLeft, Menu, LogOut, BarChart3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import BakeryProducts from './BakeryProducts';
 import BakeryBilling from './BakeryBilling';
 import BakeryBillsList from './BakeryBillsList';
 import BakeryStock from './BakeryStock';
+import BakeryReports from './BakeryReports';
 import BakeryDashboard from './BakeryDashboard';
 const Logo = '/Logo.png';
 
@@ -14,7 +15,7 @@ interface BakeryLayoutProps {
 }
 
 export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills' | 'reports'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
@@ -23,6 +24,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
     { id: 'stock', name: 'Bakery Stock', icon: Package },
     { id: 'bills', name: 'Bakery Bills', icon: FileText },
     { id: 'billing', name: 'Bakery Billing', icon: Receipt },
+    { id: 'reports', name: 'Reports', icon: BarChart3 },
   ] as const;
 
   const renderContent = () => {
@@ -31,6 +33,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
       case 'products': return <BakeryProducts />;
       case 'stock': return <BakeryStock />;
       case 'bills': return <BakeryBillsList />;
+      case 'reports': return <BakeryReports />;
       case 'dashboard': return <BakeryDashboard />;
       default:
         return null;
