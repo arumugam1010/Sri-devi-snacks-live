@@ -48,9 +48,9 @@ export default function BakeryBillsList() {
         </div>
       )}
 
-      {Object.entries(groupedBills).map(([monthYear, monthBills]) => {
-        const totalAmount = monthBills.reduce((sum, b) => sum + b.total_amount, 0);
-        const totalPending = monthBills.reduce((sum, b) => sum + b.pending_amount, 0);
+      {(Object.entries(groupedBills) as [string, any[]][]).map(([monthYear, monthBills]) => {
+        const totalAmount = monthBills.reduce((sum: number, b: any) => sum + b.total_amount, 0);
+        const totalPending = monthBills.reduce((sum: number, b: any) => sum + b.pending_amount, 0);
 
         return (
           <div key={monthYear} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -90,7 +90,7 @@ export default function BakeryBillsList() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                  {monthBills.map((bill) => (
+                  {monthBills.map((bill: any) => (
                     <tr key={bill.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
                         #{bill.id}
