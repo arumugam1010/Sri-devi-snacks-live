@@ -2,25 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI } from '../../services/api';
 
-// Predefined branches with dummy coordinates (needs actual lat/lng)
-const BRANCHES = [
-  { name: 'Main Branch', lat: 13.0827, lng: 80.2707 },
-  { name: 'Tambaram Branch', lat: 12.9229, lng: 80.1275 },
-  { name: 'Thoraipakkam Outlet', lat: 12.9349, lng: 80.2334 },
-];
-
-function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Radius of the earth in km
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-  const d = R * c * 1000; // Distance in meters
-  return d;
-}
+// Live location is fetched via Geolocation API
 
 interface BakeryProduct {
   id: number;
@@ -67,22 +49,18 @@ export default function BakeryBilling() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const { latitude, longitude } = position.coords;
-        let closestBranch = BRANCHES[0].name;
-        let minDistance = Infinity;
-
-        BRANCHES.forEach(branch => {
-          const distance = getDistanceFromLatLonInMeters(latitude, longitude, branch.lat, branch.lng);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestBranch = branch.name;
-          }
-        });
-
-        // If closest branch is within 500 meters, auto-select it. Otherwise just set it anyway as best guess.
-        setCurrentLocation(closestBranch);
-        setLocationStatus(`GPS Auto-selected (${Math.round(minDistance)}m away)`);
+        try {
+          setLocationStatus('Fetching area name...');
+          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+          const data = await res.json();
+          const place = data.locality || data.city || data.principalSubdivision || 'Unknown Location';
+          setCurrentLocation(place);
+          setLocationStatus(`Live Location Fetched`);
+        } catch (err) {
+          setLocationStatus('Failed to fetch location name');
+        }
       },
       (error) => {
         console.warn('Geolocation error:', error);
@@ -235,18 +213,16 @@ export default function BakeryBilling() {
           <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 flex items-center w-full sm:w-auto">
             <MapPin className="w-5 h-5 text-blue-500 mr-2" />
             <div className="flex flex-col">
-              <select 
+              <input 
+                type="text"
                 value={currentLocation}
                 onChange={(e) => {
                   setCurrentLocation(e.target.value);
-                  setLocationStatus('Manually selected');
+                  setLocationStatus('Manually edited');
                 }}
-                className="text-sm font-bold text-gray-900 border-none bg-transparent focus:ring-0 cursor-pointer p-0 pr-4"
-              >
-                {BRANCHES.map(b => (
-                  <option key={b.name} value={b.name}>{b.name}</option>
-                ))}
-              </select>
+                className="text-sm font-bold text-gray-900 border-none bg-transparent focus:ring-0 p-0 w-32 sm:w-40"
+                placeholder="Enter location"
+              />
               <span className="text-[10px] text-gray-400 mt-0.5">{locationStatus}</span>
             </div>
           </div>
