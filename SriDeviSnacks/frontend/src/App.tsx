@@ -213,9 +213,7 @@ function App() {
             <Route
               path="/bakery-billing"
               element={
-                <Layout user={user} onLogout={handleLogout}>
-                  <BakeryLayout />
-                </Layout>
+                <BakeryLayout user={user} onLogout={handleLogout} />
               }
             />
             <Route
