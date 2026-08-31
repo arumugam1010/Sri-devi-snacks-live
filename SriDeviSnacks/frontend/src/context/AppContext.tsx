@@ -35,6 +35,7 @@ interface ShopProduct {
 interface Bill {
   id: string;
   bill_number?: string;
+  billNumber?: string;
   shop_id: number;
   shop_name: string;
   bill_date: string;

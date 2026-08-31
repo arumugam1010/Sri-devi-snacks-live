@@ -250,7 +250,7 @@ const Dashboard: React.FC = () => {
         bill.items.filter((item: any) => item.quantity < 0).forEach((item: any) => {
           returns.push({
             shopName: bill.shop_name,
-            billNumber: bill.id,
+            billNumber: bill.bill_number || bill.billNumber || bill.id,
             productName: item.product_name,
             quantity: Math.abs(item.quantity),
             rate: item.price,
@@ -270,7 +270,7 @@ const Dashboard: React.FC = () => {
       .map(bill => {
         return {
           shopName: bill.shop_name,
-          billNumber: bill.id,
+          billNumber: bill.bill_number || bill.billNumber || bill.id,
           totalAmount: bill.total_amount,
           paidAmount: bill.received_amount,
           pendingAmount: bill.pending_amount,
@@ -634,7 +634,7 @@ const Dashboard: React.FC = () => {
                           {item.shopName}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                          {item.bill_id || item.billNumber}
+                          {item.billNumber || item.bill_id}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -713,7 +713,7 @@ const Dashboard: React.FC = () => {
                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(bill.bill_date).toLocaleDateString()}</td>
                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bill.shop_name}</td>
                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{shop?.gst || '-'}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{bill.id}</td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{bill.bill_number || bill.billNumber || bill.id}</td>
                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">₹{bill.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">₹{tax.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                            </tr>

@@ -345,8 +345,8 @@
             // Format bill date
             $billDate = $billDateVal ? date('Y-m-d H:i:s', strtotime($billDateVal)) : date('Y-m-d H:i:s');
             
-            // Generate unique bill number
-            $billNumber = 'BILL-' . time() . '-' . rand(1000, 9999);
+            // Generate temp bill number, will be updated to sds-{id} after insert
+            $billNumber = 'TEMP-' . time() . '-' . rand(1000, 9999);
             
             // Get product rates for calculating amount
             $productStmt = $db->query("SELECT id, price, hsn_code FROM products");
@@ -408,6 +408,15 @@
             ]);
             
             $billId = (int)$db->lastInsertId();
+            
+            // Set bill number to start from 276 for IDs > 703
+            if ($billId > 703) {
+                $newBillNumber = (string)($billId - 428);
+            } else {
+                $newBillNumber = 'sds-' . $billId;
+            }
+            $db->exec("UPDATE bills SET bill_number = '{$newBillNumber}' WHERE id = {$billId}");
+            $billNumber = $newBillNumber;
             
             // Insert Items & Update Stocks
             if (!$isPaymentBill) {

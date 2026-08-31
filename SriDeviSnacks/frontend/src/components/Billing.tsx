@@ -30,6 +30,8 @@
 
   interface Bill {
     id: string;
+    bill_number?: string;
+    billNumber?: string;
     shop_id: number;
     shop_name: string;
     bill_date: string;
@@ -1999,7 +2001,7 @@
               <div class="company-name">Sri Devi Snacks</div>
               <div class="company-address">128 C Santhanamari Amman Kovil Street</div>
               <div class="company-city">Vallioor, Tirunelveli-627117</div>
-              <div class="bill-no"><strong>Bill No:</strong> ${bill.id}</div>
+              <div class="bill-no"><strong>Bill No:</strong> ${bill.bill_number || bill.billNumber || bill.id}</div>
               <div class="shop-info"><strong>Shop:</strong> ${bill.shop_name}</div>
               <div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo || 'N/A'}</div>
               <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(bill.bill_date)}</div>
@@ -2236,7 +2238,7 @@
       const dataForExcel = monthBills.map(bill => ({
         'Date': new Date(bill.bill_date).toLocaleDateString(),
         'Shop Name': bill.shop_name,
-        'Bill No': bill.id,
+        'Bill No': bill.bill_number,
         'Total Amount': bill.total_amount,
         'Received Amount': bill.received_amount,
         'Pending Amount': bill.pending_amount,
@@ -2453,7 +2455,7 @@
               <div class="company-name">Sri Devi Snacks</div>
               <div class="company-address">128 C Santhanamari Amman Kovil Street</div>
               <div class="company-city">Vallioor, Tirunelveli-627117</div>
-              <div class="bill-no"><strong>Bill No:</strong> ${bill.id}</div>
+              <div class="bill-no"><strong>Bill No:</strong> ${bill.bill_number || bill.billNumber || bill.id}</div>
               <div class="shop-info"><strong>Shop:</strong> ${bill.shop_name}</div>
               <div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo || 'N/A'}</div>
               <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(bill.bill_date)}</div>
@@ -3138,7 +3140,7 @@
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-3">
                               <div>
-                                <p className="font-medium text-sm text-gray-900">{bill.id}</p>
+                                <p className="font-medium text-sm text-gray-900">{bill.bill_number || bill.billNumber || bill.id}</p>
                                 <p className="text-sm font-semibold text-gray-900">{bill.shop_name}</p>
                                 <p className="text-xs text-gray-500">{new Date(bill.bill_date).toLocaleDateString()}</p>
                               </div>
@@ -3180,7 +3182,7 @@
                               {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
                                 <button
                                   onClick={async () => {
-                                    if (confirm(`Are you sure you want to delete Bill ${bill.id}? This will restore the product stock.`)) {
+                                    if (confirm(`Are you sure you want to delete Bill ${bill.bill_number || bill.billNumber || bill.id}? This will restore the product stock.`)) {
                                       try {
                                         await deleteBill(bill.id);
                                         alert('Bill deleted successfully');
@@ -3332,7 +3334,7 @@
                   <ul className="list-disc pl-5 space-y-1 mb-2">
                     {pendingBills.map((bill) => (
                       <li key={bill.id}>
-                        Bill <span className="font-semibold">#{bill.id}</span>: Outstanding <span className="font-semibold">₹{bill.pending_amount.toLocaleString()}</span>
+                        Bill <span className="font-semibold">#{bill.bill_number || bill.billNumber || bill.id}</span>: Outstanding <span className="font-semibold">₹{bill.pending_amount.toLocaleString()}</span>
                       </li>
                     ))}
                   </ul>
@@ -3663,6 +3665,8 @@
                               if (win) {
                                 const shopName = currentShop?.shop_name || 'Shop';
                                 const billDate = new Date().toLocaleDateString();
+                                const nextId = bills.length > 0 ? Math.max(...bills.map((b: any) => parseInt(b.id) || 0)) + 1 : 1;
+                                const nextBillNumber = nextId > 703 ? String(nextId - 428) : `sds-${nextId}`;
 
                                 win.document.write(`
                                       <html>
@@ -3825,7 +3829,7 @@
                                           <div class="company-name">Sri Devi Snacks</div>
                                           <div class="company-address">128 C Santhanamari Amman Kovil Street</div>
                                           <div class="company-city">Vallioor, Tirunelveli-627117</div>
-                                          <div class="bill-no"><strong>Bill No:</strong> ${`B${String(bills.length + 1).padStart(3, '0')}`}</div>
+                                          <div class="bill-no"><strong>Bill No:</strong> ${nextBillNumber}</div>
                                           <div class="shop-info"><strong>Shop:</strong> ${shopName}</div>
                                           <div class="shop-gst"><strong>Shop GST No:</strong> ${currentShop?.gst || ''}</div>
                                           <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(new Date())}</div>
@@ -4377,7 +4381,7 @@
                                 <div className="text-xs text-gray-500 pb-2">
                                   {pendingBills.map(b => (
                                     <div key={b.id} className="flex justify-between py-0.5">
-                                      <span>bill no {b.id}:</span>
+                                      <span>bill no {b.bill_number || b.billNumber || b.id}:</span>
                                       <span>{b.pending_amount.toFixed(2)}</span>
                                     </div>
                                   ))}
@@ -4719,7 +4723,7 @@
                   {/* Bill Info */}
                   <div className="mb-4">
                     <div className="flex justify-between">
-                      <div>Bill ID: {selectedBillForView.id}</div>
+                      <div>Bill ID: {selectedBillForView.bill_number || selectedBillForView.billNumber || selectedBillForView.id}</div>
                       <div>Date: {formatDateWithDay(selectedBillForView.bill_date)}</div>
                     </div>
                     <div className="flex justify-between">
@@ -4985,7 +4989,7 @@
                         if (win) {
                           const shopName = selectedBillForView.shop_name;
                           const billDate = selectedBillForView.bill_date;
-                          const billId = selectedBillForView.id;
+                          const billId = selectedBillForView.bill_number || selectedBillForView.billNumber || selectedBillForView.id;
 
                           win.document.write(`
                               <html>

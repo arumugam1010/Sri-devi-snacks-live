@@ -33,7 +33,7 @@ const PendingBalances: React.FC = () => {
       if (bill.pending_amount > 0) {
         acc[bill.shop_id].total_pending += bill.pending_amount;
         acc[bill.shop_id].pending_bills.push({
-          billNumber: bill.id,
+          billNumber: bill.bill_number || bill.billNumber || bill.id,
           date: bill.bill_date,
           totalAmount: bill.total_amount,
           pendingAmount: bill.pending_amount,
