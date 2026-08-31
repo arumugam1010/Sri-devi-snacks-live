@@ -15,7 +15,8 @@ interface BakeryLayoutProps {
 }
 
 export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills' | 'reports'>('dashboard');
+  const isStaff2 = user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2';
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills' | 'reports'>(isStaff2 ? 'billing' : 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
@@ -26,6 +27,8 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
     { id: 'billing', name: 'Bakery Billing', icon: Receipt },
     { id: 'reports', name: 'Reports', icon: BarChart3 },
   ] as const;
+
+  const filteredNavigation = isStaff2 ? navigation.filter(item => item.id === 'billing') : navigation;
 
   const renderContent = () => {
     switch (activeTab) {
@@ -53,7 +56,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
                 <span className="text-xl font-bold text-gray-900">Bakery Admin</span>
               </div>
               <nav className="px-2 space-y-1">
-                {navigation.map((item) => (
+                {filteredNavigation.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
@@ -64,15 +67,17 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
                   </button>
                 ))}
                 
-                <div className="pt-4 mt-4 border-t border-gray-200">
-                  <Link
-                    to="/dashboard"
-                    className="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full"
-                  >
-                    <ArrowLeft className="mr-3 h-5 w-5" />
-                    Back to snacks
-                  </Link>
-                </div>
+                {!isStaff2 && (
+                  <div className="pt-4 mt-4 border-t border-gray-200">
+                    <Link
+                      to="/dashboard"
+                      className="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full"
+                    >
+                      <ArrowLeft className="mr-3 h-5 w-5" />
+                      Back to snacks
+                    </Link>
+                  </div>
+                )}
               </nav>
             </div>
           </div>
@@ -86,11 +91,11 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
             <img src={Logo} alt="Logo" className="h-8 w-8 mr-2" />
             <span className="text-xl font-bold text-gray-900">Bakery Admin</span>
           </div>
-          <nav className="flex-1 px-2 space-y-1">
-            {navigation.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
+            <nav className="flex-1 px-2 pb-4 space-y-1">
+              {filteredNavigation.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
                 className={`${activeTab === item.id ? 'bg-blue-100 text-blue-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'} group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full text-left`}
               >
                 <item.icon className="mr-3 h-5 w-5" />
@@ -98,15 +103,17 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
               </button>
             ))}
             
-            <div className="pt-4 mt-4 border-t border-gray-200">
-              <Link
-                to="/dashboard"
-                className="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full"
-              >
-                <ArrowLeft className="mr-3 h-5 w-5" />
-                Back to snacks
-              </Link>
-            </div>
+            {!isStaff2 && (
+              <div className="pt-4 mt-4 border-t border-gray-200">
+                <Link
+                  to="/dashboard"
+                  className="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full"
+                >
+                  <ArrowLeft className="mr-3 h-5 w-5" />
+                  Back to snacks
+                </Link>
+              </div>
+            )}
           </nav>
         </div>
       </div>

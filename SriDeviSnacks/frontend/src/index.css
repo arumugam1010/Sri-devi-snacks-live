@@ -14,3 +14,29 @@
   }
 }
 
+@media print {
+  @page {
+    margin: 0;
+  }
+  body {
+    padding: 0 !important;
+    margin: 0 !important;
+    background-color: white !important;
+  }
+  .print-receipt {
+    width: 58mm !important;
+    max-width: 58mm !important;
+    font-size: 12px;
+    color: black !important;
+    box-sizing: border-box;
+    margin: 0;
+  }
+  .print-receipt table {
+    width: 100% !important;
+    table-layout: auto;
+  }
+  .print-receipt th, .print-receipt td {
+    padding: 2px !important;
+    word-wrap: break-word;
+  }
+}

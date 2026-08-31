@@ -114,6 +114,7 @@ function App() {
     name: string;
     email: string;
     role: string;
+    username?: string;
   }
 
   const handleLogin = (userData: UserData) => {
@@ -155,16 +156,18 @@ function App() {
               <Route path="/contact" element={<ContactSection />} />
             </Route>
           ) : (
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="/" element={<Navigate to={(user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2') ? "/bakery-billing" : "/dashboard"} />} />
           )}
           <Route
             path="/login"
-            element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />}
+            element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to={(user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2') ? "/bakery-billing" : "/dashboard"} />}
           />
           <Route element={isAuthenticated ? <Outlet /> : <Navigate to="/" />}>
             <Route
               path="/dashboard"
               element={
+                (user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2') ? 
+                <Navigate to="/bakery-billing" /> :
                 <Layout user={user} onLogout={handleLogout}>
                   <Dashboard />
                 </Layout>

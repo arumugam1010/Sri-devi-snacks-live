@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI } from '../../services/api';
 
 // Live location is fetched via Geolocation API
@@ -37,6 +37,11 @@ export default function BakeryBilling() {
 
   const [currentLocation, setCurrentLocation] = useState<string>('Main Branch');
   const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
+
+  const [isListening, setIsListening] = useState(false);
+  const [voiceFeedback, setVoiceFeedback] = useState('');
+  const [qtyModalProduct, setQtyModalProduct] = useState<BakeryProduct | null>(null);
+  const [qtyInput, setQtyInput] = useState('1');
 
   useEffect(() => {
     fetchProducts();
@@ -86,29 +91,196 @@ export default function BakeryBilling() {
   const totalAmount = billItems.reduce((sum, item) => sum + item.total, 0);
 
   const handleProductClick = (product: BakeryProduct) => {
-    const qtyStr = window.prompt(`Enter quantity for ${product.name}:`, "1");
-    if (!qtyStr) return;
-    const qty = parseInt(qtyStr, 10);
-    if (isNaN(qty) || qty <= 0) return;
+    setQtyModalProduct(product);
+    setQtyInput("1");
+  };
+
+  const confirmQuantity = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!qtyModalProduct) return;
+    
+    const qty = parseInt(qtyInput, 10);
+    if (isNaN(qty) || qty <= 0) {
+      setQtyModalProduct(null);
+      return;
+    }
 
     setBillItems(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const existing = prev.find(i => i.product_id === qtyModalProduct.id);
       if (existing) {
-        return prev.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + qty, total: (i.quantity + qty) * i.price } : i);
+        return prev.map(i => i.product_id === qtyModalProduct.id ? { ...i, quantity: i.quantity + qty, total: (i.quantity + qty) * i.price } : i);
       } else {
         return [...prev, {
-          product_id: product.id,
-          product_name: product.name,
-          price: product.price,
+          product_id: qtyModalProduct.id,
+          product_name: qtyModalProduct.name,
+          price: qtyModalProduct.price,
           quantity: qty,
-          total: product.price * qty
+          total: qtyModalProduct.price * qty
         }];
       }
     });
+    
+    setQtyModalProduct(null);
   };
 
   const removeBillItem = (productId: number) => {
     setBillItems(prev => prev.filter(i => i.product_id !== productId));
+  };
+
+  const startVoiceRecognition = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Your browser does not support voice recognition.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ta-IN'; // Set to Tamil since product names are in Tamil
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceFeedback('Listening...');
+    };
+
+    recognition.onresult = (event: any) => {
+      let transcript = event.results[0][0].transcript.toLowerCase();
+      
+      // Fix common voice recognition typos
+      const aliases: {[key: string]: string} = {
+        'பிரெட்': 'பிரட்',
+        'சாம்பன்': 'ஜாம்பன்',
+        'கிரிம்': 'கிரீம்'
+      };
+      for (const [typo, correct] of Object.entries(aliases)) {
+        transcript = transcript.replace(new RegExp(typo, 'g'), correct);
+      }
+      
+      // Try to find a matching product
+      let matchedProduct = products.find(p => p.stock > 0 && transcript.includes(p.name.toLowerCase()));
+      
+      if (!matchedProduct) {
+        // Try partial match (e.g. product is "Veg Puff", user says "Puff")
+        const words = transcript.split(' ').filter((w: string) => w.length >= 2 && isNaN(Number(w)));
+        matchedProduct = products.find(p => {
+          if (p.stock <= 0) return false;
+          const pName = p.name.toLowerCase();
+          return words.some((w: string) => pName.includes(w));
+        });
+      }
+
+      if (!matchedProduct) {
+        // Try fuzzy match using Levenshtein distance for typos (e.g. ஜாம்பன் vs சாம்பன்)
+        const levenshtein = (a: string, b: string) => {
+          const matrix = [];
+          for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+          for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+          for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+              if (b.charAt(i-1) === a.charAt(j-1)) {
+                matrix[i][j] = matrix[i-1][j-1];
+              } else {
+                matrix[i][j] = Math.min(matrix[i-1][j-1] + 1, matrix[i][j-1] + 1, matrix[i-1][j] + 1);
+              }
+            }
+          }
+          return matrix[b.length][a.length];
+        };
+
+        let cleanTranscript = transcript.replace(/\d+/g, '');
+        const numberWords = ['ஒன்று', 'ஒன்னு', 'இரண்டு', 'ரெண்டு', 'மூன்று', 'மூணு', 'நான்கு', 'நாலு', 'ஐந்து', 'அஞ்சு', 'ஆறு', 'ஏழு', 'எட்டு', 'ஒன்பது', 'பத்து'];
+        for (const w of numberWords) {
+          cleanTranscript = cleanTranscript.replace(new RegExp(w, 'g'), '');
+        }
+        cleanTranscript = cleanTranscript.replace(/\s+/g, '');
+
+        if (cleanTranscript.length > 0) {
+          let bestMatch = null;
+          let minDistance = 999;
+          
+          for (const p of products) {
+            if (p.stock <= 0) continue;
+            const cleanProductName = p.name.toLowerCase().replace(/\s+/g, '');
+            const dist = levenshtein(cleanTranscript, cleanProductName);
+            if (dist < minDistance && dist <= 3) {
+              minDistance = dist;
+              bestMatch = p;
+            }
+          }
+          
+          if (bestMatch) {
+            matchedProduct = bestMatch;
+          }
+        }
+      }
+      
+      if (matchedProduct) {
+        // Extract quantity from transcript
+        let qty = 1;
+        const remainingText = transcript.replace(matchedProduct.name.toLowerCase(), '');
+        const numberMatch = remainingText.match(/\d+/);
+        
+        if (numberMatch) {
+          qty = parseInt(numberMatch[0], 10);
+        } else {
+          // Fallback to word parsing
+          const wordToNum: {[key: string]: number} = {
+            'ஒன்று': 1, 'ஒன்னு': 1, 'இரண்டு': 2, 'ரெண்டு': 2,
+            'மூன்று': 3, 'மூணு': 3, 'நான்கு': 4, 'நாலு': 4,
+            'ஐந்து': 5, 'அஞ்சு': 5, 'ஆறு': 6,
+            'ஏழு': 7, 'எட்டு': 8, 'ஒன்பது': 9, 'பத்து': 10,
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'onnu': 1, 'rendu': 2, 'moonu': 3, 'naalu': 4, 'anju': 5,
+            'aaru': 6, 'yelu': 7, 'ettu': 8, 'ombodu': 9, 'pathu': 10
+          };
+          for (const [word, num] of Object.entries(wordToNum)) {
+            if (remainingText.includes(word)) {
+              qty = num;
+              break;
+            }
+          }
+        }
+
+        if (qty <= 0) qty = 1;
+
+        // Directly add to bill bypassing the prompt
+        setBillItems(prev => {
+          const existing = prev.find(i => i.product_id === matchedProduct.id);
+          if (existing) {
+            return prev.map(i => i.product_id === matchedProduct.id ? { ...i, quantity: i.quantity + qty, total: (i.quantity + qty) * i.price } : i);
+          } else {
+            return [...prev, {
+              product_id: matchedProduct.id,
+              product_name: matchedProduct.name,
+              price: matchedProduct.price,
+              quantity: qty,
+              total: matchedProduct.price * qty
+            }];
+          }
+        });
+
+        setVoiceFeedback(`Added ${qty} ${matchedProduct.name}`);
+        setTimeout(() => setVoiceFeedback(''), 3000);
+      } else {
+        setVoiceFeedback(`Not found: "${transcript}"`);
+        setTimeout(() => setVoiceFeedback(''), 3000);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error(event.error);
+      setIsListening(false);
+      setVoiceFeedback('Error listening.');
+      setTimeout(() => setVoiceFeedback(''), 3000);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
   };
 
   const handleSaveAndPrint = async () => {
@@ -257,6 +429,27 @@ export default function BakeryBilling() {
               />
               <span className="text-[10px] text-gray-400 mt-0.5">{locationStatus}</span>
             </div>
+          </div>
+
+          {/* Voice Recognition Button */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={startVoiceRecognition}
+              disabled={isListening}
+              className={`flex items-center justify-center p-3 rounded-full shadow-md transition-all ${
+                isListening 
+                  ? 'bg-red-500 text-white animate-pulse' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+              title="Add product by voice"
+            >
+              {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+            </button>
+            {voiceFeedback && (
+              <span className={`text-sm font-medium ${isListening ? 'text-red-500' : 'text-blue-600'}`}>
+                {voiceFeedback}
+              </span>
+            )}
           </div>
         </div>
 
@@ -442,10 +635,10 @@ export default function BakeryBilling() {
       <div className="hidden">
         <div ref={printRef}>
           {printBillData && (
-            <div>
+            <div className="print-receipt px-2">
               <div className="text-center mb-2">
-                <div className="font-bold text-lg">SRI DEVI SNACKS</div>
-                <div>Bakery Bill</div>
+                <div className="font-bold text-base sm:text-lg">SRI DEVI SNACKS</div>
+                <div className="text-sm">Bakery Bill</div>
                 <div>Date: {printBillData.date}</div>
                 <div>Bill No: {printBillData.id}</div>
               </div>
@@ -504,6 +697,53 @@ export default function BakeryBilling() {
           )}
         </div>
       </div>
+
+      {/* Quantity Modal */}
+      {qtyModalProduct && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-800 bg-opacity-75 backdrop-blur-sm" onClick={() => setQtyModalProduct(null)}></div>
+            <div className="relative inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm w-full">
+              <form onSubmit={confirmQuantity}>
+                <div className="bg-white px-6 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <div className="mt-3 text-center sm:mt-0 sm:text-left">
+                    <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
+                      Enter quantity for {qtyModalProduct.name}
+                    </h3>
+                    <div className="mt-2">
+                      <input
+                        type="number"
+                        pattern="[0-9]*"
+                        inputMode="numeric"
+                        autoFocus
+                        className="w-full text-center text-3xl font-bold border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 py-4"
+                        value={qtyInput}
+                        onChange={(e) => setQtyInput(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 flex flex-row-reverse space-x-reverse space-x-3 gap-3 sm:gap-0">
+                  <button
+                    type="submit"
+                    className="w-full sm:w-auto inline-flex justify-center rounded-md border border-transparent shadow-sm px-6 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQtyModalProduct(null)}
+                    className="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-6 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
