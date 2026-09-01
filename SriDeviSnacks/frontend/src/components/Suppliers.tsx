@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, Plus, Save, X, Edit, Trash2, Box } from 'lucide-react';
+import { Truck, Plus, Save, X, Edit, Trash2, Box, Eye } from 'lucide-react';
 import api from '../services/api';
 import { useAppContext } from '../context/AppContext';
 
@@ -32,6 +32,7 @@ const Suppliers: React.FC = () => {
     { item_name: '', default_price: 0, gst_rate: 0 }
   ]);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [viewItemsSupplier, setViewItemsSupplier] = useState<Supplier | null>(null);
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -364,17 +365,17 @@ const Suppliers: React.FC = () => {
                       {supplier.gst_number || '-'}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {supplier.items && supplier.items.length > 0 ? (
-                          supplier.items.map((item, idx) => (
-                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                              {item.item_name}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-gray-400 text-sm">No items</span>
-                        )}
-                      </div>
+                      {supplier.items && supplier.items.length > 0 ? (
+                        <button
+                          onClick={() => setViewItemsSupplier(supplier)}
+                          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium flex items-center bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          <Eye className="h-4 w-4 mr-1.5" />
+                          View Items ({supplier.items.length})
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-sm">No items</span>
+                      )}
                     </td>
                     {userRole !== 'ACCOUNTS' && (
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -399,6 +400,69 @@ const Suppliers: React.FC = () => {
           </div>
         )}
       </div>
+      {/* View Items Modal */}
+      {viewItemsSupplier && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                <Box className="h-5 w-5 mr-2 text-indigo-600" />
+                Items Supplied by {viewItemsSupplier.name}
+              </h2>
+              <button
+                onClick={() => setViewItemsSupplier(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              {viewItemsSupplier.items && viewItemsSupplier.items.length > 0 ? (
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default Price</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {viewItemsSupplier.items.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {item.item_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ₹{Number(item.default_price || 0).toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {item.gst_rate}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No items configured for this supplier.
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setViewItemsSupplier(null)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
