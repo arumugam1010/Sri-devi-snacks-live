@@ -118,19 +118,21 @@ function createBakeryBill() {
     $customerName = $data['customer_name'] ?? null;
     $customerPhone = $data['customer_phone'] ?? null;
     $locationName = $data['location_name'] ?? null;
+    $shopId = $data['shop_id'] ?? null;
 
     $db = getDatabaseConnection();
     try {
         $db->beginTransaction();
 
-        $stmt = $db->prepare("INSERT INTO bakery_bills (total_amount, paid_amount, pending_amount, customer_name, customer_phone, location_name) VALUES (:total_amount, :paid_amount, :pending_amount, :customer_name, :customer_phone, :location_name)");
+        $stmt = $db->prepare("INSERT INTO bakery_bills (total_amount, paid_amount, pending_amount, customer_name, customer_phone, location_name, shop_id) VALUES (:total_amount, :paid_amount, :pending_amount, :customer_name, :customer_phone, :location_name, :shop_id)");
         $stmt->execute([
             ':total_amount' => $totalAmount,
             ':paid_amount' => $paidAmount,
             ':pending_amount' => $pendingAmount,
             ':customer_name' => $customerName,
             ':customer_phone' => $customerPhone,
-            ':location_name' => $locationName
+            ':location_name' => $locationName,
+            ':shop_id' => $shopId
         ]);
         
         $billId = $db->lastInsertId();

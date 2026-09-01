@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Package, Receipt, FileText, LayoutDashboard, ArrowLeft, Menu, LogOut, BarChart3 } from 'lucide-react';
+import { Package, Receipt, FileText, LayoutDashboard, ArrowLeft, Menu, LogOut, BarChart3, Store } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import BakeryProducts from './BakeryProducts';
+import BakeryShops from './BakeryShops';
 import BakeryBilling from './BakeryBilling';
 import BakeryBillsList from './BakeryBillsList';
 import BakeryStock from './BakeryStock';
@@ -16,12 +17,13 @@ interface BakeryLayoutProps {
 
 export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
   const isStaff2 = user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2';
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'stock' | 'bills' | 'reports'>(isStaff2 ? 'billing' : 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'billing' | 'products' | 'shops' | 'stock' | 'bills' | 'reports'>(isStaff2 ? 'billing' : 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', name: 'Bakery Products', icon: Package },
+    { id: 'shops', name: 'Bakery Shops', icon: Store },
     { id: 'stock', name: 'Bakery Stock', icon: Package },
     { id: 'bills', name: 'Bakery Bills', icon: FileText },
     { id: 'billing', name: 'Bakery Billing', icon: Receipt },
@@ -34,6 +36,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
     switch (activeTab) {
       case 'billing': return <BakeryBilling />;
       case 'products': return <BakeryProducts />;
+      case 'shops': return <BakeryShops />;
       case 'stock': return <BakeryStock />;
       case 'bills': return <BakeryBillsList />;
       case 'reports': return <BakeryReports />;

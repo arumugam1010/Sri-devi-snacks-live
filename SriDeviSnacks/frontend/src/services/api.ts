@@ -606,8 +606,18 @@ export const bakeryProductsAPI = {
 export const bakeryBillsAPI = {
   getBills: async () => authenticatedFetch(`${API_BASE_URL}/bakery-bills`),
   getBill: async (id: number) => authenticatedFetch(`${API_BASE_URL}/bakery-bills/${id}`),
-  createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string; location_name?: string }) => 
+  createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string; location_name?: string; shop_id?: number }) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-bills`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const bakeryShopsAPI = {
+  getShops: async () => authenticatedFetch(`${API_BASE_URL}/bakery-shops`),
+  createShop: async (data: { name: string; phone?: string; address?: string; latitude?: number | null; longitude?: number | null }) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-shops`, { method: 'POST', body: JSON.stringify(data) }),
+  updateShop: async (id: number, data: { name: string; phone?: string; address?: string; latitude?: number | null; longitude?: number | null }) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-shops/${id}`, { method: 'PUT', body: JSON.stringify({ id, ...data }) }),
+  deleteShop: async (id: number) => 
+    authenticatedFetch(`${API_BASE_URL}/bakery-shops/${id}`, { method: 'DELETE' }),
 };
 
 export default api;

@@ -180,6 +180,10 @@ switch ($module) {
         require_once __DIR__ . '/controllers/bakery_bills.php';
         handleBakeryBillsRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'bakery-shops':
+        require_once __DIR__ . '/controllers/bakery_shops.php';
+        handleBakeryShopsRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'debug-db':
         try {
             $db = getDatabaseConnection();

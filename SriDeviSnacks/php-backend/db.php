@@ -243,6 +243,17 @@ function getDatabaseConnection() {
                 )");
                 
                 // Create bakery tables
+                $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_shops (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    phone VARCHAR(20) NULL,
+                    address TEXT NULL,
+                    latitude DECIMAL(10, 8) NULL,
+                    longitude DECIMAL(11, 8) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
                 $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_products (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
@@ -259,8 +270,19 @@ function getDatabaseConnection() {
                     pending_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
                     customer_name VARCHAR(100) NULL,
                     customer_phone VARCHAR(20) NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    shop_id INT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (shop_id) REFERENCES bakery_shops(id) ON DELETE SET NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+                
+                // Add shop_id to existing bakery_bills if missing
+                try {
+                    $stmt = $pdo->query("SHOW COLUMNS FROM bakery_bills LIKE 'shop_id'");
+                    if (!$stmt->fetch()) {
+                        $pdo->exec("ALTER TABLE bakery_bills ADD COLUMN shop_id INT NULL AFTER customer_phone");
+                        $pdo->exec("ALTER TABLE bakery_bills ADD CONSTRAINT fk_bakery_bills_shop FOREIGN KEY (shop_id) REFERENCES bakery_shops(id) ON DELETE SET NULL");
+                    }
+                } catch (\Exception $e) {}
 
                 $pdo->exec("CREATE TABLE IF NOT EXISTS bakery_bill_items (
                     id INT AUTO_INCREMENT PRIMARY KEY,

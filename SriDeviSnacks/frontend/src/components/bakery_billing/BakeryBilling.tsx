@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff } from 'lucide-react';
-import { bakeryProductsAPI, bakeryBillsAPI } from '../../services/api';
+import { bakeryProductsAPI, bakeryBillsAPI, bakeryShopsAPI } from '../../services/api';
 import html2canvas from 'html2canvas';
 
 // Live location is fetched via Geolocation API
@@ -11,6 +11,15 @@ interface BakeryProduct {
   price: number;
   image: string | null;
   stock: number;
+}
+
+interface BakeryShop {
+  id: number;
+  name: string;
+  phone: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface BillItem {
@@ -33,11 +42,11 @@ export default function BakeryBilling() {
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
-  const printRef = useRef<HTMLDivElement>(null);
-  const [printBillData, setPrintBillData] = useState<any>(null);
-
   const [currentLocation, setCurrentLocation] = useState<string>('Main Branch');
   const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
+  const [nearbyShops, setNearbyShops] = useState<(BakeryShop & { distance: number })[]>([]);
+  const [showNearbyModal, setShowNearbyModal] = useState(false);
 
   const [isListening, setIsListening] = useState(false);
   const [voiceFeedback, setVoiceFeedback] = useState('');
@@ -48,6 +57,26 @@ export default function BakeryBilling() {
     fetchProducts();
     detectLocation();
   }, []);
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const selectShop = (shop: BakeryShop) => {
+    setSelectedShopId(shop.id);
+    setCustomerName(shop.name);
+    setCustomerPhone(shop.phone || '');
+    setShowNearbyModal(false);
+  };
 
   const detectLocation = () => {
     if (!navigator.geolocation) {
@@ -60,11 +89,34 @@ export default function BakeryBilling() {
         const { latitude, longitude } = position.coords;
         try {
           setLocationStatus('Fetching area name...');
-          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+          const [res, shopsRes] = await Promise.all([
+            fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`),
+            bakeryShopsAPI.getShops().catch(() => ({ data: [] }))
+          ]);
+          
           const data = await res.json();
           const place = data.locality || data.city || data.principalSubdivision || 'Unknown Location';
           setCurrentLocation(place);
           setLocationStatus(`Live Location Fetched`);
+
+          const shops = shopsRes?.data || [];
+          if (shops.length > 0) {
+            const shopsWithDist = shops
+              .filter((s: BakeryShop) => s.latitude && s.longitude)
+              .map((s: BakeryShop) => ({
+                ...s,
+                distance: calculateDistance(latitude, longitude, s.latitude as number, s.longitude as number)
+              }))
+              .filter((s: any) => s.distance <= 5000) // within 5km
+              .sort((a: any, b: any) => a.distance - b.distance);
+              
+            if (shopsWithDist.length === 1 || (shopsWithDist.length > 1 && shopsWithDist[0].distance <= 50)) {
+              selectShop(shopsWithDist[0]);
+            } else if (shopsWithDist.length > 1) {
+              setNearbyShops(shopsWithDist);
+              setShowNearbyModal(true);
+            }
+          }
         } catch (err) {
           setLocationStatus('Failed to fetch location name');
         }
@@ -297,17 +349,18 @@ export default function BakeryBilling() {
         paid_amount: paid,
         customer_name: customerName,
         customer_phone: customerPhone,
-        location_name: currentLocation
+        location_name: currentLocation,
+        shop_id: selectedShopId || undefined
       };
       
       const res = await bakeryBillsAPI.createBill(payload);
       
-      // Setup for printing
-      setPrintBillData({
+      const billData = {
         id: res.data.id,
         ...payload,
+        pending_amount: totalAmount - paid,
         date: new Date().toLocaleString()
-      });
+      };
       
       setIsPaymentModalOpen(false);
       setBillItems([]);
@@ -316,10 +369,7 @@ export default function BakeryBilling() {
       setPaidAmount('');
       fetchProducts(); // Refresh stock
       
-      // Delay to allow React to render the print section before calling print()
-      setTimeout(() => {
-        handlePrint();
-      }, 500);
+      handlePrint(billData);
 
     } catch (err: any) {
       alert(err.message || "Failed to save bill");
@@ -339,7 +389,8 @@ export default function BakeryBilling() {
         paid_amount: 0,
         customer_name: customerName,
         customer_phone: customerPhone,
-        location_name: currentLocation
+        location_name: currentLocation,
+        shop_id: selectedShopId || undefined
       };
       
       await bakeryBillsAPI.createBill(payload);
@@ -358,17 +409,75 @@ export default function BakeryBilling() {
     }
   };
 
-  const handlePrint = async () => {
-    if (!printRef.current) return;
-    
-    const printContent = printRef.current.innerHTML;
-    
+  const handlePrint = async (billData: any) => {
     const isMobileOrTablet = () => {
       const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
       return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
     };
 
     const isMobile = isMobileOrTablet();
+    
+    const printContent = `
+      <div class="print-receipt px-2">
+        <div class="text-center mb-2">
+          <div class="font-bold text-base sm:text-lg">SRI DEVI SNACKS</div>
+          <div class="text-sm">Bakery Bill</div>
+          <div>Date: ${billData.date}</div>
+          <div>Bill No: ${billData.id}</div>
+        </div>
+        
+        ${(billData.customer_name || billData.customer_phone) ? `
+          <div class="my-2 border-t border-b py-1">
+            ${billData.customer_name ? `<div>Name: ${billData.customer_name}</div>` : ''}
+            ${billData.customer_phone ? `<div>Ph: ${billData.customer_phone}</div>` : ''}
+          </div>
+        ` : ''}
+
+        <div class="my-2 border-t py-1">
+          <table>
+            <thead>
+              <tr class="border-b">
+                <th>Item</th>
+                <th class="text-center">Qty</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${billData.items.map((item: any) => `
+                <tr>
+                  <td>${item.product_name.substring(0, 12)}</td>
+                  <td class="text-center">${item.quantity}</td>
+                  <td class="text-right">${item.price.toFixed(2)}</td>
+                  <td class="text-right">${item.total.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="border-t py-1">
+          <div class="flex justify-between font-bold">
+            <span>Total:</span>
+            <span>${billData.total_amount.toFixed(2)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Paid:</span>
+            <span>${billData.paid_amount.toFixed(2)}</span>
+          </div>
+          ${billData.pending_amount > 0 ? `
+            <div class="flex justify-between font-bold text-lg">
+              <span>Pending:</span>
+              <span>${billData.pending_amount.toFixed(2)}</span>
+            </div>
+          ` : ''}
+        </div>
+        
+        <div class="text-center mt-4 border-t py-2">
+          <div>Thank You!</div>
+        </div>
+      </div>
+    `;
     
     const fullHtml = `
       <html>
@@ -412,14 +521,22 @@ export default function BakeryBilling() {
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (doc) {
         doc.open();
-        doc.write(html);
+        
+        const optimizedHtml = html
+          .replace(/size:\s*80mm\s*auto/gi, 'size: auto')
+          .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
+          .replace(/width:\s*(72mm|80mm)\s*!important/gi, 'width: 100% !important')
+          .replace(/padding:\s*2mm\s*0mm/gi, 'padding: 10px')
+          .replace(/padding:\s*4mm\s*2mm/gi, 'padding: 10px')
+          .replace(/₹/g, '<span class="rupee">₹</span>');
+          
+        doc.write(optimizedHtml);
         doc.close();
 
         setTimeout(() => {
           if (iframe.contentWindow) {
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
-            setPrintBillData(null);
             setTimeout(() => {
               document.body.removeChild(iframe);
             }, 1000);
@@ -432,58 +549,112 @@ export default function BakeryBilling() {
       }
     };
 
-    if (isMobile) {
+    const savedRawBT = localStorage.getItem('useRawBT');
+    const useRawBT = savedRawBT !== null ? savedRawBT === 'true' : isMobile;
+
+    if (isMobile && useRawBT) {
       try {
+        const optimizedHtml = printContent
+            .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
+            .replace(/width:\s*(72mm|80mm)\s*!important/gi, 'width: 100% !important')
+            .replace(/₹/g, '<span class="rupee">₹</span>');
+            
         const container = document.createElement('div');
         container.style.position = 'absolute';
         container.style.left = '-9999px';
-        container.style.width = '380px';
+        container.style.width = '800px'; // Increased to 800px to fully match 8cm paper width
         container.style.background = 'white';
-        container.innerHTML = `
+        container.style.padding = '0px';
+        container.style.boxSizing = 'border-box';
+        container.innerHTML = optimizedHtml + `
           <style>
-            * {
-              font-family: 'Courier New', Courier, monospace !important;
-              font-weight: 900 !important;
-              color: #000 !important;
-              -webkit-text-stroke: 0.2px black !important;
-            }
-            body { width: 100% !important; margin: 0 !important; padding: 10px !important; box-sizing: border-box !important; background: white !important; font-size: 20px !important; }
-            .text-center { text-align: center !important; }
-            .font-bold { font-weight: bold !important; }
-            .text-lg { font-size: 26px !important; }
-            .mb-2 { margin-bottom: 10px !important; }
-            .mb-4 { margin-bottom: 20px !important; }
-            .flex { display: flex !important; }
-            .justify-between { justify-content: space-between !important; }
-            .border-t { border-top: 2px dashed #000 !important; }
-            .border-b { border-bottom: 2px dashed #000 !important; }
-            .py-1 { padding: 6px 0 !important; }
-            .my-2 { margin: 12px 0 !important; }
-            table { width: 100% !important; border-collapse: collapse !important; }
-            th, td { text-align: left !important; padding: 6px 0 !important; font-size: 20px !important; }
-            th.text-right, td.text-right { text-align: right !important; }
-            th.text-center, td.text-center { text-align: center !important; }
+                * {
+                  font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
+                  font-weight: 900 !important;
+                  color: #000 !important;
+                  -webkit-text-stroke: 0.5px black !important;
+                  text-stroke: 0.5px black !important;
+                }
+                body {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  padding: 0px !important;
+                  margin: 0 !important;
+                  box-sizing: border-box !important;
+                }
+                .print-receipt {
+                  width: 100% !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                }
+                body, div, p, td, th, span {
+                  font-size: 38px !important;
+                  line-height: 1.4 !important;
+                }
+                .font-bold {
+                  font-weight: bold !important;
+                }
+                .text-lg, .text-base { 
+                  font-size: 64px !important; 
+                  margin: 15px 0 !important; 
+                }
+                .mb-2 { margin-bottom: 8px !important; }
+                .mb-4 { margin-bottom: 16px !important; }
+                .flex { display: flex !important; }
+                .justify-between { justify-content: space-between !important; }
+                .text-center { text-align: center !important; }
+                table {
+                  width: 100% !important;
+                  table-layout: fixed !important;
+                  border-collapse: collapse !important;
+                }
+                th {
+                  font-size: 26px !important;
+                  padding: 10px 2px !important;
+                  border: 2px solid #888 !important;
+                  word-wrap: break-word !important;
+                  white-space: normal !important;
+                }
+                td { 
+                  font-size: 30px !important; 
+                  padding: 10px 2px !important; 
+                  border: 2px solid #888 !important;
+                  word-wrap: break-word !important;
+                  white-space: normal !important;
+                }
+                th.text-right, td.text-right { text-align: right !important; }
+                th.text-center, td.text-center { text-align: center !important; }
+                .border-t {
+                  border-top: 4px solid #000 !important;
+                  margin: 15px 0 !important;
+                }
+                .border-b {
+                  border-bottom: 4px solid #000 !important;
+                  margin: 15px 0 !important;
+                }
+                .py-1, .py-2 { padding: 15px 0 !important; }
+                .my-2 { margin: 15px 0 !important; }
+                .mt-4 { margin-top: 25px !important; }
+                .rupee {
+                  color: #000 !important;
+                  font-weight: 900 !important;
+                }
           </style>
-          <div>
-            ${printContent}
-          </div>
         `;
         document.body.appendChild(container);
 
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 600));
 
         const canvas = await html2canvas(container, {
-          scale: 1.2,
+          scale: 1.0, // Optimized scale to prevent URL length limits in mobile browsers
           useCORS: true,
           backgroundColor: '#ffffff'
         });
 
         document.body.removeChild(container);
         
-        const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        const base64Image = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
         window.location.href = `rawbt:data:image/jpeg;base64,` + base64Image;
-        
-        setPrintBillData(null);
       } catch (e) {
         console.error('RawBT print failed:', e);
         fallbackPrint(fullHtml);
@@ -721,72 +892,7 @@ export default function BakeryBilling() {
         </div>
       )}
 
-      {/* Hidden Print Section */}
-      <div className="hidden">
-        <div ref={printRef}>
-          {printBillData && (
-            <div className="print-receipt px-2">
-              <div className="text-center mb-2">
-                <div className="font-bold text-base sm:text-lg">SRI DEVI SNACKS</div>
-                <div className="text-sm">Bakery Bill</div>
-                <div>Date: {printBillData.date}</div>
-                <div>Bill No: {printBillData.id}</div>
-              </div>
-              
-              {(printBillData.customer_name || printBillData.customer_phone) && (
-                <div className="my-2 border-t border-b py-1">
-                  {printBillData.customer_name && <div>Name: {printBillData.customer_name}</div>}
-                  {printBillData.customer_phone && <div>Ph: {printBillData.customer_phone}</div>}
-                </div>
-              )}
-
-              <div className="my-2 border-t py-1">
-                <table>
-                  <thead>
-                    <tr className="border-b">
-                      <th>Item</th>
-                      <th className="text-center">Qty</th>
-                      <th className="text-right">Price</th>
-                      <th className="text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printBillData.items.map((item: any, idx: number) => (
-                      <tr key={idx}>
-                        <td>{item.product_name.substring(0, 12)}</td>
-                        <td className="text-center">{item.quantity}</td>
-                        <td className="text-right">{item.price.toFixed(2)}</td>
-                        <td className="text-right">{item.total.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              
-              <div className="border-t py-1">
-                <div className="flex justify-between font-bold">
-                  <span>Total:</span>
-                  <span>{printBillData.total_amount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Paid:</span>
-                  <span>{printBillData.paid_amount.toFixed(2)}</span>
-                </div>
-                {printBillData.pending_amount > 0 && (
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Pending:</span>
-                    <span>{printBillData.pending_amount.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="text-center mt-4 border-t py-2">
-                <div>Thank You!</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Removed Print Section because HTML is generated dynamically in handlePrint */}
 
       {/* Quantity Modal */}
       {qtyModalProduct && (
@@ -830,6 +936,51 @@ export default function BakeryBilling() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nearby Shops Modal */}
+      {showNearbyModal && nearbyShops.length > 0 && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-800 bg-opacity-75 backdrop-blur-sm" onClick={() => setShowNearbyModal(false)}></div>
+            <div className="relative inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md w-full">
+              <div className="bg-white px-6 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="mt-3 text-center sm:mt-0 sm:text-left">
+                  <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
+                    Nearby Bakery Shops Detected
+                  </h3>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-sm text-gray-500 mb-4">Select the shop you are currently at:</p>
+                    {nearbyShops.map(shop => (
+                      <div
+                        key={shop.id}
+                        onClick={() => selectShop(shop)}
+                        className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-orange-50 hover:border-orange-200 transition-colors"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">{shop.name}</div>
+                          <div className="text-xs text-gray-500">{shop.phone || 'No phone'}</div>
+                        </div>
+                        <div className="text-sm font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded">
+                          {shop.distance < 1000 ? `${Math.round(shop.distance)}m` : `${(shop.distance/1000).toFixed(1)}km`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex flex-row-reverse space-x-reverse space-x-3 gap-3 sm:gap-0">
+                <button
+                  type="button"
+                  onClick={() => setShowNearbyModal(false)}
+                  className="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-6 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                >
+                  Cancel / Skip
+                </button>
+              </div>
             </div>
           </div>
         </div>
