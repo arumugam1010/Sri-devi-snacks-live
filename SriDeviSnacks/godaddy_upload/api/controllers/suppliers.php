@@ -42,6 +42,7 @@ function handleSuppliersRoute($parts, $method) {
         $name = trim($input['name'] ?? '');
         $contact = trim($input['contact_info'] ?? '');
         $gst_number = trim($input['gst_number'] ?? '');
+        $address = trim($input['address'] ?? '');
         $items = $input['items'] ?? []; // Array of {item_name, default_price, gst_rate}
 
         if (empty($name)) {
@@ -51,8 +52,8 @@ function handleSuppliersRoute($parts, $method) {
         try {
             $db->beginTransaction();
 
-            $stmt = $db->prepare("INSERT INTO suppliers (name, contact_info, gst_number) VALUES (?, ?, ?)");
-            $stmt->execute([$name, $contact, $gst_number]);
+            $stmt = $db->prepare("INSERT INTO suppliers (name, contact_info, gst_number, address) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $contact, $gst_number, $address]);
             $supplierId = $db->lastInsertId();
 
             if (is_array($items) && count($items) > 0) {
@@ -78,6 +79,7 @@ function handleSuppliersRoute($parts, $method) {
          $name = trim($input['name'] ?? '');
          $contact = trim($input['contact_info'] ?? '');
          $gst_number = trim($input['gst_number'] ?? '');
+         $address = trim($input['address'] ?? '');
          $items = $input['items'] ?? []; // Array of {item_name, default_price, gst_rate}
  
          if (empty($name)) {
@@ -87,8 +89,8 @@ function handleSuppliersRoute($parts, $method) {
          try {
              $db->beginTransaction();
  
-             $stmt = $db->prepare("UPDATE suppliers SET name = ?, contact_info = ?, gst_number = ? WHERE id = ?");
-             $stmt->execute([$name, $contact, $gst_number, $id]);
+             $stmt = $db->prepare("UPDATE suppliers SET name = ?, contact_info = ?, gst_number = ?, address = ? WHERE id = ?");
+             $stmt->execute([$name, $contact, $gst_number, $address, $id]);
              
              // Simple approach: delete existing items and re-insert
              $delStmt = $db->prepare("DELETE FROM supplier_items WHERE supplier_id = ?");

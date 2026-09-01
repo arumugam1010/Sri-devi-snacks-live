@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI } from '../../services/api';
+import html2canvas from 'html2canvas';
 
 // Live location is fetched via Geolocation API
 
@@ -357,49 +358,138 @@ export default function BakeryBilling() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!printRef.current) return;
     
     const printContent = printRef.current.innerHTML;
-    const printWindow = window.open('', '', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Print Bakery Bill</title>
-            <style>
-              @page { size: 80mm auto; margin: 0; }
-              body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px; font-size: 12px; }
-              .text-center { text-align: center; }
-              .font-bold { font-weight: bold; }
-              .text-lg { font-size: 16px; }
-              .mb-2 { margin-bottom: 8px; }
-              .mb-4 { margin-bottom: 16px; }
-              .flex { display: flex; }
-              .justify-between { justify-content: space-between; }
-              .border-t { border-top: 1px dashed #000; }
-              .border-b { border-bottom: 1px dashed #000; }
-              .py-1 { padding: 4px 0; }
-              .my-2 { margin: 8px 0; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { text-align: left; padding: 4px 0; }
-              th.text-right, td.text-right { text-align: right; }
-              th.text-center, td.text-center { text-align: center; }
-            </style>
-          </head>
-          <body>
+    
+    const isMobileOrTablet = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
+    };
+
+    const isMobile = isMobileOrTablet();
+    
+    const fullHtml = `
+      <html>
+        <head>
+          <title>Print Bakery Bill</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px; font-size: 12px; }
+            .text-center { text-align: center; }
+            .font-bold { font-weight: bold; }
+            .text-lg { font-size: 16px; }
+            .mb-2 { margin-bottom: 8px; }
+            .mb-4 { margin-bottom: 16px; }
+            .flex { display: flex; }
+            .justify-between { justify-content: space-between; }
+            .border-t { border-top: 1px dashed #000; }
+            .border-b { border-bottom: 1px dashed #000; }
+            .py-1 { padding: 4px 0; }
+            .my-2 { margin: 8px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 4px 0; }
+            th.text-right, td.text-right { text-align: right; }
+            th.text-center, td.text-center { text-align: center; }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+        </body>
+      </html>
+    `;
+
+    const fallbackPrint = (html: string) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      iframe.style.visibility = 'hidden';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(html);
+        doc.close();
+
+        setTimeout(() => {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setPrintBillData(null);
+            setTimeout(() => {
+              document.body.removeChild(iframe);
+            }, 1000);
+          } else {
+            document.body.removeChild(iframe);
+          }
+        }, 250);
+      } else {
+        document.body.removeChild(iframe);
+      }
+    };
+
+    if (isMobile) {
+      try {
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.width = '380px';
+        container.style.background = 'white';
+        container.innerHTML = `
+          <style>
+            * {
+              font-family: 'Courier New', Courier, monospace !important;
+              font-weight: 900 !important;
+              color: #000 !important;
+              -webkit-text-stroke: 0.2px black !important;
+            }
+            body { width: 100% !important; margin: 0 !important; padding: 10px !important; box-sizing: border-box !important; background: white !important; font-size: 20px !important; }
+            .text-center { text-align: center !important; }
+            .font-bold { font-weight: bold !important; }
+            .text-lg { font-size: 26px !important; }
+            .mb-2 { margin-bottom: 10px !important; }
+            .mb-4 { margin-bottom: 20px !important; }
+            .flex { display: flex !important; }
+            .justify-between { justify-content: space-between !important; }
+            .border-t { border-top: 2px dashed #000 !important; }
+            .border-b { border-bottom: 2px dashed #000 !important; }
+            .py-1 { padding: 6px 0 !important; }
+            .my-2 { margin: 12px 0 !important; }
+            table { width: 100% !important; border-collapse: collapse !important; }
+            th, td { text-align: left !important; padding: 6px 0 !important; font-size: 20px !important; }
+            th.text-right, td.text-right { text-align: right !important; }
+            th.text-center, td.text-center { text-align: center !important; }
+          </style>
+          <div>
             ${printContent}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
+          </div>
+        `;
+        document.body.appendChild(container);
+
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const canvas = await html2canvas(container, {
+          scale: 1.2,
+          useCORS: true,
+          backgroundColor: '#ffffff'
+        });
+
+        document.body.removeChild(container);
+        
+        const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        window.location.href = `rawbt:data:image/jpeg;base64,` + base64Image;
+        
         setPrintBillData(null);
-      }, 500);
+      } catch (e) {
+        console.error('RawBT print failed:', e);
+        fallbackPrint(fullHtml);
+      }
+    } else {
+      fallbackPrint(fullHtml);
     }
   };
 

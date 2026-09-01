@@ -1,6 +1,7 @@
   import React, { useState } from 'react';
   import { Search, Plus, Trash2, Receipt, RotateCcw, Calculator, ShoppingCart, Eye, CreditCard, Loader, Package, Printer, Download } from 'lucide-react';
   import { utils, writeFile } from 'xlsx';
+  import { useLocation } from 'react-router-dom';
   import { useAppContext } from '../context/AppContext';
   import { billsAPI, shopsAPI, gstFilingsAPI } from '../services/api';
   import GPayQRCode from './GPayQRCode';
@@ -177,6 +178,7 @@
 
   const Billing: React.FC = () => {
     const { products, addBill, shopProducts, setShopProducts, updateBill, refreshData, deleteBill, userRole, shops: allShops, gstFilings, setGstFilings } = useAppContext();
+    const location = useLocation();
 
     const formatDateWithDay = (dateInput: any) => {
       if (!dateInput) return '';
@@ -584,6 +586,17 @@
     const [selectedMonth, setSelectedMonth] = useState<{ financialYear: string; monthName: string } | null>(null);
     const [saving, setSaving] = useState(false);
     const [selectedBillIds, setSelectedBillIds] = useState<string[]>([]);
+
+    React.useEffect(() => {
+      if (location.state?.openCurrentMonth) {
+        const today = new Date();
+        const monthName = today.toLocaleString('default', { month: 'long' });
+        const year = today.getFullYear();
+        const financialYear = today.getMonth() >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+        
+        setSelectedMonth({ financialYear, monthName });
+      }
+    }, [location.state]);
 
     // Sync draft state to localStorage only if there are items in the bill
     React.useEffect(() => {

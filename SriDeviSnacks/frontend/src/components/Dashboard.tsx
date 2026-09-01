@@ -336,24 +336,28 @@ const Dashboard: React.FC = () => {
             value={purchaseBillsStats.gst}
             icon={Receipt}
             color="indigo"
+            onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true, tab: 'gst_list' } })}
           />
           <StatCard
             title="This Month Non-GST Purchase Bills"
             value={purchaseBillsStats.nonGst}
             icon={Receipt}
             color="yellow"
+            onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true, tab: 'non_gst_list' } })}
           />
           <StatCard
             title="This Month Total Purchase Bills"
             value={purchaseBillsStats.total}
             icon={Receipt}
             color="green"
+            onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true } })}
           />
           <StatCard
             title="This Month Sales Bills"
             value={thisMonthSalesBillsCount}
             icon={Receipt}
             color="blue"
+            onClick={() => navigate('/billing', { state: { openCurrentMonth: true } })}
           >
             {isCurrentMonthGstFiled && (
               <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
@@ -368,7 +372,7 @@ const Dashboard: React.FC = () => {
             value={gstBillsList.length}
             icon={Receipt}
             color="indigo"
-            onClick={() => setActiveView('gst_bills')}
+            onClick={() => navigate('/billing')}
           />
         </div>
       </div>

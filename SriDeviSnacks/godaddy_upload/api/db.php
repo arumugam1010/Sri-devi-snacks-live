@@ -90,6 +90,15 @@ function getDatabaseConnection() {
                         $pdo->exec("ALTER TABLE suppliers ADD COLUMN gst_number VARCHAR(50) NULL");
                     }
                 } catch (\Exception $e) {}
+
+                // Check and add address to suppliers table
+                try {
+                    $stmt = $pdo->query("SHOW COLUMNS FROM suppliers LIKE 'address'");
+                    $column = $stmt->fetch();
+                    if (!$column) {
+                        $pdo->exec("ALTER TABLE suppliers ADD COLUMN address TEXT NULL");
+                    }
+                } catch (\Exception $e) {}
                 
                 // Check and create settings table
                 $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
@@ -322,6 +331,7 @@ function getDatabaseConnection() {
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     contact_info VARCHAR(255) NULL,
+                    address TEXT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");

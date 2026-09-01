@@ -33,6 +33,7 @@ const PendingBalances: React.FC = () => {
       if (bill.pending_amount > 0) {
         acc[bill.shop_id].total_pending += bill.pending_amount;
         acc[bill.shop_id].pending_bills.push({
+          id: bill.id,
           billNumber: bill.bill_number || bill.billNumber || bill.id,
           date: bill.bill_date,
           totalAmount: bill.total_amount,
@@ -211,7 +212,8 @@ const PendingBalances: React.FC = () => {
                               <button
                                 onClick={() => {
                                   setSelectedCashBill({
-                                    billId: b.billNumber,
+                                    billId: b.id,
+                                    billNumber: b.billNumber,
                                     shopId: shop.shop_id,
                                     shopName: shop.shop_name,
                                     amount: b.pendingAmount,
@@ -225,7 +227,8 @@ const PendingBalances: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => setSelectedGPayBill({
-                                  billId: b.billNumber,
+                                  billId: b.id,
+                                  billNumber: b.billNumber,
                                   shopId: shop.shop_id,
                                   shopName: shop.shop_name,
                                   amount: b.pendingAmount,
@@ -250,7 +253,7 @@ const PendingBalances: React.FC = () => {
 
       {selectedGPayBill && (
         <GPayQRCode
-          billId={selectedGPayBill.billId}
+          billId={selectedGPayBill.billNumber}
           shopId={selectedGPayBill.shopId}
           shopName={selectedGPayBill.shopName}
           amount={selectedGPayBill.amount}
@@ -265,7 +268,7 @@ const PendingBalances: React.FC = () => {
               });
 
               if (response.success) {
-                alert(`Payment of ₹${paidAmount} recorded successfully for Bill #${selectedGPayBill.billId}.`);
+                alert(`Payment of ₹${paidAmount} recorded successfully for Bill #${selectedGPayBill.billNumber}.`);
                 window.location.reload();
               } else {
                 alert('Payment successful in UI, but failed to update bill in Database: ' + response.message);
@@ -282,7 +285,7 @@ const PendingBalances: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-auto relative overflow-hidden">
             <div className="bg-green-600 p-4 text-center">
               <h3 className="text-xl font-bold text-white">Cash Collection</h3>
-              <p className="text-green-100 text-sm mt-1">Bill #{selectedCashBill.billId}</p>
+              <p className="text-green-100 text-sm mt-1">Bill #{selectedCashBill.billNumber}</p>
             </div>
             
             <form onSubmit={handleCashPayment} className="p-6">

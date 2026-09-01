@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer, Download } from 'lucide-react';
 import { utils, writeFile } from 'xlsx';
+import { useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
 import { useAppContext } from '../context/AppContext';
@@ -29,6 +30,8 @@ interface BillItem {
 interface PurchaseBill {
   id: number;
   supplier_name: string;
+  supplier_address?: string;
+  supplier_gst?: string;
   bill_number: string;
   total_amount: number;
   bill_date: string;
@@ -68,10 +71,29 @@ const PurchaseBills: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<{fy: string, month: string} | null>(null);
   const [selectedBillForView, setSelectedBillForView] = useState<PurchaseBill | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (location.state?.openCurrentMonth && Object.keys(groupedBills).length > 0) {
+      const today = new Date();
+      const monthName = today.toLocaleString('default', { month: 'long' });
+      const year = today.getFullYear();
+      const fy = today.getMonth() >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+      
+      if (groupedBills[fy] && groupedBills[fy][monthName]) {
+        setSelectedMonth({ fy, month: monthName });
+        setExpandedFY(fy);
+      }
+      
+      if (location.state.tab) {
+        setActiveTab(location.state.tab);
+      }
+    }
+  }, [location.state, groupedBills]);
 
   const handleViewBill = async (billId: number) => {
     setViewLoading(true);
@@ -363,6 +385,7 @@ const PurchaseBills: React.FC = () => {
     const dataForExcel = billsToExport.map(bill => ({
       'Date': new Date(bill.bill_date).toLocaleDateString(),
       'Supplier': bill.supplier_name,
+      'Supplier GST': bill.supplier_gst || '-',
       'Bill No.': bill.bill_number,
       'Total Amount': parseFloat(bill.total_amount.toString()).toFixed(2),
       'GST Type': bill.is_gst === 1 ? 'GST' : 'Non-GST'
@@ -986,6 +1009,11 @@ const PurchaseBills: React.FC = () => {
                     <div>
                       <p className="text-sm text-gray-500 font-medium">Supplier</p>
                       <h3 className="text-lg font-bold text-gray-900">{selectedBillForView.supplier_name}</h3>
+                      {selectedBillForView.supplier_address && (
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap mt-1">
+                          {selectedBillForView.supplier_address}
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-gray-500 font-medium">Date</p>

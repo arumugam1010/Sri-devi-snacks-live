@@ -13,6 +13,7 @@ interface Supplier {
   id: number;
   name: string;
   contact_info: string;
+  address?: string;
   gst_number?: string;
   items: SupplierItem[];
 }
@@ -25,6 +26,7 @@ const Suppliers: React.FC = () => {
   
   const [name, setName] = useState('');
   const [contactInfo, setContactInfo] = useState('');
+  const [address, setAddress] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [items, setItems] = useState<SupplierItem[]>([
     { item_name: '', default_price: 0, gst_rate: 0 }
@@ -72,6 +74,7 @@ const Suppliers: React.FC = () => {
   const resetForm = () => {
     setName('');
     setContactInfo('');
+    setAddress('');
     setGstNumber('');
     setItems([{ item_name: '', default_price: 0, gst_rate: 0 }]);
     setEditingId(null);
@@ -81,6 +84,7 @@ const Suppliers: React.FC = () => {
   const handleEdit = (supplier: Supplier) => {
     setName(supplier.name);
     setContactInfo(supplier.contact_info || '');
+    setAddress(supplier.address || '');
     setGstNumber(supplier.gst_number || '');
     setItems(supplier.items.length > 0 ? [...supplier.items] : [{ item_name: '', default_price: 0, gst_rate: 0 }]);
     setEditingId(supplier.id);
@@ -117,6 +121,7 @@ const Suppliers: React.FC = () => {
       const payload = {
         name,
         contact_info: contactInfo,
+        address: address,
         gst_number: gstNumber,
         items: validItems
       };
@@ -208,7 +213,7 @@ const Suppliers: React.FC = () => {
                   value={contactInfo}
                   onChange={(e) => setContactInfo(e.target.value)}
                   className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                  placeholder="Phone, Address, or Email"
+                  placeholder="Phone or Email"
                 />
               </div>
               <div>
@@ -219,6 +224,16 @@ const Suppliers: React.FC = () => {
                   onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
                   className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 uppercase"
                   placeholder="22AAAAA0000A1Z5"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address (Optional)</label>
+                <textarea
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  placeholder="Supplier Address"
+                  rows={2}
                 />
               </div>
             </div>
@@ -325,6 +340,7 @@ const Suppliers: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GST No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items Supplied</th>
                   {userRole !== 'ACCOUNTS' && (
@@ -340,6 +356,9 @@ const Suppliers: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-500">
                       {supplier.contact_info || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500 max-w-xs truncate" title={supplier.address || ''}>
+                      {supplier.address || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700">
                       {supplier.gst_number || '-'}
