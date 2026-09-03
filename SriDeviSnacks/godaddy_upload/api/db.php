@@ -413,6 +413,26 @@ function getDatabaseConnection() {
                         WHERE bi.quantity > 0
                         GROUP BY bi.product_id, d
                     ");
+                // Landing Page CMS Tables
+                try {
+                    $pdo->exec("CREATE TABLE IF NOT EXISTS landing_settings (
+                        setting_key VARCHAR(100) PRIMARY KEY,
+                        setting_value TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                    $pdo->exec("CREATE TABLE IF NOT EXISTS landing_products (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        image VARCHAR(255) NOT NULL,
+                        price VARCHAR(100) NOT NULL,
+                        description TEXT NOT NULL,
+                        display_order INT DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+                } catch (\Exception $e) {}
+
                 } catch (\Exception $seedErr) {}
             } catch (\Exception $migrErr) {
                 // Keep execution running even if migration check fails

@@ -622,3 +622,58 @@ export const bakeryShopsAPI = {
 
 export default api;
 
+
+export const uploadAPI = {
+  uploadImage: async (formData: FormData) => {
+    const token = localStorage.getItem('authToken');
+    const headers = new Headers();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    
+    // We do NOT set Content-Type here, let the browser set it automatically 
+    // to multipart/form-data with the correct boundary!
+    const response = await fetch(`${API_BASE_URL}/upload_images.php`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Upload failed');
+    }
+    return data;
+  }
+};
+
+export const landingCmsAPI = {
+  getSettings: async () => {
+    const response = await fetch(`${API_BASE_URL}/landing_cms.php?action=get_settings`);
+    if (!response.ok) throw new Error('Failed to fetch settings');
+    return await response.json();
+  },
+  getProducts: async () => {
+    const response = await fetch(`${API_BASE_URL}/landing_cms.php?action=get_products`);
+    if (!response.ok) throw new Error('Failed to fetch products');
+    return await response.json();
+  },
+  saveSettings: async (settings: Record<string, string>) => {
+    return await authenticatedFetch(`${API_BASE_URL}/landing_cms.php?action=save_settings`, {
+      method: 'POST',
+      body: JSON.stringify({ settings }),
+    });
+  },
+  saveProduct: async (productData: any) => {
+    return await authenticatedFetch(`${API_BASE_URL}/landing_cms.php?action=save_product`, {
+      method: 'POST',
+      body: JSON.stringify(productData),
+    });
+  },
+  deleteProduct: async (id: number) => {
+    return await authenticatedFetch(`${API_BASE_URL}/landing_cms.php?action=delete_product&id=${id}`, {
+      method: 'DELETE',
+    });
+  }
+};
+

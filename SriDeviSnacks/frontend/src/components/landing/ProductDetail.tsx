@@ -1,14 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { productsList } from '../../data/products';
+import { landingCmsAPI } from '../../services/api';
 import { ArrowLeft, Phone, Info } from 'lucide-react';
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [orderStatus, setOrderStatus] = useState<'idle' | 'coming_soon'>('idle');
+  const [product, setProduct] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const product = productsList.find((p) => p.id === parseInt(id || '0', 10));
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        const data = await landingCmsAPI.getProducts();
+        const found = (data.products || []).find((p: any) => p.id === parseInt(id || '0', 10));
+        setProduct(found);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProduct();
+  }, [id]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#faf2e7]">Loading...</div>;
+  }
 
   if (!product) {
     return (
@@ -94,22 +113,22 @@ const ProductDetail: React.FC = () => {
                 {orderStatus === 'idle' ? (
                   <button 
                     onClick={() => setOrderStatus('coming_soon')}
-                    className="w-full bg-[#ab8c52] hover:bg-[#9a7e4a] text-white py-5 px-8 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 shadow-md hover:shadow-xl text-sm"
+                    className="w-full bg-[#8b0000] hover:bg-[#600000] text-[#ffd700] py-5 px-8 rounded font-bold tracking-widest uppercase transition-all duration-300 shadow-lg border border-[#ab8c52] text-sm"
                   >
                     Place Order
                   </button>
                 ) : (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 text-center animate-fade-in">
+                  <div className="bg-[#fffdf8] border border-[#e6ddcb] rounded-xl p-6 text-center animate-fade-in">
                     <div className="flex justify-center mb-3">
-                      <Info className="w-8 h-8 text-orange-500" />
+                      <Info className="w-8 h-8 text-[#8b0000]" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Online Ordering Coming Soon!</h3>
-                    <p className="text-gray-700 mb-4">To place an order right now, please call us directly:</p>
+                    <h3 className="text-xl font-bold text-[#160f0f] mb-2 font-['Playfair_Display']">Online Ordering Coming Soon!</h3>
+                    <p className="text-[#3e3333] mb-4">To place an order right now, please call us directly:</p>
                     <div className="flex flex-col items-center gap-2">
-                      <a href="tel:+918807810021" className="flex items-center text-lg font-bold text-orange-600 hover:text-orange-700 transition-colors">
+                      <a href="tel:+918807810021" className="flex items-center text-lg font-bold text-[#ab8c52] hover:text-[#8b0000] transition-colors">
                         <Phone className="w-5 h-5 mr-2" /> +91 88078 10021
                       </a>
-                      <a href="tel:+919943206339" className="flex items-center text-lg font-bold text-orange-600 hover:text-orange-700 transition-colors">
+                      <a href="tel:+919943206339" className="flex items-center text-lg font-bold text-[#ab8c52] hover:text-[#8b0000] transition-colors">
                         <Phone className="w-5 h-5 mr-2" /> +91 99432 06339
                       </a>
                     </div>

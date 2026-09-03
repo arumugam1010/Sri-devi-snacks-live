@@ -26,6 +26,7 @@ import VtsGps from './components/VtsGps';
 import Employees from './components/Employees';
 import BarcodeGenerator from './components/BarcodeGenerator';
 import BakeryLayout from './components/bakery_billing/BakeryLayout';
+import AdminLandingSettings from './components/AdminLandingSettings';
 
 
 
@@ -272,6 +273,14 @@ function App() {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <DayScheduleDetails />
+                </Layout>
+              }
+            />
+            <Route
+              path="/admin/landing-settings"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <AdminLandingSettings />
                 </Layout>
               }
             />

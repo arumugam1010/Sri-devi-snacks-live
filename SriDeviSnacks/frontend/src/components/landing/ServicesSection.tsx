@@ -4,34 +4,36 @@ import { PackageSearch, Truck, CalendarHeart, Gift } from 'lucide-react';
 const ServicesSection: React.FC = () => {
   const services = [
     {
-      icon: <PackageSearch className="h-10 w-10 text-orange-600" />,
-      title: 'Bulk Orders for Retailers',
-      description: 'We supply our premium machine-made snacks to over 500+ retail shops and wholesale suppliers. Our advanced manufacturing and bulk packaging ensures maximum freshness, perfect consistency, and high capacity for your business.',
+      icon: <PackageSearch className="h-10 w-10 text-[#8B0000] group-hover:text-[#FFD700] transition-colors duration-300" />,
+      title: 'Wholesale & B2B Distribution',
+      description: 'We are the trusted manufacturing partner for over 500+ retail shops and wholesale distributors. Our automated machinery ensures massive production capacity, flawless consistency, and strict adherence to food safety standards for all bulk orders.',
     },
     {
-      icon: <CalendarHeart className="h-10 w-10 text-orange-600" />,
-      title: 'Special Event Catering',
-      description: 'Make your weddings and festivals memorable with our exclusive hand-twisted Kai Suthu Murukku and traditional Laddu. We take special orders tailored to your events, bringing the authentic taste of Vallioor to your celebrations.',
+      icon: <CalendarHeart className="h-10 w-10 text-[#8B0000] group-hover:text-[#FFD700] transition-colors duration-300" />,
+      title: 'Special Event Handcrafting',
+      description: 'While we use machines for scale, we preserve tradition for special occasions. We take exclusive orders for weddings and festivals, offering handcrafted Kai Suthu Murukku and traditional Laddu made by expert artisans.',
     },
     {
-      icon: <Truck className="h-10 w-10 text-orange-600" />,
-      title: 'Reliable Delivery Network',
-      description: 'Enjoy the convenience of having fresh, crispy snacks delivered. We partner with reliable delivery networks to ship our beloved snacks far beyond Vallioor, proudly reaching customers and shops in Chennai, Coimbatore, Hosur, and Mumbai.',
+      icon: <Truck className="h-10 w-10 text-[#8B0000] group-hover:text-[#FFD700] transition-colors duration-300" />,
+      title: 'Statewide Delivery & Logistics',
+      description: 'Our robust logistics network ensures safe and timely delivery across Tamil Nadu and beyond. From our facility in Vallioor, we successfully ship bulk orders to major cities including Chennai, Coimbatore, Hosur, and Mumbai without compromising freshness.',
     },
     {
-      icon: <Gift className="h-10 w-10 text-orange-600" />,
-      title: 'Festive Gift Hampers',
-      description: 'Celebrate Diwali, Pongal, and other special occasions with our beautifully packaged festive hampers. Thoughtfully curated with a mix of our best-selling sweets and savories, they make the perfect gift for family, friends, and corporate clients.',
+      icon: <Gift className="h-10 w-10 text-[#8B0000] group-hover:text-[#FFD700] transition-colors duration-300" />,
+      title: 'Premium Bulk Packaging',
+      description: 'To ensure our snacks remain intact and crunchy during transit, we use high-grade, moisture-proof bulk packaging materials. Every batch is sealed immediately after cooling to lock in the authentic aroma and taste.',
     }
   ];
 
   return (
-    <section id="services" className="py-24 bg-gray-50">
+    <section id="services" className="py-24 bg-[#fffdf8]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-4xl font-extrabold text-gray-900 mb-6 tracking-tight">Our Services</h2>
-          <div className="w-24 h-1 bg-orange-500 mx-auto rounded-full mb-8"></div>
+          <h2 className="text-sm font-bold text-[#8B0000] tracking-[0.2em] uppercase mb-4 inline-flex items-center gap-2">
+            <span className="w-8 h-0.5 bg-[#8B0000]"></span> What We Offer <span className="w-8 h-0.5 bg-[#8B0000]"></span>
+          </h2>
+          <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">Our Services</h2>
           <p className="text-xl text-gray-600 leading-relaxed">
             Beyond just making great snacks, we offer comprehensive services to meet your personal, retail, and event needs.
           </p>
@@ -41,13 +43,16 @@ const ServicesSection: React.FC = () => {
           {services.map((service, index) => (
             <div 
               key={index} 
-              className="bg-white rounded-3xl p-10 shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300 group"
+              className="bg-white rounded-3xl p-10 shadow-lg border border-gray-100 hover:shadow-2xl transition-shadow duration-300 group relative overflow-hidden"
             >
-              <div className="bg-orange-50 w-20 h-20 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
+              {/* Decorative background element on hover */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-full -z-10 group-hover:bg-[#8B0000]/5 transition-colors duration-300"></div>
+              
+              <div className="bg-[#8B0000]/10 w-20 h-20 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-[#8B0000] transition-colors duration-300 group-hover:rotate-6 transform">
                 {service.icon}
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">{service.title}</h3>
-              <p className="text-gray-600 text-lg leading-relaxed">
+              <h3 className="text-2xl font-extrabold text-gray-900 mb-4">{service.title}</h3>
+              <p className="text-gray-600 text-lg leading-relaxed font-medium">
                 {service.description}
               </p>
             </div>

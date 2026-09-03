@@ -224,8 +224,10 @@ function updateEmployee($id) {
 
     $db = getDatabaseConnection();
     try {
+        file_put_contents(__DIR__ . '/update_log.txt', "Attempting update for ID: $id\nData: " . json_encode($data) . "\n", FILE_APPEND);
+        
         $stmt = $db->prepare("UPDATE employees SET name = :name, contact = :contact, monthly_salary = :monthly_salary, salary_type = :salary_type, joining_date = :joining_date, status = :status WHERE id = :id");
-        $stmt->execute([
+        $success = $stmt->execute([
             'name' => $name,
             'contact' => $contact,
             'monthly_salary' => $monthlySalary,
@@ -234,9 +236,12 @@ function updateEmployee($id) {
             'status' => $status,
             'id' => $id
         ]);
+        
+        file_put_contents(__DIR__ . '/update_log.txt', "Execute success: " . ($success ? 'true' : 'false') . ", RowCount: " . $stmt->rowCount() . "\n", FILE_APPEND);
 
         sendResponse(true, 'Employee updated successfully');
     } catch (PDOException $e) {
+        file_put_contents(__DIR__ . '/update_log.txt', "PDO Exception: " . $e->getMessage() . "\n", FILE_APPEND);
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }
 }

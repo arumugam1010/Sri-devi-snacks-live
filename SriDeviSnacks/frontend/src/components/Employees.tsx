@@ -805,17 +805,6 @@ const Employees: React.FC = () => {
             Employees List
           </button>
           <button
-            onClick={() => setActiveTab('attendance')}
-            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              activeTab === 'attendance'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            <UserCheck className="h-4 w-4 mr-2" />
-            Daily Attendance
-          </button>
-          <button
             onClick={() => setActiveTab('salaries')}
             className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'salaries'
@@ -825,17 +814,6 @@ const Employees: React.FC = () => {
           >
             <IndianRupee className="h-4 w-4 mr-2" />
             Salaries & Payments
-          </button>
-          <button
-            onClick={() => setActiveTab('biometric-gate')}
-            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              activeTab === 'biometric-gate'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50'
-            }`}
-          >
-            <Fingerprint className="h-4 w-4 mr-2 animate-pulse" />
-            Biometric Gate
           </button>
         </div>
 
