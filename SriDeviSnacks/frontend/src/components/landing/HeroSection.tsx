@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle, Quote,
   ArrowRight, ShoppingBag
 } from 'lucide-react';
+import { landingCmsAPI } from '../../services/api';
 
 const Logo = '/Logo.png';
 const SnacksBg = '/assets/snacks.png';
@@ -13,6 +14,7 @@ const Home: React.FC = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [loadingCms, setLoadingCms] = useState(true);
   const [topProducts, setTopProducts] = useState<any[]>([]);
 
   const toggleFaq = (index: number) => {
@@ -22,10 +24,11 @@ const Home: React.FC = () => {
   React.useEffect(() => {
     const loadCMS = async () => {
       try {
-        const fetchSettings = fetch(`${window.location.origin}/api/landing_cms.php?action=get_settings`).then(res => res.json());
-        const fetchProducts = fetch(`${window.location.origin}/api/landing_cms.php?action=get_products`).then(res => res.json());
+        const [settingsData, productsData] = await Promise.all([
+          landingCmsAPI.getSettings(),
+          landingCmsAPI.getProducts()
+        ]);
         
-        const [settingsData, productsData] = await Promise.all([fetchSettings, fetchProducts]);
         if (settingsData.success) {
           setSettings(settingsData.settings);
         }
@@ -34,6 +37,8 @@ const Home: React.FC = () => {
         }
       } catch (e) {
         console.error("Failed to load CMS data", e);
+      } finally {
+        setLoadingCms(false);
       }
     };
     loadCMS();
@@ -85,14 +90,14 @@ const Home: React.FC = () => {
         <div className="absolute inset-0 z-20 flex flex-col justify-center items-center px-4">
           <div className="mb-4 md:mb-8 flex flex-col items-center max-w-4xl mx-auto">
             {/* Tamil Slogan */}
-            {(settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!') !== '' && (
-              <h1 className="text-xl sm:text-3xl md:text-5xl text-[#ffd700] mb-2 md:mb-6 font-bold tracking-wide drop-shadow-lg text-center" style={{ fontFamily: "'Playfair Display', serif" }}>
+            {!loadingCms && (settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!') !== '' && (
+              <h1 className="text-xl sm:text-3xl md:text-5xl mb-2 md:mb-6 font-bold tracking-wide text-center" style={{ fontFamily: "'Playfair Display', serif", color: settings['hero_title_color'] || '#ffd700', fontSize: settings['hero_title_size'], textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0px 0px 15px rgba(0,0,0,0.8)' }}>
                 {settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!'}
               </h1>
             )}
 
-            {(settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.') !== '' && (
-              <p className="text-xs sm:text-lg md:text-2xl text-[#fdfbf7] mb-2 max-w-2xl mx-auto leading-relaxed font-light tracking-wide drop-shadow text-center">
+            {!loadingCms && (settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.') !== '' && (
+              <p className="text-xs sm:text-lg md:text-2xl mb-2 max-w-2xl mx-auto leading-relaxed font-medium tracking-wide text-center" style={{ color: settings['hero_subtitle_color'] || '#fdfbf7', fontSize: settings['hero_subtitle_size'], textShadow: '1px 1px 3px rgba(0,0,0,0.9), 0px 0px 10px rgba(0,0,0,0.7)' }}>
                 {settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.'}
               </p>
             )}

@@ -261,11 +261,45 @@ const AdminLandingSettings: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hero Title (Tamil Slogan)</label>
-              <input type="text" value={settings['hero_title'] || 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!'} onChange={e => handleSettingChange('hero_title', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+              <input type="text" value={settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!'} onChange={e => handleSettingChange('hero_title', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+              
+              <div className="flex gap-4 mt-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Color:</label>
+                  <input type="color" value={settings['hero_title_color'] ?? '#ffd700'} onChange={e => handleSettingChange('hero_title_color', e.target.value)} className="w-8 h-8 p-0 border-0 rounded cursor-pointer" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Size:</label>
+                  <select value={settings['hero_title_size'] ?? ''} onChange={e => handleSettingChange('hero_title_size', e.target.value)} className="p-1 border border-gray-300 rounded-md text-xs">
+                    <option value="">Responsive (Default)</option>
+                    <option value="24px">Small (24px)</option>
+                    <option value="36px">Medium (36px)</option>
+                    <option value="48px">Large (48px)</option>
+                    <option value="64px">Extra Large (64px)</option>
+                  </select>
+                </div>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hero Subtitle</label>
-              <textarea value={settings['hero_subtitle'] || 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.'} onChange={e => handleSettingChange('hero_subtitle', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md rows-3" />
+              <textarea value={settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.'} onChange={e => handleSettingChange('hero_subtitle', e.target.value)} className="w-full p-2 border border-gray-300 rounded-md rows-3" />
+              
+              <div className="flex gap-4 mt-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Color:</label>
+                  <input type="color" value={settings['hero_subtitle_color'] ?? '#fdfbf7'} onChange={e => handleSettingChange('hero_subtitle_color', e.target.value)} className="w-8 h-8 p-0 border-0 rounded cursor-pointer" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Size:</label>
+                  <select value={settings['hero_subtitle_size'] ?? ''} onChange={e => handleSettingChange('hero_subtitle_size', e.target.value)} className="p-1 border border-gray-300 rounded-md text-xs">
+                    <option value="">Responsive (Default)</option>
+                    <option value="16px">Small (16px)</option>
+                    <option value="20px">Medium (20px)</option>
+                    <option value="24px">Large (24px)</option>
+                    <option value="32px">Extra Large (32px)</option>
+                  </select>
+                </div>
+              </div>
             </div>
             
             <button 
