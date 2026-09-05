@@ -91,13 +91,13 @@ const Home: React.FC = () => {
           <div className="mb-4 md:mb-8 flex flex-col items-center max-w-4xl mx-auto">
             {/* Tamil Slogan */}
             {!loadingCms && (settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!') !== '' && (
-              <h1 className="text-xl sm:text-3xl md:text-5xl mb-2 md:mb-6 font-bold tracking-wide text-center" style={{ fontFamily: "'Playfair Display', serif", color: settings['hero_title_color'] || '#ffd700', fontSize: settings['hero_title_size'], textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0px 0px 15px rgba(0,0,0,0.8)' }}>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl mb-4 font-bold tracking-wide text-center leading-[1.4] md:leading-[1.2]" style={{ fontFamily: "'Playfair Display', serif", color: settings['hero_title_color'] || '#ffd700', textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0px 0px 15px rgba(0,0,0,0.8)' }}>
                 {settings['hero_title'] ?? 'நம்ம ஊரு... நம்ம சுவை... 100% வள்ளியூர் பாரம்பரியம்!'}
               </h1>
             )}
 
             {!loadingCms && (settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.') !== '' && (
-              <p className="text-xs sm:text-lg md:text-2xl mb-2 max-w-2xl mx-auto leading-relaxed font-medium tracking-wide text-center" style={{ color: settings['hero_subtitle_color'] || '#fdfbf7', fontSize: settings['hero_subtitle_size'], textShadow: '1px 1px 3px rgba(0,0,0,0.9), 0px 0px 10px rgba(0,0,0,0.7)' }}>
+              <p className="text-sm sm:text-lg md:text-2xl mb-4 max-w-2xl mx-auto font-medium tracking-wide text-center leading-[1.5]" style={{ color: settings['hero_subtitle_color'] || '#fdfbf7', textShadow: '1px 1px 3px rgba(0,0,0,0.9), 0px 0px 10px rgba(0,0,0,0.7)' }}>
                 {settings['hero_subtitle'] ?? 'Premium, handcrafted South Indian snacks & sweets delivered to your doorstep.'}
               </p>
             )}
