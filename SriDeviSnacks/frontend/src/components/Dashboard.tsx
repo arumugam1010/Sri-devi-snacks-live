@@ -207,7 +207,7 @@ const Dashboard: React.FC = () => {
     }, 0);
   }, [todayCollections]);
 
-  const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns' | 'gst_bills'>('received');
+  const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns'>('received');
   const [gstStartDate, setGstStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [gstEndDate, setGstEndDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -372,7 +372,7 @@ const Dashboard: React.FC = () => {
             value={gstBillsList.length}
             icon={Receipt}
             color="indigo"
-            onClick={() => navigate('/billing')}
+            onClick={() => navigate('/gst-bills')}
           />
         </div>
       </div>
@@ -441,7 +441,7 @@ const Dashboard: React.FC = () => {
           value={gstBillsList.length}
           icon={Receipt}
           color="indigo"
-          onClick={() => setActiveView('gst_bills')}
+          onClick={() => navigate('/gst-bills')}
         />
         {userRole !== 'STAFF' && (
           <StatCard
@@ -585,12 +585,8 @@ const Dashboard: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveView('gst_bills')}
-                  className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                    activeView === 'gst_bills'
-                      ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
+                  onClick={() => navigate('/gst-bills')}
+                  className={`relative inline-flex items-center px-4 py-2 rounded-r-md border-t border-r border-b border-gray-300 text-sm font-medium focus:z-10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white border-gray-300 text-gray-700 hover:bg-gray-50`}
                 >
                   GST Bills ({gstBillsList.length})
                 </button>
@@ -682,60 +678,6 @@ const Dashboard: React.FC = () => {
                   </tfoot>
                 )}
               </table>
-            ) : activeView === 'gst_bills' ? (
-              <div className="p-4">
-                <div className="flex flex-wrap items-center gap-4 mb-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
-                    <input type="date" value={gstStartDate} onChange={(e) => setGstStartDate(e.target.value)} className="border-gray-300 rounded-md text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
-                    <input type="date" value={gstEndDate} onChange={(e) => setGstEndDate(e.target.value)} className="border-gray-300 rounded-md text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500" />
-                  </div>
-                </div>
-                <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop GST</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill No</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax (SGST+CGST)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {gstBillsList.length === 0 ? (
-                      <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">No GST bills found for this date range.</td></tr>
-                    ) : (
-                      gstBillsList.map((bill, idx) => {
-                         const shop = shops.find(s => s.id === bill.shop_id);
-                         const tax = bill.items ? bill.items.reduce((sum, item) => sum + (item.sgst || 0) + (item.cgst || 0), 0) : 0;
-                         return (
-                           <tr key={bill.id} className="hover:bg-gray-50">
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(bill.bill_date).toLocaleDateString()}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bill.shop_name}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{shop?.gst || '-'}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{bill.bill_number || bill.billNumber || bill.id}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">₹{bill.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">₹{tax.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                           </tr>
-                         )
-                      })
-                    )}
-                  </tbody>
-                  {gstBillsList.length > 0 && (
-                    <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
-                      <tr>
-                        <td colSpan={4} className="px-6 py-4 text-right">Total:</td>
-                        <td className="px-6 py-4 text-left text-blue-700">₹{totalGstBillAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td className="px-6 py-4 text-left text-red-700">₹{totalGstTaxAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
             ) : activeView === 'pending_issued' ? (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">

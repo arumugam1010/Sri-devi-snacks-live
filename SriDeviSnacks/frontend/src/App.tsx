@@ -18,6 +18,7 @@ import Reports from './components/Reports';
 import Layout from './components/Layout';
 import Stock from './components/Stock';
 import PendingBalances from './components/PendingBalances';
+import GstBills from './components/GstBills';
 import { AppProvider } from './context/AppContext';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -241,6 +242,14 @@ function App() {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <PendingBalances />
+                </Layout>
+              }
+            />
+            <Route
+              path="/gst-bills"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <GstBills />
                 </Layout>
               }
             />
