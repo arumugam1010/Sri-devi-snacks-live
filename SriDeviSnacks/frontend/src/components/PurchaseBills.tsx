@@ -545,21 +545,6 @@ const PurchaseBills: React.FC = () => {
     }
   };
 
-  const handleExportCurrentMonth = () => {
-    const { month, fy } = getCurrentMonthDetails();
-    const currentMonthBills = groupedBills[fy]?.[month] || [];
-    
-    if (currentMonthBills.length === 0) {
-      alert(`No purchase bills found for this month (${month} ${fy}).`);
-      return;
-    }
-
-    exportBillsToExcel(
-      currentMonthBills, 
-      `All_Purchase_Bills_${month}_${fy}`
-    );
-  };
-
   const handleExportMonthBills = (fy: string, month: string) => {
     const monthBills = groupedBills[fy]?.[month] || [];
     const billsToExport = activeTab === 'all_list'
@@ -575,8 +560,6 @@ const PurchaseBills: React.FC = () => {
     exportBillsToExcel(billsToExport, `${typePrefix}_${month}_${fy}`);
   };
 
-  const { month: currentMonthName } = getCurrentMonthDetails();
-
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -589,15 +572,6 @@ const PurchaseBills: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={handleExportCurrentMonth}
-            className="inline-flex items-center text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all"
-            title={`Export this month (${currentMonthName}) GST & Zero-Rated GST bills in Excel`}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export This Month in Excel ({currentMonthName})
-          </button>
-
           <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
             <button
               onClick={() => setActiveTab('all_list')}
