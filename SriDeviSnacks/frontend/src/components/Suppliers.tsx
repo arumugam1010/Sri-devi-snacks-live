@@ -203,7 +203,7 @@ const Suppliers: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                   placeholder="E.g., ABC Traders"
                 />
               </div>
@@ -213,7 +213,7 @@ const Suppliers: React.FC = () => {
                   type="text"
                   value={contactInfo}
                   onChange={(e) => setContactInfo(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                   placeholder="Phone or Email"
                 />
               </div>
@@ -223,7 +223,7 @@ const Suppliers: React.FC = () => {
                   type="text"
                   value={gstNumber}
                   onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 uppercase"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase placeholder-gray-400"
                   placeholder="22AAAAA0000A1Z5"
                 />
               </div>
@@ -232,7 +232,7 @@ const Suppliers: React.FC = () => {
                 <textarea
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                   placeholder="Supplier Address"
                   rows={2}
                 />
@@ -269,7 +269,7 @@ const Suppliers: React.FC = () => {
                         type="text"
                         value={item.item_name}
                         onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                        className="w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                         placeholder="E.g., Maida, Oil"
                       />
                     </div>
@@ -280,7 +280,7 @@ const Suppliers: React.FC = () => {
                         step="0.01"
                         value={item.default_price}
                         onChange={(e) => handleItemChange(index, 'default_price', parseFloat(e.target.value) || 0)}
-                        className="w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right font-medium"
                       />
                     </div>
                     <div className="col-span-3">
@@ -290,7 +290,7 @@ const Suppliers: React.FC = () => {
                         step="0.01"
                         value={item.gst_rate}
                         onChange={(e) => handleItemChange(index, 'gst_rate', parseFloat(e.target.value) || 0)}
-                        className="w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-center font-medium"
                       />
                     </div>
                     <div className="col-span-1 text-center">

@@ -677,3 +677,14 @@ export const landingCmsAPI = {
   }
 };
 
+export const adminAPI = {
+  getSessions: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/users/sessions`);
+  },
+  revokeSession: async (sessionId: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/users/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  }
+};
+

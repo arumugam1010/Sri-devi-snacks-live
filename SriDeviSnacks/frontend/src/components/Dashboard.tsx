@@ -208,30 +208,33 @@ const Dashboard: React.FC = () => {
   }, [todayCollections]);
 
   const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns'>('received');
-  const [gstStartDate, setGstStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [gstEndDate, setGstEndDate] = useState(new Date().toISOString().split('T')[0]);
+  // Configuration for shops that recently got a GST number
+  // Format: 'Shop Name': 'YYYY-MM-DD' (Bills before this date will be hidden from GST bills)
+  const SHOP_GST_CUTOFF_DATES: Record<string, string> = {
+    'நிலா பேக்கரி': '2026-09-05',
+  };
 
   const gstBillsList = React.useMemo(() => {
     return bills.filter(bill => {
       const shop = shops.find(s => s.id === bill.shop_id);
-      const shopHasGst = shop && shop.gst && shop.gst.trim() !== '';
+      const hasGstNumber = shop && shop.gst && shop.gst.trim() !== '';
       
-      if (!shopHasGst) return false;
+      // Only include bills where GST was actually applied
+      const hasGstApplied = bill.items && bill.items.some((item: any) => (item.sgst || 0) > 0 || (item.cgst || 0) > 0);
       
-      const bDate = new Date(bill.bill_date);
-      if (gstStartDate) {
-        const sDate = new Date(gstStartDate);
-        sDate.setHours(0,0,0,0);
-        if (bDate < sDate) return false;
+      let isAfterCutoff = true;
+      if (shop && shop.shop_name && SHOP_GST_CUTOFF_DATES[shop.shop_name]) {
+        const cutoffDate = new Date(SHOP_GST_CUTOFF_DATES[shop.shop_name]);
+        cutoffDate.setHours(0, 0, 0, 0);
+        const billDate = new Date(bill.bill_date);
+        if (billDate < cutoffDate) {
+          isAfterCutoff = false;
+        }
       }
-      if (gstEndDate) {
-        const eDate = new Date(gstEndDate);
-        eDate.setHours(23,59,59,999);
-        if (bDate > eDate) return false;
-      }
-      return true;
+      
+      return hasGstNumber && hasGstApplied && isAfterCutoff;
     }).sort((a, b) => new Date(b.bill_date).getTime() - new Date(a.bill_date).getTime());
-  }, [bills, shops, gstStartDate, gstEndDate]);
+  }, [bills, shops]);
 
   const totalGstBillAmount = React.useMemo(() => {
     return gstBillsList.reduce((sum, bill) => sum + bill.total_amount, 0);
@@ -339,7 +342,7 @@ const Dashboard: React.FC = () => {
             onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true, tab: 'gst_list' } })}
           />
           <StatCard
-            title="This Month Non-GST Purchase Bills"
+            title="This Month Zero-Rated GST Purchase Bills"
             value={purchaseBillsStats.nonGst}
             icon={Receipt}
             color="yellow"
@@ -350,7 +353,7 @@ const Dashboard: React.FC = () => {
             value={purchaseBillsStats.total}
             icon={Receipt}
             color="green"
-            onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true } })}
+            onClick={() => navigate('/purchase-bills', { state: { openCurrentMonth: true, tab: 'all_list' } })}
           />
           <StatCard
             title="This Month Sales Bills"

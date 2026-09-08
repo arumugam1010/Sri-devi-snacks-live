@@ -235,6 +235,20 @@ function getDatabaseConnection() {
                     // Ignore
                 }
 
+                // Create user_sessions table for active logins tracking
+                $pdo->exec("CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    token VARCHAR(500) NOT NULL,
+                    ip_address VARCHAR(45) NULL,
+                    user_agent TEXT NULL,
+                    device_type VARCHAR(50) NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    is_active TINYINT(1) DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
                 // Create gst_filings table for tracking GST filed months
                 $pdo->exec("CREATE TABLE IF NOT EXISTS gst_filings (
                     month_year VARCHAR(50) PRIMARY KEY,

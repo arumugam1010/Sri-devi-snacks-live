@@ -24,6 +24,19 @@ function handleUsersRoute($parts, $method) {
         return;
     }
     
+    // GET /users/sessions or DELETE /users/sessions/:id
+    if ($action === 'sessions') {
+        $subAction = $parts[2] ?? '';
+        if (empty($subAction) && $method === 'GET') {
+            getUserSessions();
+        } elseif (!empty($subAction) && $method === 'DELETE') {
+            revokeUserSession($subAction);
+        } else {
+            sendResponse(false, 'Method not allowed for sessions', null, 405);
+        }
+        return;
+    }
+    
     // GET /users/:id or PATCH /users/:id/status
     if (is_numeric($action)) {
         $userId = (int)$action;
@@ -211,6 +224,57 @@ function updateUserStatus($userId) {
         
         $statusMsg = $body['isActive'] ? 'activated' : 'deactivated';
         sendResponse(true, "User {$statusMsg} successfully", $updatedUser);
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Handle GET /api/users/sessions
+ */
+function getUserSessions() {
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("
+            SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.device_type, s.created_at, s.last_active_at, s.is_active, u.name as user_name, u.email as user_email
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.id
+            ORDER BY s.last_active_at DESC
+            LIMIT 100
+        ");
+        $stmt->execute();
+        $sessions = $stmt->fetchAll();
+        
+        // Find current token to mark it so admin doesn't accidentally revoke themselves
+        $currentToken = getBearerToken();
+        $currentSessionId = null;
+        if ($currentToken) {
+            $currStmt = $db->prepare("SELECT id FROM user_sessions WHERE token = :token LIMIT 1");
+            $currStmt->execute(['token' => $currentToken]);
+            $currentSessionId = $currStmt->fetchColumn();
+        }
+
+        foreach ($sessions as &$s) {
+            $s['id'] = (int)$s['id'];
+            $s['user_id'] = (int)$s['user_id'];
+            $s['is_current'] = ($currentSessionId == $s['id']);
+        }
+        
+        sendResponse(true, '', $sessions);
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Handle DELETE /api/users/sessions/:id
+ */
+function revokeUserSession($sessionId) {
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("UPDATE user_sessions SET is_active = 0 WHERE id = :id");
+        $stmt->execute(['id' => (int)$sessionId]);
+        sendResponse(true, 'Session revoked successfully');
     } catch (PDOException $e) {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }

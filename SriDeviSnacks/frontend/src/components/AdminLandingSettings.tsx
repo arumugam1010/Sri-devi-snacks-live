@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { uploadAPI, landingCmsAPI } from '../services/api';
-import { Upload, CheckCircle, AlertCircle, Image as ImageIcon, Save, Plus, Trash2, Edit2 } from 'lucide-react';
+import { uploadAPI, landingCmsAPI, adminAPI } from '../services/api';
+import { Upload, CheckCircle, AlertCircle, Image as ImageIcon, Save, Plus, Trash2, Edit2, LogOut, Activity, Monitor } from 'lucide-react';
 
 const AdminLandingSettings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'images' | 'text' | 'products'>('products');
+  const [activeTab, setActiveTab] = useState<'images' | 'text' | 'products' | 'sessions'>('products');
   
   // Images Tab State
   const [uploading, setUploading] = useState<string | null>(null);
@@ -18,10 +18,27 @@ const AdminLandingSettings: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [productForm, setProductForm] = useState({ id: null, name: '', image: '', price: '', description: '', display_order: 0 });
 
+  // Sessions Tab State
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
   useEffect(() => {
     fetchSettings();
     fetchProducts();
+    fetchSessions();
   }, []);
+
+  const fetchSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const data = await adminAPI.getSessions();
+      setSessions(data.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -166,6 +183,12 @@ const AdminLandingSettings: React.FC = () => {
           className={`py-2 px-4 border-b-2 font-medium text-sm ${activeTab === 'images' ? 'border-[#8B0000] text-[#8B0000]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           Hero Banners
+        </button>
+        <button 
+          onClick={() => { setActiveTab('sessions'); fetchSessions(); }}
+          className={`py-2 px-4 border-b-2 font-medium text-sm ${activeTab === 'sessions' ? 'border-[#8B0000] text-[#8B0000]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Active Logins
         </button>
       </div>
 
@@ -346,6 +369,89 @@ const AdminLandingSettings: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* SESSIONS TAB */}
+      {activeTab === 'sessions' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-gray-600">Monitor and manage all active user logins across all devices.</p>
+            <button onClick={fetchSessions} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md flex items-center hover:bg-gray-200 border border-gray-300">
+              <Activity className="w-4 h-4 mr-2" /> Refresh
+            </button>
+          </div>
+          
+          {loadingSessions ? <p>Loading active sessions...</p> : (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="p-4 text-sm font-semibold text-gray-600">User</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">Device / Browser</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">IP Address</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">Last Active</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">Status</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map(s => (
+                    <tr key={s.id} className={`border-b border-gray-100 hover:bg-gray-50 ${s.is_current ? 'bg-blue-50/30' : (!s.is_active ? 'opacity-60' : '')}`}>
+                      <td className="p-4">
+                        <div className="font-medium text-gray-800">{s.user_name}</div>
+                        <div className="text-xs text-gray-500">{s.user_email}</div>
+                        {s.is_current && <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded-full font-medium">Current Session</span>}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center text-sm text-gray-700">
+                          <Monitor className="w-4 h-4 mr-2 text-gray-400" />
+                          <span className="truncate max-w-[200px]" title={s.user_agent}>{s.user_agent ? (s.user_agent.split(' ')[0] || 'Unknown Device') : 'Unknown'}</span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-sm text-gray-600">{s.ip_address}</td>
+                      <td className="p-4 text-sm text-gray-600">
+                        {new Date(s.last_active_at).toLocaleString()}
+                      </td>
+                      <td className="p-4 text-sm">
+                        {s.is_active ? (
+                          <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">Logged Out</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        {s.is_active && !s.is_current ? (
+                          <button 
+                            onClick={async () => {
+                              if(window.confirm(`Are you sure you want to log out ${s.user_name} from this device?`)) {
+                                try {
+                                  await adminAPI.revokeSession(s.id);
+                                  fetchSessions();
+                                } catch (e: any) {
+                                  window.alert("Error: " + e.message);
+                                }
+                              }
+                            }}
+                            className="px-3 py-1.5 text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-md transition-colors flex items-center text-sm ml-auto"
+                          >
+                            <LogOut className="w-4 h-4 mr-1.5" /> Revoke
+                          </button>
+                        ) : (s.is_current ? (
+                          <span className="text-xs text-gray-400 italic">Current</span>
+                        ) : null)}
+                      </td>
+                    </tr>
+                  ))}
+                  {sessions.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-gray-500">No active sessions found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
 import { useAppContext } from '../context/AppContext';
+import { convertPdfToImage, renderPdfUrlToDataUrl } from '../utils/pdfToImage';
 
 interface SupplierItem {
   id?: number;
@@ -21,9 +22,9 @@ interface Supplier {
 
 interface BillItem {
   item_name: string;
-  quantity: number;
-  price: number;
-  gst_percentage: number;
+  quantity: number | string;
+  price: number | string;
+  gst_percentage: number | string;
   total: number;
 }
 
@@ -40,24 +41,85 @@ interface PurchaseBill {
   items?: BillItem[];
 }
 
+const PdfBillImage: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+  onClick?: () => void;
+}> = ({ src, alt, className, onClick }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(src.endsWith('.pdf'));
+
+  useEffect(() => {
+    if (src.endsWith('.pdf')) {
+      let isMounted = true;
+      setLoading(true);
+      renderPdfUrlToDataUrl(src)
+        .then((url) => {
+          if (isMounted) {
+            setDataUrl(url);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Error rendering PDF to image:", err);
+          if (isMounted) setLoading(false);
+        });
+      return () => { isMounted = false; };
+    } else {
+      setDataUrl(src);
+      setLoading(false);
+    }
+  }, [src]);
+
+  if (loading) {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-100 ${className || 'w-full h-full'}`}>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-600 border-t-transparent mb-2" />
+        <span className="text-xs text-gray-500 font-medium">Loading Bill...</span>
+      </div>
+    );
+  }
+
+  if (!dataUrl) {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-100 text-gray-400 ${className || 'w-full h-full'}`}>
+        <ImageIcon className="w-10 h-10 mb-1 opacity-50" />
+        <span className="text-xs">No preview</span>
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={dataUrl} 
+      alt={alt} 
+      className={className} 
+      onClick={onClick} 
+    />
+  );
+};
+
 const PurchaseBills: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [bills, setBills] = useState<PurchaseBill[]>([]);
   const [loading, setLoading] = useState(true);
   const { userRole } = useAppContext();
   
-  // Tabs: 'form', 'gst_list', 'nongst_list', 'images'
-  const [activeTab, setActiveTab] = useState<'form' | 'gst_list' | 'nongst_list' | 'images'>('gst_list');
+  // Tabs: 'all_list', 'gst_list', 'nongst_list', 'form', 'images'
+  const [activeTab, setActiveTab] = useState<'all_list' | 'gst_list' | 'nongst_list' | 'form' | 'images'>('all_list');
   
   // Form State
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [billNumber, setBillNumber] = useState('');
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [items, setItems] = useState<BillItem[]>([
-    { item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }
+    { item_name: '', quantity: 1, price: '', gst_percentage: 0, total: 0 }
   ]);
   const [isGst, setIsGst] = useState<number>(1);
   const [billImage, setBillImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [convertingPdf, setConvertingPdf] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -90,7 +152,11 @@ const PurchaseBills: React.FC = () => {
       }
       
       if (location.state.tab) {
-        setActiveTab(location.state.tab);
+        if (location.state.tab === 'non_gst_list') {
+          setActiveTab('nongst_list');
+        } else {
+          setActiveTab(location.state.tab);
+        }
       }
     }
   }, [location.state, groupedBills]);
@@ -268,11 +334,11 @@ const PurchaseBills: React.FC = () => {
     }
 
     // Reset items if supplier changes
-    setItems([{ item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }]);
+    setItems([{ item_name: '', quantity: 1, price: '', gst_percentage: 0, total: 0 }]);
   };
 
   const handleAddItem = () => {
-    setItems([...items, { item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }]);
+    setItems([...items, { item_name: '', quantity: 1, price: '', gst_percentage: isGst === 0 ? 0 : '', total: 0 }]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -281,9 +347,12 @@ const PurchaseBills: React.FC = () => {
     setItems(newItems);
   };
 
-  const calculateTotal = (qty: number, price: number, gst: number) => {
-    const base = qty * price;
-    const tax = base * (gst / 100);
+  const calculateTotal = (qty: number | string, price: number | string, gst: number | string) => {
+    const q = typeof qty === 'number' ? qty : (parseFloat(qty.toString()) || 0);
+    const p = typeof price === 'number' ? price : (parseFloat(price.toString()) || 0);
+    const g = typeof gst === 'number' ? gst : (parseFloat(gst.toString()) || 0);
+    const base = q * p;
+    const tax = base * (g / 100);
     return parseFloat((base + tax).toFixed(2));
   };
 
@@ -322,9 +391,37 @@ const PurchaseBills: React.FC = () => {
     setBillNumber('');
     setBillDate(new Date().toISOString().split('T')[0]);
     setIsGst(1);
-    setItems([{ item_name: '', quantity: 1, price: 0, gst_percentage: 0, total: 0 }]);
+    setItems([{ item_name: '', quantity: 1, price: '', gst_percentage: 0, total: 0 }]);
     setBillImage(null);
+    setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        try {
+          setConvertingPdf(true);
+          setError('');
+          const convertedImage = await convertPdfToImage(file);
+          setBillImage(convertedImage);
+          const previewUrl = URL.createObjectURL(convertedImage);
+          setImagePreview(previewUrl);
+        } catch (err: any) {
+          console.error("PDF conversion error:", err);
+          setError('Failed to convert PDF to image. Please try another file or upload an image directly.');
+        } finally {
+          setConvertingPdf(false);
+        }
+      } else {
+        setBillImage(file);
+        const previewUrl = URL.createObjectURL(file);
+        setImagePreview(previewUrl);
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -334,7 +431,15 @@ const PurchaseBills: React.FC = () => {
       return;
     }
 
-    const validItems = items.filter(i => i.item_name.trim() !== '' && i.quantity > 0);
+    const validItems = items
+      .filter(i => i.item_name.trim() !== '' && (parseFloat(i.quantity.toString()) || 0) > 0)
+      .map(i => ({
+        item_name: i.item_name.trim(),
+        quantity: parseFloat(i.quantity.toString()) || 0,
+        price: parseFloat(i.price.toString()) || 0,
+        gst_percentage: parseFloat(i.gst_percentage.toString()) || 0,
+        total: i.total
+      }));
     
     const formData = new FormData();
     formData.append('supplier_id', supplierId.toString());
@@ -379,29 +484,98 @@ const PurchaseBills: React.FC = () => {
   const thisMonthGstTotal = filteredBills.filter(b => b.is_gst === 1).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
   const thisMonthNonGstTotal = filteredBills.filter(b => b.is_gst === 0).reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
 
-  const handleExportExcel = () => {
-    if (!selectedMonth) return;
-    const billsToExport = filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
-    const dataForExcel = billsToExport.map(bill => ({
-      'Date': new Date(bill.bill_date).toLocaleDateString(),
-      'Supplier': bill.supplier_name,
-      'Supplier GST': bill.supplier_gst || '-',
-      'Bill No.': bill.bill_number,
-      'Total Amount': parseFloat(bill.total_amount.toString()).toFixed(2),
-      'GST Type': bill.is_gst === 1 ? 'GST' : 'Non-GST'
+  const getCurrentMonthDetails = () => {
+    const today = new Date();
+    const monthNames = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"];
+    const month = monthNames[today.getMonth()];
+    const year = today.getFullYear();
+    const fy = today.getMonth() >= 3 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+    return { month, fy, year };
+  };
+
+  const exportBillsToExcel = (billsToExport: PurchaseBill[], fileName: string) => {
+    if (!billsToExport || billsToExport.length === 0) {
+      alert('No purchase bills found to export.');
+      return;
+    }
+
+    const dataForExcel = billsToExport.map((bill, index) => ({
+      'S.No': index + 1,
+      'Bill Date': new Date(bill.bill_date).toLocaleDateString('en-GB'),
+      'Supplier Name': bill.supplier_name,
+      'Supplier GSTIN': bill.supplier_gst || '-',
+      'Bill Number': bill.bill_number,
+      'Bill Type': bill.is_gst === 1 ? 'GST' : 'Zero-Rated GST',
+      'Total Amount (₹)': parseFloat(bill.total_amount.toString()).toFixed(2)
     }));
-    
-    const fileName = `${activeTab === 'gst_list' ? 'GST_Bills' : 'Non_GST_Bills'}_${selectedMonth.month}_${selectedMonth.fy}`;
+
+    const totalAmount = billsToExport.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+    const gstCount = billsToExport.filter(b => b.is_gst === 1).length;
+    const nonGstCount = billsToExport.filter(b => b.is_gst === 0).length;
+
+    // Summary row
+    dataForExcel.push({
+      'S.No': '' as any,
+      'Bill Date': '',
+      'Supplier Name': 'TOTAL',
+      'Supplier GSTIN': `GST: ${gstCount} | Zero-Rated GST: ${nonGstCount}`,
+      'Bill Number': `Total: ${billsToExport.length} bills`,
+      'Bill Type': '',
+      'Total Amount (₹)': totalAmount.toFixed(2)
+    });
+
     try {
       const worksheet = utils.json_to_sheet(dataForExcel);
+      worksheet['!cols'] = [
+        { wch: 8 },
+        { wch: 14 },
+        { wch: 30 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 18 }
+      ];
       const workbook = utils.book_new();
-      utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+      utils.book_append_sheet(workbook, worksheet, 'Purchase Bills');
       writeFile(workbook, `${fileName}.xlsx`);
     } catch (error) {
       console.error("Excel export error:", error);
       alert("Failed to export Excel. " + (error as Error).message);
     }
   };
+
+  const handleExportCurrentMonth = () => {
+    const { month, fy } = getCurrentMonthDetails();
+    const currentMonthBills = groupedBills[fy]?.[month] || [];
+    
+    if (currentMonthBills.length === 0) {
+      alert(`No purchase bills found for this month (${month} ${fy}).`);
+      return;
+    }
+
+    exportBillsToExcel(
+      currentMonthBills, 
+      `All_Purchase_Bills_${month}_${fy}`
+    );
+  };
+
+  const handleExportMonthBills = (fy: string, month: string) => {
+    const monthBills = groupedBills[fy]?.[month] || [];
+    const billsToExport = activeTab === 'all_list'
+      ? monthBills
+      : monthBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
+
+    if (billsToExport.length === 0) {
+      alert(`No bills found to export for ${month} ${fy}.`);
+      return;
+    }
+
+    const typePrefix = activeTab === 'all_list' ? 'All_Purchase_Bills' : activeTab === 'gst_list' ? 'GST_Purchase_Bills' : 'Zero_Rated_GST_Purchase_Bills';
+    exportBillsToExcel(billsToExport, `${typePrefix}_${month}_${fy}`);
+  };
+
+  const { month: currentMonthName } = getCurrentMonthDetails();
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -414,33 +588,50 @@ const PurchaseBills: React.FC = () => {
           <p className="text-gray-500 mt-1">Manage purchase bills and upload bill images.</p>
         </div>
         
-        <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={() => setActiveTab('gst_list')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'gst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            onClick={handleExportCurrentMonth}
+            className="inline-flex items-center text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all"
+            title={`Export this month (${currentMonthName}) GST & Zero-Rated GST bills in Excel`}
           >
-            GST Bills
+            <Download className="w-4 h-4 mr-2" />
+            Export This Month in Excel ({currentMonthName})
           </button>
-          <button
-            onClick={() => setActiveTab('nongst_list')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'nongst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Non-GST Bills
-          </button>
-          {userRole !== 'ACCOUNTS' && (
+
+          <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
             <button
-              onClick={() => setActiveTab('form')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'form' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('all_list')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'all_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              Add New Bill
+              All Bills
             </button>
-          )}
-          <button
-            onClick={() => setActiveTab('images')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'images' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Bill Images
-          </button>
+            <button
+              onClick={() => setActiveTab('gst_list')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'gst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              GST Bills
+            </button>
+            <button
+              onClick={() => setActiveTab('nongst_list')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'nongst_list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Zero-Rated GST Bills
+            </button>
+            {userRole !== 'ACCOUNTS' && (
+              <button
+                onClick={() => { setActiveTab('form'); setSelectedMonth(null); }}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'form' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Add New Bill
+              </button>
+            )}
+            <button
+              onClick={() => { setActiveTab('images'); setSelectedMonth(null); }}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'images' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Bill Images
+            </button>
+          </div>
         </div>
       </div>
 
@@ -469,7 +660,7 @@ const PurchaseBills: React.FC = () => {
                   required
                   value={supplierId}
                   onChange={handleSupplierChange}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="">Select Supplier</option>
                   {suppliers.map(s => (
@@ -484,7 +675,7 @@ const PurchaseBills: React.FC = () => {
                   required
                   value={billNumber}
                   onChange={(e) => setBillNumber(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                   placeholder="INV-12345"
                 />
               </div>
@@ -495,7 +686,7 @@ const PurchaseBills: React.FC = () => {
                   required
                   value={billDate}
                   onChange={(e) => setBillDate(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -528,7 +719,7 @@ const PurchaseBills: React.FC = () => {
                         })));
                       }} 
                     />
-                    <span className="ml-2 text-sm text-gray-700 font-medium">Non-GST</span>
+                    <span className="ml-2 text-sm text-gray-700 font-medium">Zero-Rated GST</span>
                   </label>
                 </div>
               </div>
@@ -551,24 +742,24 @@ const PurchaseBills: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
                     <tr>
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase pb-3 w-1/3">Item Name</th>
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase pb-3 w-1/6">Qty</th>
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase pb-3 w-1/6">Price (₹)</th>
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase pb-3 w-1/6">GST (%)</th>
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase pb-3 w-1/6">Total</th>
+                      <th className="text-left text-xs font-semibold text-gray-600 uppercase pb-3 w-1/3">Item Name</th>
+                      <th className="text-center text-xs font-semibold text-gray-600 uppercase pb-3 w-1/6">Qty</th>
+                      <th className="text-right text-xs font-semibold text-gray-600 uppercase pb-3 w-1/6">Price (₹)</th>
+                      <th className="text-center text-xs font-semibold text-gray-600 uppercase pb-3 w-1/6">GST (%)</th>
+                      <th className="text-right text-xs font-semibold text-gray-600 uppercase pb-3 w-1/6">Total</th>
                       <th className="pb-3 w-10"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {items.map((item, index) => (
                       <tr key={index}>
-                        <td className="py-2 pr-2">
+                        <td className="py-2.5 pr-2">
                           <input
                             type="text"
                             list={`supplier-items-${supplierId}`}
                             value={item.item_name}
                             onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                            className="w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
                             placeholder="Item name"
                             required
                           />
@@ -580,50 +771,58 @@ const PurchaseBills: React.FC = () => {
                             </datalist>
                           )}
                         </td>
-                        <td className="py-2 pr-2">
+                        <td className="py-2.5 pr-2">
                           <input
                             type="number"
                             min="0.01"
-                            step="0.01"
-                            value={item.quantity || ''}
-                            onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
-                            className="w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            step="any"
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-center"
+                            placeholder="1"
                             required
                           />
                         </td>
-                        <td className="py-2 pr-2">
+                        <td className="py-2.5 pr-2">
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
-                            value={item.price || ''}
-                            onChange={(e) => handleItemChange(index, 'price', parseFloat(e.target.value) || 0)}
-                            className="w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            step="any"
+                            value={item.price}
+                            onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-right"
+                            placeholder="0.00"
                             required
                           />
                         </td>
-                        <td className="py-2 pr-2">
+                        <td className="py-2.5 pr-2">
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
-                            value={isGst === 0 ? 0 : (item.gst_percentage || '')}
-                            onChange={(e) => handleItemChange(index, 'gst_percentage', parseFloat(e.target.value) || 0)}
-                            className={`w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 ${isGst === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                            step="any"
+                            value={isGst === 0 ? 0 : item.gst_percentage}
+                            onChange={(e) => handleItemChange(index, 'gst_percentage', e.target.value)}
+                            className={`w-full px-3 py-2 rounded-lg text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-center ${
+                              isGst === 0 
+                                ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed' 
+                                : 'bg-white border border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="0"
                             disabled={isGst === 0}
                           />
                         </td>
-                        <td className="py-2 pr-2">
-                          <div className="w-full bg-white px-3 py-2 rounded-md border border-gray-200 text-sm font-medium text-gray-700">
-                            ₹{item.total.toFixed(2)}
+                        <td className="py-2.5 pr-2">
+                          <div className="w-full bg-white px-3 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-900 shadow-sm text-right">
+                            ₹{(item.total || 0).toFixed(2)}
                           </div>
                         </td>
-                        <td className="py-2 text-center">
+                        <td className="py-2.5 text-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(index)}
-                            className="text-red-400 hover:text-red-600"
+                            className="text-red-400 hover:text-red-600 transition-colors p-1"
                             disabled={items.length === 1}
+                            title="Remove Row"
                           >
                             <Trash2 className="h-5 w-5" />
                           </button>
@@ -646,38 +845,73 @@ const PurchaseBills: React.FC = () => {
 
             {/* File Upload */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload Original Bill Image</label>
-              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-indigo-500 transition-colors bg-gray-50">
-                <div className="space-y-1 text-center">
-                  <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                  <div className="flex text-sm text-gray-600 justify-center">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Upload Original Bill Image (PDF or Image)
+              </label>
+              <div className="mt-1 flex flex-col items-center justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:border-indigo-500 transition-colors bg-gray-50 min-h-[160px]">
+                {convertingPdf ? (
+                  <div className="py-6 flex flex-col items-center justify-center text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent mb-3" />
+                    <p className="text-sm font-bold text-indigo-700">Converting PDF to Image...</p>
+                    <p className="text-xs text-gray-500 mt-1">Please wait a moment while we render your bill</p>
+                  </div>
+                ) : imagePreview ? (
+                  <div className="flex flex-col items-center py-2 w-full max-w-sm">
+                    <div className="relative group mb-3 w-full flex justify-center">
+                      <img 
+                        src={imagePreview} 
+                        alt="Bill Preview" 
+                        className="max-h-64 rounded-lg shadow-md object-contain border border-gray-200 bg-white" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBillImage(null);
+                          setImagePreview(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1.5 shadow-md hover:bg-red-700 transition"
+                        title="Remove image"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                      <span>✓ Image Ready: {billImage?.name}</span>
+                    </div>
                     <label
                       htmlFor="file-upload"
-                      className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 px-2 py-1"
+                      className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
                     >
-                      <span>Upload a file</span>
-                      <input 
-                        id="file-upload" 
-                        name="file-upload" 
-                        type="file" 
-                        className="sr-only" 
-                        accept="image/*,.pdf"
-                        ref={fileInputRef}
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            setBillImage(e.target.files[0]);
-                          }
-                        }}
-                      />
+                      Change file
                     </label>
                   </div>
-                  <p className="text-xs text-gray-500">PNG, JPG, PDF up to 5MB</p>
-                  {billImage && (
-                    <p className="text-sm font-medium text-green-600 mt-2">
-                      Selected: {billImage.name}
+                ) : (
+                  <div className="space-y-2 text-center py-4">
+                    <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center">
+                      <label
+                        htmlFor="file-upload"
+                        className="relative cursor-pointer bg-white rounded-md font-semibold text-indigo-600 hover:text-indigo-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 px-4 py-2 border border-indigo-200 shadow-sm hover:shadow"
+                      >
+                        <span>Select File to Upload</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500">PDF, PNG, JPG up to 10MB</p>
+                    <p className="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full inline-block">
+                      📄 PDFs will be automatically converted to crisp images
                     </p>
-                  )}
-                </div>
+                  </div>
+                )}
+                <input 
+                  id="file-upload" 
+                  name="file-upload" 
+                  type="file" 
+                  className="sr-only" 
+                  accept="image/*,.pdf"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                />
               </div>
             </div>
 
@@ -698,7 +932,7 @@ const PurchaseBills: React.FC = () => {
 
 
       {/* LIST TABS */}
-      {(activeTab === 'gst_list' || activeTab === 'nongst_list') && (
+      {(activeTab === 'all_list' || activeTab === 'gst_list' || activeTab === 'nongst_list') && (
         <div className="space-y-6">
           {!selectedMonth ? (
             Object.keys(groupedBills).length === 0 ? (
@@ -723,27 +957,60 @@ const PurchaseBills: React.FC = () => {
                     <div className="p-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                         {Object.keys(groupedBills[fy]).map(month => {
-                          const monthBills = groupedBills[fy][month].filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
+                          const monthBills = activeTab === 'all_list'
+                            ? groupedBills[fy][month]
+                            : groupedBills[fy][month].filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0));
                           if (monthBills.length === 0) return null;
                           
                           const totalAmount = monthBills.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
-                          
+                          const gstCount = monthBills.filter(b => b.is_gst === 1).length;
+                          const nonGstCount = monthBills.filter(b => b.is_gst === 0).length;
+
                           return (
                             <div 
                               key={month} 
-                              className={`border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group bg-gray-50 border-gray-100`}
+                              className="border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group bg-gray-50 border-gray-100 flex flex-col justify-between"
                               onClick={() => setSelectedMonth({fy, month})}
                             >
-                              <div className="absolute top-0 right-0 bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-bl-lg">
-                                {monthBills.length} bills
+                              <div>
+                                <div className="flex justify-between items-start mb-3">
+                                  <h3 className="text-xl font-bold text-gray-900">{month}</h3>
+                                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                                    {monthBills.length} bills
+                                  </span>
+                                </div>
+                                
+                                {activeTab === 'all_list' && (
+                                  <div className="flex gap-2 mb-3 text-xs">
+                                    <span className="bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded">
+                                      {gstCount} GST
+                                    </span>
+                                    <span className="bg-amber-50 text-amber-700 font-semibold px-2 py-0.5 rounded">
+                                      {nonGstCount} Zero-Rated GST
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div className="space-y-1 text-sm">
+                                  <p className="text-gray-500">Total Purchase:</p>
+                                  <p className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(2)}</p>
+                                </div>
                               </div>
-                              <h3 className="text-xl font-bold text-gray-900 mb-4">{month}</h3>
-                              <div className="space-y-1 text-sm">
-                                <p className="text-gray-500">Total Purchase:</p>
-                                <p className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(2)}</p>
-                              </div>
-                              <div className="mt-4 text-sm text-indigo-600 font-medium group-hover:underline">
-                                Click to view all bills
+
+                              <div className="mt-4 pt-3 border-t border-gray-200 flex items-center justify-between">
+                                <span className="text-sm text-indigo-600 font-medium group-hover:underline">
+                                  View bills →
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportMonthBills(fy, month);
+                                  }}
+                                  className="inline-flex items-center text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-md border border-emerald-200 transition-colors"
+                                  title={`Export ${month} in Excel`}
+                                >
+                                  <Download className="w-3.5 h-3.5 mr-1" /> Excel
+                                </button>
                               </div>
                             </div>
                           );
@@ -766,39 +1033,59 @@ const PurchaseBills: React.FC = () => {
               </div>
 
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`grid grid-cols-1 ${activeTab === 'all_list' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+                {activeTab === 'all_list' && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-green-500">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Total Purchase (All Bills)</p>
+                      <p className="text-2xl font-bold text-gray-900">₹{(thisMonthGstTotal + thisMonthNonGstTotal).toFixed(2)}</p>
+                      <p className="text-xs text-gray-500 mt-1">{filteredBills.length} Total Bills</p>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-full">
+                      <FileText className="w-6 h-6 text-green-600" />
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-indigo-500">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Selected Month GST</p>
                     <p className="text-2xl font-bold text-gray-900">₹{thisMonthGstTotal.toFixed(2)}</p>
+                    <p className="text-xs text-gray-500 mt-1">{filteredBills.filter(b => b.is_gst === 1).length} GST Bills</p>
                   </div>
                   <div className="bg-indigo-50 p-3 rounded-full">
                     <FileText className="w-6 h-6 text-indigo-600" />
                   </div>
                 </div>
                 
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-gray-400">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center justify-between border-l-4 border-l-amber-500">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Selected Month Non-GST</p>
+                    <p className="text-sm font-medium text-gray-500">Selected Month Zero-Rated GST</p>
                     <p className="text-2xl font-bold text-gray-900">₹{thisMonthNonGstTotal.toFixed(2)}</p>
+                    <p className="text-xs text-gray-500 mt-1">{filteredBills.filter(b => b.is_gst === 0).length} Zero-Rated GST Bills</p>
                   </div>
-                  <div className="bg-gray-50 p-3 rounded-full">
-                    <FileText className="w-6 h-6 text-gray-400" />
+                  <div className="bg-amber-50 p-3 rounded-full">
+                    <FileText className="w-6 h-6 text-amber-500" />
                   </div>
                 </div>
               </div>
 
               {/* List Table */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-700">
-                    {activeTab === 'gst_list' ? 'GST Bills' : 'Non-GST Bills'} - {selectedMonth.month} {selectedMonth.fy}
-                  </h3>
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <h3 className="font-bold text-gray-800 text-lg">
+                      {activeTab === 'all_list' ? 'All Bills (GST & Zero-Rated GST)' : activeTab === 'gst_list' ? 'GST Bills' : 'Zero-Rated GST Bills'} - {selectedMonth.month} {selectedMonth.fy}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Showing {activeTab === 'all_list' ? filteredBills.length : filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length} bills
+                    </p>
+                  </div>
                   <button 
-                    onClick={handleExportExcel}
-                    className="inline-flex items-center text-sm font-medium text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+                    onClick={() => handleExportMonthBills(selectedMonth.fy, selectedMonth.month)}
+                    className="inline-flex items-center text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all"
                   >
-                    <Download className="w-4 h-4 mr-2" /> Export Excel
+                    <Download className="w-4 h-4 mr-2" /> Export This Month in Excel
                   </button>
                 </div>
                 <div className="overflow-x-auto">
@@ -808,28 +1095,41 @@ const PurchaseBills: React.FC = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill No.</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Bill Image</th>
                     </tr>
                   </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length === 0 ? (
+                      {filteredBills.filter(b => activeTab === 'all_list' ? true : b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                          <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                             No purchase bills found in this category.
                           </td>
                         </tr>
                       ) : (
-                        filteredBills.filter(b => b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).map((bill) => (
+                        filteredBills.filter(b => activeTab === 'all_list' ? true : b.is_gst === (activeTab === 'gst_list' ? 1 : 0)).map((bill) => (
                           <tr key={bill.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(bill.bill_date).toLocaleDateString()}
+                            {new Date(bill.bill_date).toLocaleDateString('en-GB')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                            {bill.supplier_name}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="font-medium text-gray-900">{bill.supplier_name}</div>
+                            {bill.supplier_gst && (
+                              <div className="text-xs text-gray-500">GST: {bill.supplier_gst}</div>
+                            )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                             {bill.bill_number}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              bill.is_gst === 1 
+                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' 
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
+                              {bill.is_gst === 1 ? 'GST' : 'Zero-Rated GST'}
+                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                             ₹{parseFloat(bill.total_amount.toString()).toFixed(2)}
@@ -838,7 +1138,7 @@ const PurchaseBills: React.FC = () => {
                             {bill.image_path ? (
                               <button 
                                 onClick={() => handleViewBill(bill.id)}
-                                className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-full cursor-pointer"
+                                className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-full cursor-pointer transition-colors"
                               >
                                 <ImageIcon className="w-4 h-4 mr-1" /> View
                               </button>
@@ -906,21 +1206,12 @@ const PurchaseBills: React.FC = () => {
                           {groupedBills[selectedMonth.fy][selectedMonth.month].filter(b => b.image_path).map(bill => (
                             <div key={bill.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
                               <div className="h-48 bg-gray-200 relative">
-                                {bill.image_path?.endsWith('.pdf') ? (
-                                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                                    <div className="text-center">
-                                      <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                                      <span className="text-sm font-medium text-gray-500">PDF Document</span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <img 
-                                    src={`${getBaseUrl()}/${bill.image_path}`} 
-                                    alt={`Bill ${bill.bill_number}`} 
-                                    className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => window.open(`${getBaseUrl()}/${bill.image_path}`, '_blank')}
-                                  />
-                                )}
+                                <PdfBillImage 
+                                  src={`${getBaseUrl()}/${bill.image_path}`} 
+                                  alt={`Bill ${bill.bill_number}`} 
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => window.open(`${getBaseUrl()}/${bill.image_path}`, '_blank')}
+                                />
                               </div>
                               <div className="p-4">
                                 <div className="flex justify-between items-start mb-2">
@@ -1066,19 +1357,12 @@ const PurchaseBills: React.FC = () => {
                   {selectedBillForView.image_path ? (
                     <div className="w-full h-full flex flex-col">
                       <div className="flex-grow flex items-center justify-center overflow-hidden rounded-lg border border-gray-300 bg-gray-200">
-                        {selectedBillForView.image_path.endsWith('.pdf') ? (
-                          <div className="text-center">
-                            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-2" />
-                            <span className="text-gray-500 font-medium">PDF Document</span>
-                          </div>
-                        ) : (
-                          <img 
-                            src={`${getBaseUrl()}/${selectedBillForView.image_path}`} 
-                            alt="Original Bill" 
-                            className="max-w-full max-h-[60vh] object-contain cursor-zoom-in hover:opacity-95"
-                            onClick={() => window.open(`${getBaseUrl()}/${selectedBillForView.image_path}`, '_blank')}
-                          />
-                        )}
+                        <PdfBillImage 
+                          src={`${getBaseUrl()}/${selectedBillForView.image_path}`} 
+                          alt="Original Bill" 
+                          className="max-w-full max-h-[60vh] object-contain cursor-zoom-in hover:opacity-95"
+                          onClick={() => window.open(`${getBaseUrl()}/${selectedBillForView.image_path}`, '_blank')}
+                        />
                       </div>
                       <a 
                         href={`${getBaseUrl()}/${selectedBillForView.image_path}`}

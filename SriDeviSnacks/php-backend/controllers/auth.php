@@ -22,6 +22,11 @@ function handleAuthRoute($parts, $method) {
             authVerify();
             break;
             
+        case 'logout':
+            if ($method !== 'POST') sendResponse(false, 'Method not allowed', null, 405);
+            authLogout();
+            break;
+            
         default:
             sendResponse(false, 'Action not found in auth', null, 404);
     }
@@ -64,6 +69,18 @@ function authLogin() {
         ];
         
         $token = generateToken($payload);
+        
+        // Insert into user_sessions
+        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        
+        $sessionStmt = $db->prepare("INSERT INTO user_sessions (user_id, token, ip_address, user_agent, is_active) VALUES (:user_id, :token, :ip_address, :user_agent, 1)");
+        $sessionStmt->execute([
+            'user_id' => $user['id'],
+            'token' => $token,
+            'ip_address' => $ipAddress,
+            'user_agent' => $userAgent
+        ]);
         
         $userData = [
             'id' => (int)$user['id'],
@@ -169,6 +186,24 @@ function authVerify() {
         if (!$dbUser || !$dbUser['isActive']) {
             sendResponse(false, 'Invalid token or user inactive', null, 401);
         }
+
+        // Verify token in user_sessions
+        $token = getBearerToken();
+        if ($token) {
+            $sessionStmt = $db->prepare("SELECT is_active FROM user_sessions WHERE token = :token LIMIT 1");
+            $sessionStmt->execute(['token' => $token]);
+            $session = $sessionStmt->fetch();
+
+            if ($session && $session['is_active'] == 0) {
+                sendResponse(false, 'Session revoked', null, 401);
+            }
+
+            // Update last_active_at
+            if ($session) {
+                $updateSession = $db->prepare("UPDATE user_sessions SET last_active_at = CURRENT_TIMESTAMP WHERE token = :token");
+                $updateSession->execute(['token' => $token]);
+            }
+        }
         
         $userData = [
             'id' => (int)$dbUser['id'],
@@ -181,6 +216,25 @@ function authVerify() {
             'user' => $userData
         ]);
         
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Handle POST /api/auth/logout
+ */
+function authLogout() {
+    $token = getBearerToken();
+    if (!$token) {
+        sendResponse(true, 'Logged out successfully (no token)');
+    }
+    
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("UPDATE user_sessions SET is_active = 0 WHERE token = :token");
+        $stmt->execute(['token' => $token]);
+        sendResponse(true, 'Logged out successfully');
     } catch (PDOException $e) {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }
