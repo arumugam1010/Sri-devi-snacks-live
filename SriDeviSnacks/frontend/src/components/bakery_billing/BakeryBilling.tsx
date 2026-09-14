@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Plus, Minus, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShoppingCart, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff, Search } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI, bakeryShopsAPI } from '../../services/api';
 import html2canvas from 'html2canvas';
 
-// Live location is fetched via Geolocation API
+const Logo = '/Logo.png';
 
 interface BakeryProduct {
   id: number;
@@ -32,6 +32,7 @@ interface BillItem {
 
 export default function BakeryBilling() {
   const [products, setProducts] = useState<BakeryProduct[]>([]);
+  const [allShops, setAllShops] = useState<BakeryShop[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [billItems, setBillItems] = useState<BillItem[]>([]);
@@ -48,26 +49,39 @@ export default function BakeryBilling() {
   const [nearbyShops, setNearbyShops] = useState<(BakeryShop & { distance: number })[]>([]);
   const [showNearbyModal, setShowNearbyModal] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [voiceFeedback, setVoiceFeedback] = useState('');
   const [qtyModalProduct, setQtyModalProduct] = useState<BakeryProduct | null>(null);
   const [qtyInput, setQtyInput] = useState('1');
 
+  const [useRawBT, setUseRawBT] = useState<boolean>(() => {
+    const saved = localStorage.getItem('useRawBT');
+    if (saved !== null) return saved === 'true';
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
+  });
+
+  const handleToggleRawBT = (checked: boolean) => {
+    setUseRawBT(checked);
+    localStorage.setItem('useRawBT', String(checked));
+  };
+
   useEffect(() => {
     fetchProducts();
-    detectLocation();
+    fetchShopsAndDetectLocation();
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3; // metres
-    const φ1 = lat1 * Math.PI/180;
-    const φ2 = lat2 * Math.PI/180;
-    const Δφ = (lat2-lat1) * Math.PI/180;
-    const Δλ = (lon2-lon1) * Math.PI/180;
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
               Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
@@ -78,7 +92,16 @@ export default function BakeryBilling() {
     setShowNearbyModal(false);
   };
 
-  const detectLocation = () => {
+  const fetchShopsAndDetectLocation = async () => {
+    let loadedShops: BakeryShop[] = [];
+    try {
+      const shopsRes = await bakeryShopsAPI.getShops();
+      loadedShops = shopsRes.data || [];
+      setAllShops(loadedShops);
+    } catch (err) {
+      console.error('Failed to load shops:', err);
+    }
+
     if (!navigator.geolocation) {
       setLocationStatus('Geolocation is not supported by your browser');
       return;
@@ -89,41 +112,18 @@ export default function BakeryBilling() {
         const { latitude, longitude } = position.coords;
         try {
           setLocationStatus('Fetching area name...');
-          const [res, shopsRes] = await Promise.all([
-            fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`),
-            bakeryShopsAPI.getShops().catch(() => ({ data: [] }))
-          ]);
-          
+          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
           const data = await res.json();
           const place = data.locality || data.city || data.principalSubdivision || 'Unknown Location';
           setCurrentLocation(place);
-          setLocationStatus(`Live Location Fetched`);
-
-          const shops = shopsRes?.data || [];
-          if (shops.length > 0) {
-            const shopsWithDist = shops
-              .filter((s: BakeryShop) => s.latitude && s.longitude)
-              .map((s: BakeryShop) => ({
-                ...s,
-                distance: calculateDistance(latitude, longitude, s.latitude as number, s.longitude as number)
-              }))
-              .filter((s: any) => s.distance <= 5000) // within 5km
-              .sort((a: any, b: any) => a.distance - b.distance);
-              
-            if (shopsWithDist.length === 1 || (shopsWithDist.length > 1 && shopsWithDist[0].distance <= 50)) {
-              selectShop(shopsWithDist[0]);
-            } else if (shopsWithDist.length > 1) {
-              setNearbyShops(shopsWithDist);
-              setShowNearbyModal(true);
-            }
-          }
+          setLocationStatus('Live Location Fetched');
         } catch (err) {
           setLocationStatus('Failed to fetch location name');
         }
       },
       (error) => {
         console.warn('Geolocation error:', error);
-        setLocationStatus('GPS failed or denied. Using default.');
+        setLocationStatus('GPS denied or unavailable');
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
@@ -142,6 +142,7 @@ export default function BakeryBilling() {
   };
 
   const totalAmount = billItems.reduce((sum, item) => sum + item.total, 0);
+  const selectedShop = allShops.find(s => s.id === selectedShopId);
 
   const handleProductClick = (product: BakeryProduct) => {
     setQtyModalProduct(product);
@@ -176,8 +177,24 @@ export default function BakeryBilling() {
     setQtyModalProduct(null);
   };
 
+  const updateItemQuantity = (productId: number, newQty: number) => {
+    if (newQty <= 0) {
+      removeBillItem(productId);
+      return;
+    }
+    setBillItems(prev => prev.map(i => i.product_id === productId ? { ...i, quantity: newQty, total: newQty * i.price } : i));
+  };
+
   const removeBillItem = (productId: number) => {
     setBillItems(prev => prev.filter(i => i.product_id !== productId));
+  };
+
+  const clearBill = () => {
+    if (billItems.length === 0) return;
+    if (confirm('Clear current bill?')) {
+      setBillItems([]);
+      setPaidAmount('');
+    }
   };
 
   const startVoiceRecognition = () => {
@@ -188,19 +205,18 @@ export default function BakeryBilling() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = 'ta-IN'; // Set to Tamil since product names are in Tamil
+    recognition.lang = 'ta-IN';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       setIsListening(true);
-      setVoiceFeedback('Listening...');
+      setVoiceFeedback('Listening in Tamil...');
     };
 
     recognition.onresult = (event: any) => {
       let transcript = event.results[0][0].transcript.toLowerCase();
       
-      // Fix common voice recognition typos
       const aliases: {[key: string]: string} = {
         'பிரெட்': 'பிரட்',
         'சாம்பன்': 'ஜாம்பன்',
@@ -210,11 +226,9 @@ export default function BakeryBilling() {
         transcript = transcript.replace(new RegExp(typo, 'g'), correct);
       }
       
-      // Try to find a matching product
       let matchedProduct = products.find(p => p.stock > 0 && transcript.includes(p.name.toLowerCase()));
       
       if (!matchedProduct) {
-        // Try partial match (e.g. product is "Veg Puff", user says "Puff")
         const words = transcript.split(' ').filter((w: string) => w.length >= 2 && isNaN(Number(w)));
         matchedProduct = products.find(p => {
           if (p.stock <= 0) return false;
@@ -224,7 +238,6 @@ export default function BakeryBilling() {
       }
 
       if (!matchedProduct) {
-        // Try fuzzy match using Levenshtein distance for typos (e.g. ஜாம்பன் vs சாம்பன்)
         const levenshtein = (a: string, b: string) => {
           const matrix = [];
           for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -269,7 +282,6 @@ export default function BakeryBilling() {
       }
       
       if (matchedProduct) {
-        // Extract quantity from transcript
         let qty = 1;
         const remainingText = transcript.replace(matchedProduct.name.toLowerCase(), '');
         const numberMatch = remainingText.match(/\d+/);
@@ -277,16 +289,13 @@ export default function BakeryBilling() {
         if (numberMatch) {
           qty = parseInt(numberMatch[0], 10);
         } else {
-          // Fallback to word parsing
           const wordToNum: {[key: string]: number} = {
             'ஒன்று': 1, 'ஒன்னு': 1, 'இரண்டு': 2, 'ரெண்டு': 2,
             'மூன்று': 3, 'மூணு': 3, 'நான்கு': 4, 'நாலு': 4,
             'ஐந்து': 5, 'அஞ்சு': 5, 'ஆறு': 6,
             'ஏழு': 7, 'எட்டு': 8, 'ஒன்பது': 9, 'பத்து': 10,
             'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-            'onnu': 1, 'rendu': 2, 'moonu': 3, 'naalu': 4, 'anju': 5,
-            'aaru': 6, 'yelu': 7, 'ettu': 8, 'ombodu': 9, 'pathu': 10
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
           };
           for (const [word, num] of Object.entries(wordToNum)) {
             if (remainingText.includes(word)) {
@@ -298,7 +307,6 @@ export default function BakeryBilling() {
 
         if (qty <= 0) qty = 1;
 
-        // Directly add to bill bypassing the prompt
         setBillItems(prev => {
           const existing = prev.find(i => i.product_id === matchedProduct.id);
           if (existing) {
@@ -325,7 +333,7 @@ export default function BakeryBilling() {
     recognition.onerror = (event: any) => {
       console.error(event.error);
       setIsListening(false);
-      setVoiceFeedback('Error listening.');
+      setVoiceFeedback('Error listening');
       setTimeout(() => setVoiceFeedback(''), 3000);
     };
 
@@ -336,10 +344,10 @@ export default function BakeryBilling() {
     recognition.start();
   };
 
-  const handleSaveAndPrint = async () => {
+  const handleSaveBill = async (andPrint: boolean = false) => {
     if (billItems.length === 0) return;
     
-    const paid = parseFloat(paidAmount) || 0;
+    const paid = parseFloat(paidAmount) || totalAmount;
     
     try {
       setSubmitting(true);
@@ -358,7 +366,7 @@ export default function BakeryBilling() {
       const billData = {
         id: res.data.id,
         ...payload,
-        pending_amount: totalAmount - paid,
+        pending_amount: Math.max(0, totalAmount - paid),
         date: new Date().toLocaleString()
       };
       
@@ -366,10 +374,15 @@ export default function BakeryBilling() {
       setBillItems([]);
       setCustomerName('');
       setCustomerPhone('');
+      setSelectedShopId(null);
       setPaidAmount('');
-      fetchProducts(); // Refresh stock
+      fetchProducts();
       
-      handlePrint(billData);
+      if (andPrint) {
+        handlePrint(billData);
+      } else {
+        alert("Bill saved successfully!");
+      }
 
     } catch (err: any) {
       alert(err.message || "Failed to save bill");
@@ -387,8 +400,8 @@ export default function BakeryBilling() {
         items: billItems,
         total_amount: totalAmount,
         paid_amount: 0,
-        customer_name: customerName,
-        customer_phone: customerPhone,
+        customer_name: customerName || (selectedShop ? selectedShop.name : 'Pending Customer'),
+        customer_phone: customerPhone || (selectedShop ? selectedShop.phone : ''),
         location_name: currentLocation,
         shop_id: selectedShopId || undefined
       };
@@ -399,8 +412,10 @@ export default function BakeryBilling() {
       setBillItems([]);
       setCustomerName('');
       setCustomerPhone('');
+      setSelectedShopId(null);
       setPaidAmount('');
-      fetchProducts(); // Refresh stock
+      fetchProducts();
+      alert("Bill saved as pending successfully!");
 
     } catch (err: any) {
       alert(err.message || "Failed to save bill as pending");
@@ -420,16 +435,21 @@ export default function BakeryBilling() {
     const printContent = `
       <div class="print-receipt px-2">
         <div class="text-center mb-2">
+          <div style="font-size: 10px; font-weight: bold;">"ஸ்ரீ தேவி சந்தன மாரியம்மன் துணை"</div>
+          <div style="font-size: 11px;">GST No: 33BAPPS2831B2ZU</div>
+          <div style="font-size: 11px;">Mobile: 8807810021</div>
           <div class="font-bold text-base sm:text-lg">SRI DEVI SNACKS</div>
-          <div class="text-sm">Bakery Bill</div>
+          <div style="font-size: 10px;">128 C Santhanamari Amman Kovil Street, Vallioor</div>
+          <div class="text-sm font-bold mt-1">Bakery Bill</div>
           <div>Date: ${billData.date}</div>
           <div>Bill No: ${billData.id}</div>
         </div>
         
         ${(billData.customer_name || billData.customer_phone) ? `
-          <div class="my-2 border-t border-b py-1">
-            ${billData.customer_name ? `<div>Name: ${billData.customer_name}</div>` : ''}
+          <div class="my-2 border-t border-b py-1 text-xs">
+            ${billData.customer_name ? `<div>Shop/Cust: ${billData.customer_name}</div>` : ''}
             ${billData.customer_phone ? `<div>Ph: ${billData.customer_phone}</div>` : ''}
+            ${billData.location_name ? `<div>Loc: ${billData.location_name}</div>` : ''}
           </div>
         ` : ''}
 
@@ -446,7 +466,7 @@ export default function BakeryBilling() {
             <tbody>
               ${billData.items.map((item: any) => `
                 <tr>
-                  <td>${item.product_name.substring(0, 12)}</td>
+                  <td>${item.product_name.substring(0, 14)}</td>
                   <td class="text-center">${item.quantity}</td>
                   <td class="text-right">${item.price.toFixed(2)}</td>
                   <td class="text-right">${item.total.toFixed(2)}</td>
@@ -459,22 +479,22 @@ export default function BakeryBilling() {
         <div class="border-t py-1">
           <div class="flex justify-between font-bold">
             <span>Total:</span>
-            <span>${billData.total_amount.toFixed(2)}</span>
+            <span>₹${billData.total_amount.toFixed(2)}</span>
           </div>
           <div class="flex justify-between">
             <span>Paid:</span>
-            <span>${billData.paid_amount.toFixed(2)}</span>
+            <span>₹${billData.paid_amount.toFixed(2)}</span>
           </div>
           ${billData.pending_amount > 0 ? `
             <div class="flex justify-between font-bold text-lg">
               <span>Pending:</span>
-              <span>${billData.pending_amount.toFixed(2)}</span>
+              <span>₹${billData.pending_amount.toFixed(2)}</span>
             </div>
           ` : ''}
         </div>
         
-        <div class="text-center mt-4 border-t py-2">
-          <div>Thank You!</div>
+        <div class="text-center mt-4 border-t py-2 font-bold">
+          <div>Thank You - Visit Again!</div>
         </div>
       </div>
     `;
@@ -521,7 +541,6 @@ export default function BakeryBilling() {
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (doc) {
         doc.open();
-        
         const optimizedHtml = html
           .replace(/size:\s*80mm\s*auto/gi, 'size: auto')
           .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
@@ -549,9 +568,6 @@ export default function BakeryBilling() {
       }
     };
 
-    const savedRawBT = localStorage.getItem('useRawBT');
-    const useRawBT = savedRawBT !== null ? savedRawBT === 'true' : isMobile;
-
     if (isMobile && useRawBT) {
       try {
         const optimizedHtml = printContent
@@ -562,7 +578,7 @@ export default function BakeryBilling() {
         const container = document.createElement('div');
         container.style.position = 'absolute';
         container.style.left = '-9999px';
-        container.style.width = '800px'; // Increased to 800px to fully match 8cm paper width
+        container.style.width = '800px';
         container.style.background = 'white';
         container.style.padding = '0px';
         container.style.boxSizing = 'border-box';
@@ -646,7 +662,7 @@ export default function BakeryBilling() {
         await new Promise(resolve => setTimeout(resolve, 600));
 
         const canvas = await html2canvas(container, {
-          scale: 1.0, // Optimized scale to prevent URL length limits in mobile browsers
+          scale: 1.0,
           useCORS: true,
           backgroundColor: '#ffffff'
         });
@@ -664,148 +680,369 @@ export default function BakeryBilling() {
     }
   };
 
-  if (loading) return <div>Loading...</div>;
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+        <span className="ml-3 text-gray-600 font-medium">Loading bakery products...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] lg:h-[calc(100vh-8rem)] bg-gray-50 -m-4 sm:-m-6 overflow-hidden">
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
       
-      {/* Products Grid */}
-      <div className="flex-1 p-4 lg:p-6 overflow-y-auto flex flex-col min-h-0">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <h2 className="text-2xl font-bold text-gray-800">Bakery Products</h2>
-          
-          {/* Location Selector */}
-          <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 flex items-center w-full sm:w-auto">
-            <MapPin className="w-5 h-5 text-blue-500 mr-2" />
-            <div className="flex flex-col">
-              <input 
+      {/* Top Header Bar with Title and RawBT Toggle */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Bakery Billing</h2>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+            <p className="text-gray-600 text-sm">Create bills and manage bakery orders</p>
+            <span className="text-gray-300 hidden sm:inline">|</span>
+            <label className="inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useRawBT}
+                onChange={(e) => handleToggleRawBT(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="relative w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="ms-2 text-xs font-semibold text-gray-700">Use RawBT Printer</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Live Location Chip */}
+        <div className="bg-gray-50 px-3.5 py-2 rounded-lg border border-gray-200 flex items-center w-full sm:w-auto">
+          <MapPin className="w-4 h-4 text-blue-600 mr-2 shrink-0" />
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xs text-gray-500">Location:</span>
+              <input
                 type="text"
                 value={currentLocation}
                 onChange={(e) => {
                   setCurrentLocation(e.target.value);
                   setLocationStatus('Manually edited');
                 }}
-                className="text-sm font-bold text-gray-900 border-none bg-transparent focus:ring-0 p-0 w-32 sm:w-40"
-                placeholder="Enter location"
+                className="text-xs font-bold text-gray-900 border-none bg-transparent focus:ring-0 p-0 truncate w-28 sm:w-36"
+                placeholder="Location"
               />
-              <span className="text-[10px] text-gray-400 mt-0.5">{locationStatus}</span>
             </div>
+            <span className="text-[10px] text-gray-400 leading-tight">{locationStatus}</span>
           </div>
-
-          {/* Voice Recognition Button */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={startVoiceRecognition}
-              disabled={isListening}
-              className={`flex items-center justify-center p-3 rounded-full shadow-md transition-all ${
-                isListening 
-                  ? 'bg-red-500 text-white animate-pulse' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-              title="Add product by voice"
-            >
-              {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-            </button>
-            {voiceFeedback && (
-              <span className={`text-sm font-medium ${isListening ? 'text-red-500' : 'text-blue-600'}`}>
-                {voiceFeedback}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 pb-4">
-          {products.filter(p => p.stock > 0).map(product => (
-            <div 
-              key={product.id} 
-              onClick={() => handleProductClick(product)}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer overflow-hidden flex flex-col"
-            >
-              <div className="h-40 bg-gray-50 flex items-center justify-center relative">
-                {product.image ? (
-                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="h-12 w-12 text-gray-300" />
-                )}
-                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-sm font-bold text-gray-800 shadow-sm">
-                  ₹{product.price.toFixed(2)}
-                </div>
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="font-semibold text-gray-900 line-clamp-2">{product.name}</h3>
-              </div>
-            </div>
-          ))}
-          {products.filter(p => p.stock > 0).length === 0 && (
-            <div className="col-span-full text-center text-gray-500 py-10">
-              No products with stock available. Update stock in the Bakery Stock tab.
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Bill Cart */}
-      <div className="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] lg:shadow-xl z-10 h-[45vh] lg:h-auto shrink-0">
-        <div className="p-4 bg-gray-800 text-white flex items-center justify-between">
-          <div className="flex items-center">
-            <ShoppingCart className="h-5 w-5 mr-2" />
-            <h2 className="text-lg font-bold">Current Bill</h2>
-          </div>
-          <span className="bg-gray-700 px-2 py-1 rounded text-sm">{billItems.length} items</span>
-        </div>
+      {/* Main Two-Column Layout (Responsive: Stacks on mobile, 2 columns on desktop) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {billItems.length === 0 ? (
-            <div className="text-center text-gray-400 mt-10">
-              <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
-              <p>Cart is empty</p>
-              <p className="text-sm">Click on products to add</p>
-            </div>
-          ) : (
-            billItems.map(item => (
-              <div key={item.product_id} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900 text-sm line-clamp-1">{item.product_name}</h4>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {item.quantity} x ₹{item.price.toFixed(2)}
-                  </div>
+        {/* Left Column / Top Sections: Shop Selection & Products */}
+        <div className="lg:col-span-7 xl:col-span-7 space-y-6">
+          
+          {/* Bakery Products Grid (Full height, natural scrolling, no fixed cutoff) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Bakery Products</h3>
+                <p className="text-xs text-gray-500">Tap a product to enter quantity and add to bill</p>
+              </div>
+
+              {/* Voice recognition & search header controls */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-48">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search product..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
-                <div className="font-bold text-gray-900 mr-4">
-                  ₹{item.total.toFixed(2)}
-                </div>
-                <button 
-                  onClick={() => removeBillItem(item.product_id)}
-                  className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
+
+                <button
+                  type="button"
+                  onClick={startVoiceRecognition}
+                  disabled={isListening}
+                  className={`flex items-center justify-center p-2 rounded-lg shadow-sm transition ${
+                    isListening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                  title="Speak in Tamil to add product"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  {isListening ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
                 </button>
               </div>
-            ))
-          )}
+            </div>
+
+            {/* Voice Feedback Banner */}
+            {voiceFeedback && (
+              <div className={`text-xs px-3 py-1.5 rounded-md font-medium ${
+                isListening ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+              }`}>
+                {voiceFeedback}
+              </div>
+            )}
+
+            {/* Products Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pt-2">
+              {filteredProducts.filter(p => p.stock > 0).map(product => {
+                const inBill = billItems.find(i => i.product_id === product.id);
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => handleProductClick(product)}
+                    className={`bg-white rounded-xl shadow-sm border transition-all cursor-pointer overflow-hidden flex flex-col hover:shadow-md active:scale-98 ${
+                      inBill ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="h-32 sm:h-36 bg-gray-50 flex items-center justify-center relative overflow-hidden">
+                      {product.image ? (
+                        <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 hover:scale-105" />
+                      ) : (
+                        <ImageIcon className="h-10 w-10 text-gray-300" />
+                      )}
+                      
+                      {/* Price Badge */}
+                      <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold text-gray-900 shadow-sm border border-gray-100">
+                        ₹{product.price.toFixed(2)}
+                      </div>
+
+                      {/* In Bill Quantity Badge */}
+                      {inBill && (
+                        <div className="absolute bottom-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                          {inBill.quantity} in bill
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 text-center flex-1 flex flex-col justify-between">
+                      <h4 className="font-semibold text-gray-900 text-xs sm:text-sm line-clamp-2">{product.name}</h4>
+                      <p className="text-[10px] text-gray-400 mt-1">Stock: {product.stock}</p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredProducts.filter(p => p.stock > 0).length === 0 && (
+                <div className="col-span-full text-center text-gray-500 py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <p className="text-sm font-medium">No products found matching your search</p>
+                  <p className="text-xs text-gray-400 mt-1">Ensure stock is available in the Bakery Stock tab</p>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
 
-        {/* Bill Summary & Actions */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex justify-between items-center mb-4 text-lg font-bold text-gray-900">
-            <span>Total Amount</span>
-            <span>₹{totalAmount.toFixed(2)}</span>
+        {/* Right Column (Desktop) / Below All Products (Mobile): Current Bill Card */}
+        <div className="lg:col-span-5 xl:col-span-5">
+          <div id="current-bill-card" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden lg:sticky lg:top-6">
+            
+            {/* Bill Header */}
+            <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <div className="flex items-center space-x-2">
+                <ShoppingCart className="h-5 w-5 text-blue-600" />
+                <h3 className="text-lg font-bold text-gray-900">Current Bill</h3>
+                <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {billItems.length} {billItems.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+              
+              {billItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearBill}
+                  className="inline-flex items-center px-2.5 py-1 text-xs sm:text-sm text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Bill Content */}
+            {billItems.length === 0 ? (
+              <div className="p-8 sm:p-12 text-center text-gray-400">
+                <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-25" />
+                <p className="font-semibold text-gray-600 text-base">No items in bill</p>
+                <p className="text-xs sm:text-sm text-gray-400 mt-1">Tap products above to add them to this bill</p>
+              </div>
+            ) : (
+              <div className="p-4 sm:p-6 space-y-4">
+                
+                {/* Visual Bill Preview (Exact design of Image 1) */}
+                <div id="current-bill-to-print" className="border border-dashed border-gray-300 rounded-xl p-4 bg-white shadow-inner">
+                  {/* Top Dedication */}
+                  <div className="text-center font-bold text-[11px] text-gray-800 mb-1.5">
+                    "ஸ்ரீ தேவி சந்தன மாரியம்மன் துணை"
+                  </div>
+
+                  {/* GST & Mobile */}
+                  <div className="flex justify-between items-center text-[11px] font-semibold text-gray-800 mb-2">
+                    <span>GST No: 33BAPPS2831B2ZU</span>
+                    <span>Mobile: 8807810021</span>
+                  </div>
+
+                  {/* Logo */}
+                  <div className="text-center my-2">
+                    <img src={Logo} alt="Sri Devi Snacks Logo" className="mx-auto h-12 w-auto object-contain" />
+                  </div>
+
+                  {/* Company Name & Address */}
+                  <div className="text-center">
+                    <h1 className="text-xl font-black tracking-wide text-gray-900">Sri Devi Snacks</h1>
+                    <p className="text-xs text-gray-700">128 C Santhanamari Amman Kovil Street</p>
+                    <p className="text-xs text-gray-700">Vallioor, Tirunelveli-627117</p>
+                  </div>
+
+                  {/* Customer & Date */}
+                  <div className="mt-3 pt-2.5 border-t border-gray-200 text-xs space-y-0.5">
+                    {(customerName || customerPhone) && (
+                      <div>
+                        {customerName && (
+                          <p className="text-gray-800">
+                            <span className="font-bold">Customer:</span> {customerName}
+                          </p>
+                        )}
+                        {customerPhone && (
+                          <p className="text-gray-600">
+                            <span className="font-bold">Phone:</span> {customerPhone}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-gray-600">
+                      <span className="font-bold">Location:</span> {currentLocation}
+                    </p>
+                    <p className="text-gray-600">
+                      <span className="font-bold">Date:</span> {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+
+                  {/* Dashed Line */}
+                  <div className="border-b-2 border-dashed border-gray-300 my-3"></div>
+
+                  {/* Items Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100 font-bold border-y border-gray-300 text-gray-800">
+                          <th className="p-1.5 text-left">Product Name</th>
+                          <th className="p-1.5 text-center">QTY</th>
+                          <th className="p-1.5 text-right">Price</th>
+                          <th className="p-1.5 text-right">Total</th>
+                          <th className="p-1.5 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {billItems.map(item => (
+                          <tr key={item.product_id} className="hover:bg-gray-50">
+                            <td className="p-1.5 font-medium text-gray-900">{item.product_name}</td>
+                            <td className="p-1.5 text-center">
+                              <div className="inline-flex items-center border border-gray-300 rounded bg-white shadow-2xs">
+                                <button
+                                  type="button"
+                                  onClick={() => updateItemQuantity(item.product_id, item.quantity - 1)}
+                                  className="px-1.5 py-0.5 text-gray-600 hover:bg-gray-100 font-bold"
+                                >
+                                  -
+                                </button>
+                                <span className="px-2 font-bold text-gray-900">{item.quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateItemQuantity(item.product_id, item.quantity + 1)}
+                                  className="px-1.5 py-0.5 text-gray-600 hover:bg-gray-100 font-bold"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td className="p-1.5 text-right text-gray-700">₹{item.price.toFixed(2)}</td>
+                            <td className="p-1.5 text-right font-bold text-gray-900">₹{item.total.toFixed(2)}</td>
+                            <td className="p-1.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeBillItem(item.product_id)}
+                                className="text-red-500 hover:text-red-700 p-1 transition"
+                                title="Remove item"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mx-auto" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Dashed Line */}
+                  <div className="border-b-2 border-dashed border-gray-300 my-3"></div>
+
+                  {/* Totals Breakdown */}
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between text-gray-700">
+                      <span>Item Total ({billItems.reduce((acc, i) => acc + i.quantity, 0)} items):</span>
+                      <span className="font-medium">₹{totalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-gray-800">
+                      <span>Today Total Amount (இன்றைய பில்):</span>
+                      <span>₹{totalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-dashed border-gray-300 my-2 pt-1"></div>
+                    <div className="flex justify-between text-base sm:text-lg font-black text-gray-900">
+                      <span>Final Total:</span>
+                      <span className="text-blue-700 font-black">₹{totalAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Thank you note */}
+                  <div className="border-t-2 border-dashed border-gray-300 my-3 pt-2 text-center text-xs font-bold text-gray-800 tracking-wide">
+                    Thank you – Visit Again!
+                  </div>
+                </div>
+
+                {/* Bottom Bill Action Buttons */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaidAmount(totalAmount.toString());
+                      setIsPaymentModalOpen(true);
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow transition flex items-center justify-center text-base"
+                  >
+                    <Save className="mr-2 h-5 w-5" />
+                    Save Bill (₹{totalAmount.toFixed(2)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAsPending}
+                    disabled={submitting}
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center text-sm"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save as Pending
+                  </button>
+                </div>
+
+              </div>
+            )}
+
           </div>
-          
-          <button
-            disabled={billItems.length === 0}
-            onClick={() => {
-              setPaidAmount(totalAmount.toString());
-              setIsPaymentModalOpen(true);
-            }}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold text-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Printer className="mr-2 h-5 w-5" />
-            Print Bill
-          </button>
         </div>
+
       </div>
 
-      {/* Payment Modal */}
+
+
+      {/* Payment Confirmation Modal */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
@@ -814,50 +1051,48 @@ export default function BakeryBilling() {
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
                 <h3 className="text-xl font-bold text-gray-900">Complete Payment</h3>
               </div>
-              <div className="px-6 py-6">
+              <div className="px-6 py-6 space-y-4">
                 
-                <div className="bg-blue-50 text-blue-900 p-4 rounded-lg mb-6 flex justify-between items-center border border-blue-100">
+                <div className="bg-blue-50 text-blue-900 p-4 rounded-lg flex justify-between items-center border border-blue-100">
                   <span className="font-medium text-lg">Total Bill:</span>
                   <span className="text-2xl font-bold">₹{totalAmount.toFixed(2)}</span>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Amount Paid (₹)</label>
-                    <input
-                      type="number"
-                      autoFocus
-                      className="w-full border-gray-300 rounded-md shadow-sm text-lg py-3 px-4 focus:ring-blue-500 focus:border-blue-500"
-                      value={paidAmount}
-                      onChange={(e) => setPaidAmount(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="bg-gray-50 p-3 rounded-md flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Pending Amount:</span>
-                    <span className={`font-bold ${(totalAmount - (parseFloat(paidAmount) || 0)) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ₹{Math.max(0, totalAmount - (parseFloat(paidAmount) || 0)).toFixed(2)}
-                    </span>
-                  </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Amount Paid (₹)</label>
+                  <input
+                    type="number"
+                    autoFocus
+                    className="w-full border border-gray-300 rounded-lg shadow-sm text-lg py-3 px-4 focus:ring-blue-500 focus:border-blue-500"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(e.target.value)}
+                  />
+                </div>
+                
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border border-gray-200">
+                  <span className="text-sm font-medium text-gray-600">Pending Amount:</span>
+                  <span className={`font-bold ${(totalAmount - (parseFloat(paidAmount) || 0)) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    ₹{Math.max(0, totalAmount - (parseFloat(paidAmount) || 0)).toFixed(2)}
+                  </span>
+                </div>
 
-                  <div className="pt-4 border-t border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Customer Details (Optional)</p>
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        placeholder="Customer Name"
-                        className="w-full border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Phone Number"
-                        className="w-full border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500"
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                      />
-                    </div>
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Customer Details</p>
+                  <div className="space-y-2.5">
+                    <input
+                      type="text"
+                      placeholder="Customer Name"
+                      className="w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-sm focus:ring-blue-500 focus:border-blue-500"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Phone Number"
+                      className="w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-sm focus:ring-blue-500 focus:border-blue-500"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                    />
                   </div>
                 </div>
 
@@ -866,7 +1101,7 @@ export default function BakeryBilling() {
                 <button
                   type="button"
                   onClick={() => setIsPaymentModalOpen(false)}
-                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md transition-colors"
+                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition"
                 >
                   Cancel
                 </button>
@@ -874,25 +1109,24 @@ export default function BakeryBilling() {
                   type="button"
                   onClick={handleSaveAsPending}
                   disabled={submitting}
-                  className="px-4 py-2 bg-yellow-500 text-white font-bold rounded-md hover:bg-yellow-600 flex items-center transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-yellow-500 text-white font-bold rounded-lg hover:bg-yellow-600 flex items-center transition disabled:opacity-50 text-sm"
                 >
                   {submitting ? 'Saving...' : 'Save as Pending'}
                 </button>
                 <button
                   type="button"
-                  onClick={handleSaveAndPrint}
+                  onClick={() => handleSaveBill(false)}
                   disabled={submitting}
-                  className="px-6 py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
+                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center transition disabled:opacity-50 text-sm"
                 >
-                  {submitting ? 'Saving...' : 'Save & Print'}
+                  <Save className="mr-1.5 h-4 w-4" />
+                  {submitting ? 'Saving...' : 'Save Bill'}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Removed Print Section because HTML is generated dynamically in handlePrint */}
 
       {/* Quantity Modal */}
       {qtyModalProduct && (
@@ -903,16 +1137,17 @@ export default function BakeryBilling() {
               <form onSubmit={confirmQuantity}>
                 <div className="bg-white px-6 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <div className="mt-3 text-center sm:mt-0 sm:text-left">
-                    <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
-                      Enter quantity for {qtyModalProduct.name}
+                    <h3 className="text-lg leading-6 font-bold text-gray-900 mb-1">
+                      {qtyModalProduct.name}
                     </h3>
+                    <p className="text-xs text-gray-500 mb-4">Price: ₹{qtyModalProduct.price.toFixed(2)} | Stock: {qtyModalProduct.stock}</p>
                     <div className="mt-2">
                       <input
                         type="number"
                         pattern="[0-9]*"
                         inputMode="numeric"
                         autoFocus
-                        className="w-full text-center text-3xl font-bold border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 py-4"
+                        className="w-full text-center text-3xl font-bold border-2 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 py-3"
                         value={qtyInput}
                         onChange={(e) => setQtyInput(e.target.value)}
                         onFocus={(e) => e.target.select()}
@@ -923,14 +1158,14 @@ export default function BakeryBilling() {
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 flex flex-row-reverse space-x-reverse space-x-3 gap-3 sm:gap-0">
                   <button
                     type="submit"
-                    className="w-full sm:w-auto inline-flex justify-center rounded-md border border-transparent shadow-sm px-6 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    className="w-full sm:w-auto inline-flex justify-center rounded-lg border border-transparent shadow-sm px-6 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none"
                   >
-                    Add
+                    Add to Bill
                   </button>
                   <button
                     type="button"
                     onClick={() => setQtyModalProduct(null)}
-                    className="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-6 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    className="w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-5 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
                   >
                     Cancel
                   </button>
@@ -941,50 +1176,6 @@ export default function BakeryBilling() {
         </div>
       )}
 
-      {/* Nearby Shops Modal */}
-      {showNearbyModal && nearbyShops.length > 0 && (
-        <div className="fixed inset-0 z-[60] overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-gray-800 bg-opacity-75 backdrop-blur-sm" onClick={() => setShowNearbyModal(false)}></div>
-            <div className="relative inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md w-full">
-              <div className="bg-white px-6 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <div className="mt-3 text-center sm:mt-0 sm:text-left">
-                  <h3 className="text-lg leading-6 font-bold text-gray-900 mb-4">
-                    Nearby Bakery Shops Detected
-                  </h3>
-                  <div className="mt-2 space-y-2">
-                    <p className="text-sm text-gray-500 mb-4">Select the shop you are currently at:</p>
-                    {nearbyShops.map(shop => (
-                      <div
-                        key={shop.id}
-                        onClick={() => selectShop(shop)}
-                        className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-orange-50 hover:border-orange-200 transition-colors"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">{shop.name}</div>
-                          <div className="text-xs text-gray-500">{shop.phone || 'No phone'}</div>
-                        </div>
-                        <div className="text-sm font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded">
-                          {shop.distance < 1000 ? `${Math.round(shop.distance)}m` : `${(shop.distance/1000).toFixed(1)}km`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex flex-row-reverse space-x-reverse space-x-3 gap-3 sm:gap-0">
-                <button
-                  type="button"
-                  onClick={() => setShowNearbyModal(false)}
-                  className="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-6 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
-                >
-                  Cancel / Skip
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

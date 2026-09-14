@@ -3,6 +3,7 @@ import { Download, Search } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { billsAPI } from '../services/api';
 import GPayQRCode from './GPayQRCode';
+import { matchesTamilSearch } from '../utils/tamilTransliteration';
 
 const PendingBalances: React.FC = () => {
   const { bills, refreshData } = useAppContext();
@@ -51,7 +52,7 @@ const PendingBalances: React.FC = () => {
 
     if (searchQuery.trim()) {
       return processed.filter(shop =>
-        shop.shop_name.toLowerCase().includes(searchQuery.toLowerCase())
+        matchesTamilSearch(shop.shop_name, searchQuery)
       );
     }
 

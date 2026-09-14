@@ -41,12 +41,83 @@
                 $stmt->execute($params);
                 $bills = $stmt->fetchAll();
                 
+                // Fetch items for all bills in batch
+                if (!empty($bills)) {
+                    $billIds = array_column($bills, 'id');
+                    $inPlaceholders = implode(',', array_fill(0, count($billIds), '?'));
+                    $itemStmt = $db->prepare("SELECT * FROM purchase_bill_items WHERE bill_id IN ($inPlaceholders)");
+                    $itemStmt->execute($billIds);
+                    $allItems = $itemStmt->fetchAll();
+                    
+                    $itemsByBillId = [];
+                    foreach ($allItems as $item) {
+                        $itemsByBillId[$item['bill_id']][] = $item;
+                    }
+                    
+                    foreach ($bills as &$b) {
+                        $bItems = $itemsByBillId[$b['id']] ?? [];
+                        $b['items'] = $bItems;
+                        
+                        $taxable = 0;
+                        $gstAmt = 0;
+                        foreach ($bItems as $it) {
+                            $itTaxable = (float)$it['quantity'] * (float)$it['price'];
+                            $itGst = $itTaxable * ((float)$it['gst_percentage'] / 100);
+                            $taxable += $itTaxable;
+                            $gstAmt += $itGst;
+                        }
+                        
+                        if (empty($bItems) || (int)$b['is_gst'] === 0) {
+                            $b['taxable_amount'] = (float)$b['total_amount'];
+                            $b['gst_amount'] = 0.0;
+                        } else {
+                            $b['taxable_amount'] = round($taxable, 2);
+                            $b['gst_amount'] = round($gstAmt, 2);
+                        }
+                    }
+                    unset($b);
+                }
+                
                 sendResponse(true, 'Purchase bills retrieved', $bills);
             }
         } elseif ($method === 'POST') {
-            // Handle multipart/form-data for file upload
-            // In PHP, $_POST contains form fields, and $_FILES contains uploaded files
-            
+            // Check if this is an image update for an existing bill
+            if ($id) {
+                if (!isset($_FILES['bill_image']) || $_FILES['bill_image']['error'] !== UPLOAD_ERR_OK) {
+                    sendResponse(false, 'No valid image file uploaded', null, 400);
+                }
+
+                $uploadDir = __DIR__ . '/../uploads/purchase_bills/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0777, true);
+                }
+
+                $fileExtension = pathinfo($_FILES['bill_image']['name'], PATHINFO_EXTENSION);
+                $newFileName = 'bill_' . time() . '_' . uniqid() . '.' . $fileExtension;
+                $destination = $uploadDir . $newFileName;
+
+                if (!move_uploaded_file($_FILES['bill_image']['tmp_name'], $destination)) {
+                    sendResponse(false, 'Failed to save uploaded image', null, 500);
+                }
+
+                $imagePath = 'uploads/purchase_bills/' . $newFileName;
+
+                // Delete old image if exists
+                $oldStmt = $db->prepare("SELECT image_path FROM purchase_bills WHERE id = ?");
+                $oldStmt->execute([$id]);
+                $oldBill = $oldStmt->fetch();
+
+                $updateStmt = $db->prepare("UPDATE purchase_bills SET image_path = ? WHERE id = ?");
+                $updateStmt->execute([$imagePath, $id]);
+
+                if ($oldBill && !empty($oldBill['image_path']) && file_exists(__DIR__ . '/../' . $oldBill['image_path'])) {
+                    @unlink(__DIR__ . '/../' . $oldBill['image_path']);
+                }
+
+                sendResponse(true, 'Bill image updated successfully', ['image_path' => $imagePath]);
+            }
+
+            // Create new purchase bill
             $supplierId = isset($_POST['supplier_id']) ? (int)$_POST['supplier_id'] : 0;
             $billNumber = trim($_POST['bill_number'] ?? '');
             $billDate = trim($_POST['bill_date'] ?? date('Y-m-d'));
@@ -109,6 +180,23 @@
                     unlink(__DIR__ . '/../' . $imagePath);
                 }
                 sendResponse(false, 'Failed to create purchase bill: ' . $e->getMessage(), null, 500);
+            }
+        } elseif ($method === 'DELETE') {
+            if (!$id) {
+                sendResponse(false, 'Bill ID is required', null, 400);
+            }
+            $stmt = $db->prepare("SELECT image_path FROM purchase_bills WHERE id = ?");
+            $stmt->execute([$id]);
+            $bill = $stmt->fetch();
+            if ($bill) {
+                if (!empty($bill['image_path']) && file_exists(__DIR__ . '/../' . $bill['image_path'])) {
+                    @unlink(__DIR__ . '/../' . $bill['image_path']);
+                }
+                $delStmt = $db->prepare("DELETE FROM purchase_bills WHERE id = ?");
+                $delStmt->execute([$id]);
+                sendResponse(true, 'Purchase bill deleted successfully');
+            } else {
+                sendResponse(false, 'Purchase bill not found', null, 404);
             }
         } else {
             sendResponse(false, 'Method Not Allowed', null, 405);

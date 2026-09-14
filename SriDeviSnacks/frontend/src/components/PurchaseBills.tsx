@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer, Download } from 'lucide-react';
+import { FileText, Plus, Save, X, Trash2, Image as ImageIcon, Calendar, Printer, Download, ZoomIn, ZoomOut, Camera, Upload } from 'lucide-react';
 import { utils, writeFile } from 'xlsx';
 import { useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { getBaseUrl } from '../services/api';
 import { useAppContext } from '../context/AppContext';
 import { convertPdfToImage, renderPdfUrlToDataUrl } from '../utils/pdfToImage';
+import BillScannerModal from './BillScannerModal';
 
 interface SupplierItem {
   id?: number;
@@ -35,6 +36,8 @@ interface PurchaseBill {
   supplier_gst?: string;
   bill_number: string;
   total_amount: number;
+  taxable_amount?: number | string;
+  gst_amount?: number | string;
   bill_date: string;
   image_path: string | null;
   is_gst: number;
@@ -120,8 +123,23 @@ const PurchaseBills: React.FC = () => {
   const [billImage, setBillImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [convertingPdf, setConvertingPdf] = useState(false);
-  
+  const [convertProgress, setConvertProgress] = useState<{ current: number; total: number } | null>(null);
+  const [pdfPageCount, setPdfPageCount] = useState<number | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; title: string } | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [updatingImage, setUpdatingImage] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const updateFileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Scanner Modal State
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerTarget, setScannerTarget] = useState<'new' | 'update'>('new');
+
+  const openScanner = (target: 'new' | 'update' = 'new') => {
+    setScannerTarget(target);
+    setScannerOpen(true);
+  };
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -134,6 +152,22 @@ const PurchaseBills: React.FC = () => {
   const [selectedBillForView, setSelectedBillForView] = useState<PurchaseBill | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (scannerOpen) {
+          setScannerOpen(false);
+        } else if (lightboxImage) {
+          setLightboxImage(null);
+        } else if (selectedBillForView) {
+          setSelectedBillForView(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [scannerOpen, lightboxImage, selectedBillForView]);
 
   useEffect(() => {
     fetchData();
@@ -394,6 +428,8 @@ const PurchaseBills: React.FC = () => {
     setItems([{ item_name: '', quantity: 1, price: '', gst_percentage: 0, total: 0 }]);
     setBillImage(null);
     setImagePreview(null);
+    setConvertProgress(null);
+    setPdfPageCount(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -405,9 +441,17 @@ const PurchaseBills: React.FC = () => {
       if (isPdf) {
         try {
           setConvertingPdf(true);
+          setConvertProgress(null);
+          setPdfPageCount(null);
           setError('');
-          const convertedImage = await convertPdfToImage(file);
+          const convertedImage = await convertPdfToImage(file, {
+            scale: 2,
+            onProgress: (current, total) => {
+              setConvertProgress({ current, total });
+            }
+          });
           setBillImage(convertedImage);
+          setPdfPageCount(convertedImage.pageCount || 1);
           const previewUrl = URL.createObjectURL(convertedImage);
           setImagePreview(previewUrl);
         } catch (err: any) {
@@ -418,6 +462,8 @@ const PurchaseBills: React.FC = () => {
         }
       } else {
         setBillImage(file);
+        setPdfPageCount(null);
+        setConvertProgress(null);
         const previewUrl = URL.createObjectURL(file);
         setImagePreview(previewUrl);
       }
@@ -475,6 +521,82 @@ const PurchaseBills: React.FC = () => {
     }
   };
 
+  const uploadBillImageFile = async (file: File) => {
+    if (!selectedBillForView) return;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    try {
+      setUpdatingImage(true);
+      setUpdateMessage('Processing file...');
+      
+      let fileToSend: File = file;
+      if (isPdf) {
+        setUpdateMessage('Converting all PDF pages to image...');
+        fileToSend = await convertPdfToImage(file, {
+          scale: 2,
+          onProgress: (cur, tot) => setUpdateMessage(`Converting PDF: Page ${cur} of ${tot}...`)
+        });
+      }
+
+      setUpdateMessage('Uploading new bill image...');
+      const formData = new FormData();
+      formData.append('bill_image', fileToSend);
+
+      const res = await api.post(`/purchase-bills/${selectedBillForView.id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data.success) {
+        const newImagePath = res.data.data.image_path;
+        setSelectedBillForView(prev => prev ? { ...prev, image_path: newImagePath } : null);
+        setUpdateMessage('✓ Bill image updated with all pages!');
+        fetchData();
+        setTimeout(() => setUpdateMessage(null), 4000);
+      }
+    } catch (err: any) {
+      console.error('Failed to update bill image:', err);
+      alert(err.response?.data?.message || 'Failed to update bill image. Please try again.');
+      setUpdateMessage(null);
+    } finally {
+      setUpdatingImage(false);
+      if (updateFileInputRef.current) updateFileInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdateBillImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedBillForView || !e.target.files || !e.target.files[0]) return;
+    await uploadBillImageFile(e.target.files[0]);
+  };
+
+  const handleScannerCaptureOk = (file: File) => {
+    if (scannerTarget === 'new') {
+      setBillImage(file);
+      setPdfPageCount(null);
+      setConvertProgress(null);
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+    } else if (scannerTarget === 'update' && selectedBillForView) {
+      uploadBillImageFile(file);
+    }
+  };
+
+  const handleDeleteBill = async (billId: number) => {
+    if (!window.confirm('Are you sure you want to delete this purchase bill? This will also remove the bill image.')) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/purchase-bills/${billId}`);
+      if (res.data.success) {
+        setSelectedBillForView(null);
+        fetchData();
+        setSuccess('Purchase bill deleted successfully');
+        setTimeout(() => setSuccess(''), 3000);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete purchase bill');
+    }
+  };
+
   const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
   const filteredBills = selectedMonth && groupedBills[selectedMonth.fy] && groupedBills[selectedMonth.fy][selectedMonth.month] 
@@ -500,41 +622,88 @@ const PurchaseBills: React.FC = () => {
       return;
     }
 
-    const dataForExcel = billsToExport.map((bill, index) => ({
-      'S.No': index + 1,
-      'Bill Date': new Date(bill.bill_date).toLocaleDateString('en-GB'),
-      'Supplier Name': bill.supplier_name,
-      'Supplier GSTIN': bill.supplier_gst || '-',
-      'Bill Number': bill.bill_number,
-      'Bill Type': bill.is_gst === 1 ? 'GST' : 'Zero-Rated GST',
-      'Total Amount (₹)': parseFloat(bill.total_amount.toString()).toFixed(2)
-    }));
+    const dataForExcel: Array<Record<string, any>> = billsToExport.map((bill, index) => {
+      const tot = parseFloat(bill.total_amount.toString()) || 0;
+      let taxable = bill.taxable_amount !== undefined ? parseFloat(bill.taxable_amount.toString()) : 0;
+      let totalGst = bill.gst_amount !== undefined ? parseFloat(bill.gst_amount.toString()) : 0;
 
-    const totalAmount = billsToExport.reduce((sum, b) => sum + parseFloat(b.total_amount.toString()), 0);
+      if (bill.items && bill.items.length > 0) {
+        const itemTaxable = bill.items.reduce((s, it) => {
+          const q = parseFloat(it.quantity.toString()) || 0;
+          const p = parseFloat(it.price.toString()) || 0;
+          return s + (q * p);
+        }, 0);
+        const itemGst = bill.items.reduce((s, it) => {
+          const q = parseFloat(it.quantity.toString()) || 0;
+          const p = parseFloat(it.price.toString()) || 0;
+          const g = parseFloat(it.gst_percentage.toString()) || 0;
+          return s + (q * p * (g / 100));
+        }, 0);
+        taxable = bill.is_gst === 1 ? itemTaxable : tot;
+        totalGst = bill.is_gst === 1 ? itemGst : 0;
+      } else if (bill.is_gst === 0) {
+        taxable = tot;
+        totalGst = 0;
+      } else if (bill.taxable_amount === undefined && bill.gst_amount === undefined) {
+        taxable = tot;
+        totalGst = 0;
+      }
+
+      const cgst = totalGst > 0 ? totalGst / 2 : 0;
+      const sgst = totalGst > 0 ? totalGst / 2 : 0;
+
+      return {
+        'S.No': index + 1,
+        'Bill Date': new Date(bill.bill_date).toLocaleDateString('en-GB'),
+        'Supplier Name': bill.supplier_name,
+        'Supplier GSTIN': bill.supplier_gst || '-',
+        'Bill Number': bill.bill_number,
+        'Bill Type': bill.is_gst === 1 ? 'GST' : 'Zero-Rated GST',
+        'Taxable Amount (₹)': parseFloat(taxable.toFixed(2)),
+        'CGST (₹)': parseFloat(cgst.toFixed(2)),
+        'SGST (₹)': parseFloat(sgst.toFixed(2)),
+        'Total GST (₹)': parseFloat(totalGst.toFixed(2)),
+        'Total Amount (₹)': parseFloat(tot.toFixed(2))
+      };
+    });
+
+    const totalTaxable = dataForExcel.reduce((sum, b) => sum + (Number(b['Taxable Amount (₹)']) || 0), 0);
+    const totalCgst = dataForExcel.reduce((sum, b) => sum + (Number(b['CGST (₹)']) || 0), 0);
+    const totalSgst = dataForExcel.reduce((sum, b) => sum + (Number(b['SGST (₹)']) || 0), 0);
+    const grandTotalGst = dataForExcel.reduce((sum, b) => sum + (Number(b['Total GST (₹)']) || 0), 0);
+    const totalAmount = dataForExcel.reduce((sum, b) => sum + (Number(b['Total Amount (₹)']) || 0), 0);
     const gstCount = billsToExport.filter(b => b.is_gst === 1).length;
     const nonGstCount = billsToExport.filter(b => b.is_gst === 0).length;
 
     // Summary row
     dataForExcel.push({
-      'S.No': '' as any,
+      'S.No': '',
       'Bill Date': '',
       'Supplier Name': 'TOTAL',
       'Supplier GSTIN': `GST: ${gstCount} | Zero-Rated GST: ${nonGstCount}`,
       'Bill Number': `Total: ${billsToExport.length} bills`,
       'Bill Type': '',
-      'Total Amount (₹)': totalAmount.toFixed(2)
+      'Taxable Amount (₹)': parseFloat(totalTaxable.toFixed(2)),
+      'CGST (₹)': parseFloat(totalCgst.toFixed(2)),
+      'SGST (₹)': parseFloat(totalSgst.toFixed(2)),
+      'Total GST (₹)': parseFloat(grandTotalGst.toFixed(2)),
+      'Total Amount (₹)': parseFloat(totalAmount.toFixed(2))
     });
 
     try {
       const worksheet = utils.json_to_sheet(dataForExcel);
       worksheet['!cols'] = [
-        { wch: 8 },
-        { wch: 14 },
-        { wch: 30 },
-        { wch: 22 },
-        { wch: 18 },
-        { wch: 14 },
-        { wch: 18 }
+        { wch: 8 },  // S.No
+        { wch: 14 }, // Bill Date
+        { wch: 30 }, // Supplier Name
+        { wch: 22 }, // Supplier GSTIN
+        { wch: 18 }, // Bill Number
+        { wch: 16 }, // Bill Type
+        { wch: 18 }, // Taxable Amount (₹)
+        { wch: 12 }, // CGST (₹)
+        { wch: 12 }, // SGST (₹)
+        { wch: 14 }, // Total GST (₹)
+        { wch: 18 }  // Total Amount (₹)
       ];
       const workbook = utils.book_new();
       utils.book_append_sheet(workbook, worksheet, 'Purchase Bills');
@@ -826,22 +995,42 @@ const PurchaseBills: React.FC = () => {
                 {convertingPdf ? (
                   <div className="py-6 flex flex-col items-center justify-center text-center">
                     <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent mb-3" />
-                    <p className="text-sm font-bold text-indigo-700">Converting PDF to Image...</p>
-                    <p className="text-xs text-gray-500 mt-1">Please wait a moment while we render your bill</p>
+                    <p className="text-sm font-bold text-indigo-700">
+                      {convertProgress && convertProgress.total > 1
+                        ? `Converting PDF: Page ${convertProgress.current} of ${convertProgress.total}...`
+                        : 'Converting PDF to Image...'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {convertProgress && convertProgress.total > 1
+                        ? `Rendering all ${convertProgress.total} pages into one clear bill image`
+                        : 'Please wait a moment while we render your bill'}
+                    </p>
                   </div>
                 ) : imagePreview ? (
-                  <div className="flex flex-col items-center py-2 w-full max-w-sm">
-                    <div className="relative group mb-3 w-full flex justify-center">
-                      <img 
-                        src={imagePreview} 
-                        alt="Bill Preview" 
-                        className="max-h-64 rounded-lg shadow-md object-contain border border-gray-200 bg-white" 
-                      />
+                  <div className="flex flex-col items-center py-2 w-full max-w-md">
+                    <div className="relative group mb-3 w-full flex flex-col items-center">
+                      <div className="max-h-72 w-full overflow-y-auto rounded-lg border border-gray-300 bg-gray-100 shadow-inner p-2 flex justify-center">
+                        <img 
+                          src={imagePreview} 
+                          alt="Bill Preview" 
+                          className="w-auto max-w-full h-auto object-contain rounded shadow bg-white cursor-zoom-in hover:opacity-95" 
+                          onClick={() => {
+                            setZoomLevel(1);
+                            setLightboxImage({
+                              src: imagePreview,
+                              title: billImage?.name || 'Bill Preview'
+                            });
+                          }}
+                          title="Click to view full preview in this page"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
                           setBillImage(null);
                           setImagePreview(null);
+                          setPdfPageCount(null);
+                          setConvertProgress(null);
                           if (fileInputRef.current) fileInputRef.current.value = '';
                         }}
                         className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1.5 shadow-md hover:bg-red-700 transition"
@@ -850,26 +1039,70 @@ const PurchaseBills: React.FC = () => {
                         <X className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="flex items-center text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
-                      <span>✓ Image Ready: {billImage?.name}</span>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <div className="flex items-center text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                        <span>
+                          {pdfPageCount && pdfPageCount > 1
+                            ? `✓ All ${pdfPageCount} Pages Converted: ${billImage?.name}`
+                            : `✓ Image Ready: ${billImage?.name}`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setZoomLevel(1);
+                          setLightboxImage({
+                            src: imagePreview,
+                            title: billImage?.name || 'Bill Preview'
+                          });
+                        }}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200 transition-colors"
+                      >
+                        🔍 Preview Full Image
+                      </button>
                     </div>
-                    <label
-                      htmlFor="file-upload"
-                      className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
-                    >
-                      Change file
-                    </label>
-                  </div>
-                ) : (
-                  <div className="space-y-2 text-center py-4">
-                    <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center">
+                    {pdfPageCount && pdfPageCount > 1 && (
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Tip: Scroll inside preview or click "Preview Full Image" to check all {pdfPageCount} pages.
+                      </p>
+                    )}
+                    <div className="flex items-center justify-center gap-3 mt-2 text-xs">
                       <label
                         htmlFor="file-upload"
-                        className="relative cursor-pointer bg-white rounded-md font-semibold text-indigo-600 hover:text-indigo-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 px-4 py-2 border border-indigo-200 shadow-sm hover:shadow"
+                        className="font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
                       >
+                        Change file
+                      </label>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => openScanner('new')}
+                        className="font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer underline flex items-center gap-1"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Scan new bill
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-center py-4">
+                    <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <label
+                        htmlFor="file-upload"
+                        className="relative cursor-pointer bg-white rounded-lg font-semibold text-indigo-600 hover:text-indigo-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 px-4 py-2.5 border border-indigo-200 shadow-sm hover:shadow inline-flex items-center gap-2 text-sm transition"
+                      >
+                        <Upload className="w-4 h-4" />
                         <span>Select File to Upload</span>
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => openScanner('new')}
+                        className="relative cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm hover:shadow inline-flex items-center gap-2 text-sm transition cursor-pointer"
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span>Scan to Upload</span>
+                      </button>
                     </div>
                     <p className="text-xs text-gray-500">PDF, PNG, JPG up to 10MB</p>
                     <p className="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full inline-block">
@@ -1179,12 +1412,20 @@ const PurchaseBills: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {groupedBills[selectedMonth.fy][selectedMonth.month].filter(b => b.image_path).map(bill => (
                             <div key={bill.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 hover:shadow-md transition-shadow">
-                              <div className="h-48 bg-gray-200 relative">
+                              <div 
+                                className="h-48 bg-gray-200 relative cursor-pointer"
+                                onClick={() => {
+                                  setZoomLevel(1);
+                                  setLightboxImage({
+                                    src: `${getBaseUrl()}/${bill.image_path}`,
+                                    title: `Purchase Bill: ${bill.bill_number} (${bill.supplier_name})`
+                                  });
+                                }}
+                              >
                                 <PdfBillImage 
                                   src={`${getBaseUrl()}/${bill.image_path}`} 
                                   alt={`Bill ${bill.bill_number}`} 
-                                  className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                  onClick={() => window.open(`${getBaseUrl()}/${bill.image_path}`, '_blank')}
+                                  className="w-full h-full object-cover hover:opacity-90 transition-opacity"
                                 />
                               </div>
                               <div className="p-4">
@@ -1199,14 +1440,19 @@ const PurchaseBills: React.FC = () => {
                                 </div>
                                 <p className="text-sm text-gray-600 mb-3">Bill No: <span className="font-medium text-gray-900">{bill.bill_number}</span></p>
                                 
-                                <a 
-                                  href={`${getBaseUrl()}/${bill.image_path}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="block w-full text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-sm py-2 rounded-lg border border-indigo-100 transition-colors"
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    setZoomLevel(1);
+                                    setLightboxImage({
+                                      src: `${getBaseUrl()}/${bill.image_path}`,
+                                      title: `Purchase Bill: ${bill.bill_number} (${bill.supplier_name})`
+                                    });
+                                  }}
+                                  className="block w-full text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-sm py-2 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
                                 >
-                                  Open Full Image
-                                </a>
+                                  View Full Image
+                                </button>
                               </div>
                             </div>
                           ))}
@@ -1258,12 +1504,25 @@ const PurchaseBills: React.FC = () => {
                 <FileText className="w-6 h-6 mr-2 text-indigo-600" />
                 {viewLoading ? 'Loading Bill Details...' : `Purchase Bill: ${selectedBillForView?.bill_number}`}
               </h2>
-              <button 
-                onClick={() => setSelectedBillForView(null)}
-                className="text-gray-400 hover:text-gray-600 bg-white rounded-full p-1 border border-gray-200"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {!viewLoading && selectedBillForView && userRole !== 'ACCOUNTS' && (
+                  <button 
+                    type="button"
+                    onClick={() => handleDeleteBill(selectedBillForView.id)}
+                    className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors mr-2 cursor-pointer"
+                    title="Delete Purchase Bill"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    Delete Bill
+                  </button>
+                )}
+                <button 
+                  onClick={() => setSelectedBillForView(null)}
+                  className="text-gray-400 hover:text-gray-600 bg-white rounded-full p-1 border border-gray-200"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
             
             {!viewLoading && selectedBillForView && (
@@ -1328,31 +1587,107 @@ const PurchaseBills: React.FC = () => {
                 
                 {/* Right side: Image */}
                 <div className="w-full md:w-1/2 bg-gray-100 p-6 flex flex-col items-center justify-center min-h-[400px]">
-                  {selectedBillForView.image_path ? (
+                  {updatingImage ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-center">
+                      <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent mb-3" />
+                      <p className="text-sm font-bold text-indigo-700">{updateMessage || 'Updating bill image...'}</p>
+                      <p className="text-xs text-gray-500 mt-1">Please wait while we render all pages</p>
+                    </div>
+                  ) : selectedBillForView.image_path ? (
                     <div className="w-full h-full flex flex-col">
-                      <div className="flex-grow flex items-center justify-center overflow-hidden rounded-lg border border-gray-300 bg-gray-200">
+                      <div 
+                        className="flex-grow flex items-center justify-center overflow-y-auto max-h-[60vh] rounded-lg border border-gray-300 bg-gray-200 p-2 cursor-pointer group relative"
+                        onClick={() => {
+                          setZoomLevel(1);
+                          setLightboxImage({
+                            src: `${getBaseUrl()}/${selectedBillForView.image_path}`,
+                            title: `Purchase Bill: ${selectedBillForView.bill_number} (${selectedBillForView.supplier_name})`
+                          });
+                        }}
+                        title="Click to view full image in this page"
+                      >
                         <PdfBillImage 
                           src={`${getBaseUrl()}/${selectedBillForView.image_path}`} 
                           alt="Original Bill" 
-                          className="max-w-full max-h-[60vh] object-contain cursor-zoom-in hover:opacity-95"
-                          onClick={() => window.open(`${getBaseUrl()}/${selectedBillForView.image_path}`, '_blank')}
+                          className="max-w-full h-auto object-contain group-hover:opacity-90 rounded shadow transition-opacity"
                         />
                       </div>
-                      <a 
-                        href={`${getBaseUrl()}/${selectedBillForView.image_path}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-4 w-full text-center bg-white hover:bg-gray-50 text-indigo-600 font-medium py-3 rounded-xl border border-gray-300 shadow-sm transition-colors"
-                      >
-                        Open Image in New Tab
-                      </a>
+
+                      {updateMessage && (
+                        <div className="mt-2 text-center text-xs font-semibold text-green-700 bg-green-50 py-1.5 px-3 rounded-lg border border-green-200">
+                          {updateMessage}
+                        </div>
+                      )}
+
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setZoomLevel(1);
+                            setLightboxImage({
+                              src: `${getBaseUrl()}/${selectedBillForView.image_path}`,
+                              title: `Purchase Bill: ${selectedBillForView.bill_number} (${selectedBillForView.supplier_name})`
+                            });
+                          }}
+                          className="w-full text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold py-2.5 px-3 rounded-xl border border-indigo-200 shadow-sm transition-colors flex items-center justify-center cursor-pointer text-xs md:text-sm"
+                        >
+                          <ImageIcon className="w-4 h-4 mr-1.5" />
+                          View Full Image
+                        </button>
+
+                        <button 
+                          type="button"
+                          onClick={() => openScanner('update')}
+                          className="w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-3 rounded-xl shadow-sm transition-colors flex items-center justify-center cursor-pointer text-xs md:text-sm"
+                          title="Open scanner / camera to update this bill"
+                        >
+                          <Camera className="w-4 h-4 mr-1.5" />
+                          Scan to Update
+                        </button>
+                        
+                        <button 
+                          type="button"
+                          onClick={() => updateFileInputRef.current?.click()}
+                          className="w-full text-center bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 px-3 rounded-xl border border-gray-300 shadow-sm transition-colors flex items-center justify-center cursor-pointer text-xs md:text-sm"
+                          title="Upload multi-page PDF or image to update this bill"
+                        >
+                          <Upload className="w-4 h-4 mr-1.5" />
+                          Upload File
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-center text-gray-400">
+                    <div className="text-center text-gray-400 py-8">
                       <ImageIcon className="w-16 h-16 mx-auto mb-3 opacity-50" />
-                      <p>No image was uploaded for this bill.</p>
+                      <p className="mb-4">No image was uploaded for this bill.</p>
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => openScanner('update')}
+                          className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow transition-colors cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4 mr-1.5" />
+                          Scan Bill Image
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateFileInputRef.current?.click()}
+                          className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-lg shadow-sm transition-colors cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4 mr-1.5" />
+                          Upload File (PDF or Image)
+                        </button>
+                      </div>
                     </div>
                   )}
+
+                  <input 
+                    type="file"
+                    ref={updateFileInputRef}
+                    accept="image/*,.pdf"
+                    className="sr-only"
+                    onChange={handleUpdateBillImage}
+                  />
                 </div>
               </div>
             )}
@@ -1366,6 +1701,102 @@ const PurchaseBills: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* IN-PAGE FULL IMAGE LIGHTBOX MODAL */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-[100] flex flex-col justify-between backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          {/* Top Bar */}
+          <div 
+            className="flex justify-between items-center px-4 md:px-6 py-3 bg-black/70 border-b border-gray-800 text-white z-10 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center space-x-2 md:space-x-3 overflow-hidden mr-2">
+              <ImageIcon className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+              <h3 className="font-semibold text-sm md:text-base text-gray-100 truncate">
+                {lightboxImage.title}
+              </h3>
+            </div>
+            
+            {/* Zoom controls & close */}
+            <div className="flex items-center space-x-1.5 md:space-x-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setZoomLevel(prev => Math.max(0.5, parseFloat((prev - 0.25).toFixed(2))))}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold transition"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5 mr-1" />
+                Zoom Out
+              </button>
+              <span className="text-xs text-gray-300 font-mono min-w-[45px] text-center font-bold bg-gray-900/80 px-2 py-1 rounded">
+                {Math.round(zoomLevel * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoomLevel(prev => Math.min(3, parseFloat((prev + 0.25).toFixed(2))))}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold transition"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5 mr-1" />
+                Zoom In
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoomLevel(1)}
+                className="px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-xs font-medium transition"
+                title="Reset Zoom"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="ml-2 p-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition shadow-lg cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main scrollable body */}
+          <div 
+            className="flex-grow overflow-auto p-4 md:p-6 flex justify-center items-start cursor-zoom-out"
+            onClick={() => setLightboxImage(null)}
+          >
+            <div 
+              className="transition-all duration-150 flex justify-center origin-top"
+              style={{ width: `${Math.round(zoomLevel * 100)}%`, maxWidth: zoomLevel <= 1 ? '900px' : 'none' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PdfBillImage 
+                src={lightboxImage.src} 
+                alt={lightboxImage.title} 
+                className="w-full h-auto object-contain rounded-lg shadow-2xl bg-white border border-gray-700 cursor-default" 
+              />
+            </div>
+          </div>
+
+          {/* Bottom hint bar */}
+          <div 
+            className="py-2 bg-black/70 text-center text-xs text-gray-400 border-t border-gray-800 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span>Tip: Use Zoom buttons or mouse scroll to inspect all pages • Press ESC or click (X) to close</span>
+          </div>
+        </div>
+      )}
+
+      {/* SCANNER MODAL */}
+      <BillScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onCaptureOk={handleScannerCaptureOk}
+        title={scannerTarget === 'new' ? 'Scan Purchase Bill' : `Scan Bill: ${selectedBillForView?.bill_number || ''}`}
+      />
 
     </div>
   );

@@ -86,27 +86,55 @@ const GstBills: React.FC = () => {
   const handleExport = () => {
     const exportData = currentMonthBills.map(bill => {
       const shop = shops.find(s => s.id === bill.shop_id);
-      const tax = bill.items ? bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0) + (item.cgst || 0), 0) : 0;
+      const items = bill.items || [];
+      const sgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.sgst) || 0), 0).toFixed(2));
+      const cgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.cgst) || 0), 0).toFixed(2));
+      const tax = Number((sgst + cgst).toFixed(2));
+      const totalAmount = Number(parseFloat((bill.total_amount || 0).toString()).toFixed(2));
+      const taxableAmount = tax > 0 ? Number((totalAmount - tax).toFixed(2)) : totalAmount;
+
       return {
         Date: new Date(bill.bill_date).toLocaleDateString(),
         'Shop Name': bill.shop_name,
         'Shop GST': shop?.gst || '-',
         'Bill No': bill.bill_number || bill.billNumber || bill.id,
-        'Total Amount': bill.total_amount,
-        'Tax (SGST+CGST)': tax
+        'Taxable Amount': taxableAmount,
+        'CGST': cgst,
+        'SGST': sgst,
+        'Total GST': tax,
+        'Total Amount': totalAmount
       };
     });
+
+    const totalTaxable = exportData.reduce((sum, r) => sum + r['Taxable Amount'], 0);
+    const totalCgst = exportData.reduce((sum, r) => sum + r['CGST'], 0);
+    const totalSgst = exportData.reduce((sum, r) => sum + r['SGST'], 0);
 
     const ws = utils.json_to_sheet(exportData);
     
     utils.sheet_add_json(ws, [{
       Date: '',
-      'Shop Name': '',
+      'Shop Name': 'TOTAL',
       'Shop GST': '',
-      'Bill No': 'Total',
-      'Total Amount': totalGstBillAmount,
-      'Tax (SGST+CGST)': totalGstTaxAmount
+      'Bill No': `${currentMonthBills.length} Bills`,
+      'Taxable Amount': Number(totalTaxable.toFixed(2)),
+      'CGST': Number(totalCgst.toFixed(2)),
+      'SGST': Number(totalSgst.toFixed(2)),
+      'Total GST': totalGstTaxAmount,
+      'Total Amount': totalGstBillAmount
     }], { skipHeader: true, origin: -1 });
+
+    ws['!cols'] = [
+      { wch: 12 }, // Date
+      { wch: 25 }, // Shop Name
+      { wch: 18 }, // Shop GST
+      { wch: 14 }, // Bill No
+      { wch: 16 }, // Taxable Amount
+      { wch: 12 }, // CGST
+      { wch: 12 }, // SGST
+      { wch: 14 }, // Total GST
+      { wch: 16 }  // Total Amount
+    ];
 
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, "GST_Bills");

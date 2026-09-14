@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Phone, MapPin, Store, Calendar } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Phone, MapPin, Store, Calendar, Languages } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { shopsAPI, schedulesAPI } from '../services/api';
 import { Pagination } from './Pagination';
 import type { DaySchedule } from '../context/AppContext';
+import { matchesTamilSearch, transliterateWord, englishToTamil } from '../utils/tamilTransliteration';
 
 interface Shop {
   id: number;
@@ -43,6 +44,7 @@ const Shops: React.FC = () => {
     gst: '',
     status: 'active' as 'active' | 'inactive'
   });
+  const [tamilTypingEnabled, setTamilTypingEnabled] = useState(true);
 
   // Fetch shops and schedules data on component mount
   useEffect(() => {
@@ -52,7 +54,7 @@ const Shops: React.FC = () => {
         // Fetch all shops to allow scrollable list
         const limit = 1000;
         const page = 1;
-        const shopsResponse = await shopsAPI.getShops({ page, limit, search: searchTerm });
+        const shopsResponse = await shopsAPI.getShops({ page, limit });
         if (shopsResponse.success) {
           const fetchedShops: Shop[] = shopsResponse.data.map((shop: any) => ({
             id: shop.id,
@@ -138,27 +140,88 @@ const Shops: React.FC = () => {
     };
 
     fetchData();
-  }, [currentPage, searchTerm, activeTab]);
+  }, [currentPage, activeTab]);
 
-  const filteredShops = shops.filter((shop: Shop) =>
-    shop.shop_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    shop.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    shop.contact.includes(searchTerm)
-  );
+  const filteredShops = shops.filter((shop: Shop) => {
+    if (!searchTerm.trim()) return true;
+    return (
+      matchesTamilSearch(shop.shop_name, searchTerm) ||
+      matchesTamilSearch(shop.address, searchTerm) ||
+      shop.contact.includes(searchTerm.trim())
+    );
+  });
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+  };
+
+  const handleTamilKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    fieldName: 'shop_name' | 'address'
+  ) => {
+    if (!tamilTypingEnabled) return;
+
+    if (e.key === ' ') {
+      const target = e.currentTarget;
+      const { selectionStart, value } = target;
+      if (selectionStart !== null) {
+        const textBeforeCursor = value.slice(0, selectionStart);
+        const textAfterCursor = value.slice(selectionStart);
+
+        const match = textBeforeCursor.match(/([a-zA-Z]+)$/);
+        if (match) {
+          e.preventDefault();
+          const lastWord = match[1];
+          const converted = transliterateWord(lastWord);
+          const newBefore = textBeforeCursor.slice(0, textBeforeCursor.length - lastWord.length) + converted + ' ';
+          const newValue = newBefore + textAfterCursor;
+
+          setFormData(prev => ({ ...prev, [fieldName]: newValue }));
+
+          requestAnimationFrame(() => {
+            if (target) {
+              const newPos = newBefore.length;
+              target.setSelectionRange(newPos, newPos);
+            }
+          });
+        }
+      }
+    }
+  };
+
+  const handleTamilBlur = (fieldName: 'shop_name' | 'address') => {
+    if (!tamilTypingEnabled) return;
+    const currentVal = formData[fieldName];
+    if (/[a-zA-Z]/.test(currentVal)) {
+      const converted = englishToTamil(currentVal);
+      setFormData(prev => ({ ...prev, [fieldName]: converted }));
+    }
+  };
+
+  const convertFieldToTamil = (fieldName: 'shop_name' | 'address') => {
+    const currentVal = formData[fieldName];
+    if (currentVal) {
+      const converted = englishToTamil(currentVal);
+      setFormData(prev => ({ ...prev, [fieldName]: converted }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
+      const finalShopName = (tamilTypingEnabled && /[a-zA-Z]/.test(formData.shop_name))
+        ? englishToTamil(formData.shop_name)
+        : formData.shop_name;
+      const finalAddress = (tamilTypingEnabled && /[a-zA-Z]/.test(formData.address))
+        ? englishToTamil(formData.address)
+        : formData.address;
+
       if (editingShop) {
         // Update existing shop via API
         const updatedShopResponse = await shopsAPI.updateShop(editingShop.id, {
-          shopName: formData.shop_name,
-          address: formData.address,
+          shopName: finalShopName,
+          address: finalAddress,
           contact: formData.contact,
           email: formData.email,
           gstNumber: formData.gst,
@@ -171,6 +234,8 @@ const Shops: React.FC = () => {
               ? {
                   ...shop,
                   ...formData,
+                  shop_name: finalShopName,
+                  address: finalAddress,
                 }
               : shop
           ));
@@ -181,8 +246,8 @@ const Shops: React.FC = () => {
       } else {
         // Add new shop via API
         const newShopResponse = await shopsAPI.createShop({
-          shopName: formData.shop_name,
-          address: formData.address,
+          shopName: finalShopName,
+          address: finalAddress,
           contact: formData.contact,
           email: formData.email,
           gstNumber: formData.gst,
@@ -192,8 +257,8 @@ const Shops: React.FC = () => {
           const createdShop = newShopResponse.data;
           const newShop: Shop = {
             id: createdShop.id,
-            shop_name: createdShop.shopName,
-            address: createdShop.address,
+            shop_name: createdShop.shopName || finalShopName,
+            address: createdShop.address || finalAddress,
             contact: createdShop.contact,
             email: createdShop.email,
             gst: createdShop.gstNumber,
@@ -410,8 +475,12 @@ const Shops: React.FC = () => {
               </div>
             </div>
             <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{totalShops}</div>
-              <div className="text-sm text-blue-800">Total Shops</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {searchTerm.trim() ? filteredShops.length : totalShops}
+              </div>
+              <div className="text-sm text-blue-800">
+                {searchTerm.trim() ? 'Matching Shops' : 'Total Shops'}
+              </div>
             </div>
             {/* <div className="bg-green-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{shops.filter(s => s.status === 'active').length}</div>
@@ -532,6 +601,13 @@ const Shops: React.FC = () => {
                       )}
                     </tr>
                   ))}
+                  {filteredShops.length === 0 && (
+                    <tr>
+                      <td colSpan={userRole !== 'STAFF' ? 6 : 5} className="px-6 py-8 text-center text-gray-500">
+                        {searchTerm.trim() ? `No shops found matching "${searchTerm}".` : 'No shops found.'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -540,36 +616,110 @@ const Shops: React.FC = () => {
 
           {/* Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-              <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-white">
-                <div className="mt-3">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    {editingShop ? 'Edit Shop' : 'Add New Shop'}
-                  </h3>
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+              <div className="relative mx-auto p-5 border w-full max-w-lg shadow-xl rounded-xl bg-white">
+                <div className="mt-1">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {editingShop ? 'Edit Shop' : 'Add New Shop'}
+                    </h3>
+                    {/* Tamil Typing Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setTamilTypingEnabled(!tamilTypingEnabled)}
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold transition border ${
+                        tamilTypingEnabled
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                          : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                      }`}
+                      title="Toggle Tamil / English typing"
+                    >
+                      <Languages className="w-3.5 h-3.5 mr-1" />
+                      {tamilTypingEnabled ? '🇮🇳 தமிழ் தட்டச்சு: ON' : 'English Typing'}
+                    </button>
+                  </div>
+
+                  {tamilTypingEnabled && (
+                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start space-x-2 mb-4">
+                      <span className="font-bold text-blue-900 shrink-0">💡 தமிழ்:</span>
+                      <span>
+                        ஆங்கிலத்தில் டைப் செய்து <b>Space</b> அழுத்தினால் தமிழில் மாறும் (எ.கா: <code>bavani store</code> ➔ <code>பவானி ஸ்டோர்</code>).
+                      </span>
+                    </div>
+                  )}
+
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Shop Name *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Shop Name *
+                        </label>
+                        {tamilTypingEnabled && /[a-zA-Z]/.test(formData.shop_name) && (
+                          <button
+                            type="button"
+                            onClick={() => convertFieldToTamil('shop_name')}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
+                          >
+                            🔄 தமிழில் மாற்றுக
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         required
                         value={formData.shop_name}
                         onChange={(e) => setFormData({ ...formData, shop_name: e.target.value })}
+                        onKeyDown={(e) => handleTamilKeyDown(e, 'shop_name')}
+                        onBlur={() => handleTamilBlur('shop_name')}
+                        placeholder={tamilTypingEnabled ? "e.g. bavani store (பவானி ஸ்டோர்)" : "Shop Name"}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
+                      {tamilTypingEnabled && /[a-zA-Z]/.test(formData.shop_name) && (
+                        <div
+                          onClick={() => convertFieldToTamil('shop_name')}
+                          className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
+                          title="Click to apply Tamil translation"
+                        >
+                          <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.shop_name)}</span>
+                          <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Address *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Address *
+                        </label>
+                        {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
+                          <button
+                            type="button"
+                            onClick={() => convertFieldToTamil('address')}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
+                          >
+                            🔄 தமிழில் மாற்றுக
+                          </button>
+                        )}
+                      </div>
                       <textarea
                         required
                         value={formData.address}
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        onKeyDown={(e) => handleTamilKeyDown(e, 'address')}
+                        onBlur={() => handleTamilBlur('address')}
+                        placeholder={tamilTypingEnabled ? "e.g. thomas mandapam, chidambarapuram" : "Shop Address"}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         rows={3}
                       />
+                      {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
+                        <div
+                          onClick={() => convertFieldToTamil('address')}
+                          className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
+                          title="Click to apply Tamil translation"
+                        >
+                          <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.address)}</span>
+                          <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

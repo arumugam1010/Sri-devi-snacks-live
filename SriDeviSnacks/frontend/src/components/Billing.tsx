@@ -2248,18 +2248,61 @@
     };
 
     const handleExportExcel = (monthBills: Bill[], monthName: string) => {
-      const dataForExcel = monthBills.map(bill => ({
-        'Date': new Date(bill.bill_date).toLocaleDateString(),
-        'Shop Name': bill.shop_name,
-        'Bill No': bill.bill_number,
-        'Total Amount': bill.total_amount,
-        'Received Amount': bill.received_amount,
-        'Pending Amount': bill.pending_amount,
-        'Status': bill.status
-      }));
+      const dataForExcel: Array<Record<string, any>> = monthBills.map(bill => {
+        const items = bill.items || [];
+        const sgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.sgst) || 0), 0).toFixed(2));
+        const cgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.cgst) || 0), 0).toFixed(2));
+        const totalGst = Number((sgst + cgst).toFixed(2));
+        const totalAmount = Number(parseFloat((bill.total_amount || 0).toString()).toFixed(2));
+        const taxableAmount = totalGst > 0
+          ? Number((totalAmount - totalGst).toFixed(2))
+          : totalAmount;
+
+        return {
+          'Date': new Date(bill.bill_date).toLocaleDateString(),
+          'Shop Name': bill.shop_name,
+          'Bill No': bill.bill_number || bill.billNumber || bill.id,
+          'Taxable Amount': taxableAmount,
+          'CGST': cgst,
+          'SGST': sgst,
+          'Total GST': totalGst,
+          'Total Amount': totalAmount
+        };
+      });
+
+      // Calculate totals for summary row
+      const totalTaxable = dataForExcel.reduce((sum, r) => sum + r['Taxable Amount'], 0);
+      const totalCgst = dataForExcel.reduce((sum, r) => sum + r['CGST'], 0);
+      const totalSgst = dataForExcel.reduce((sum, r) => sum + r['SGST'], 0);
+      const grandTotalGst = dataForExcel.reduce((sum, r) => sum + r['Total GST'], 0);
+      const grandTotal = dataForExcel.reduce((sum, r) => sum + r['Total Amount'], 0);
+
+      dataForExcel.push({
+        'Date': '',
+        'Shop Name': 'TOTAL',
+        'Bill No': `${monthBills.length} Bills`,
+        'Taxable Amount': Number(totalTaxable.toFixed(2)),
+        'CGST': Number(totalCgst.toFixed(2)),
+        'SGST': Number(totalSgst.toFixed(2)),
+        'Total GST': Number(grandTotalGst.toFixed(2)),
+        'Total Amount': Number(grandTotal.toFixed(2))
+      });
       
       try {
         const worksheet = utils.json_to_sheet(dataForExcel);
+
+        // Auto-fit column widths so headers and data are not clipped in Excel
+        worksheet['!cols'] = [
+          { wch: 12 }, // Date
+          { wch: 25 }, // Shop Name
+          { wch: 14 }, // Bill No
+          { wch: 16 }, // Taxable Amount
+          { wch: 12 }, // CGST
+          { wch: 12 }, // SGST
+          { wch: 14 }, // Total GST
+          { wch: 16 }  // Total Amount
+        ];
+
         const workbook = utils.book_new();
         utils.book_append_sheet(workbook, worksheet, 'Sheet1');
         writeFile(workbook, `Billing_${monthName.replace(/\s+/g, '_')}.xlsx`);
