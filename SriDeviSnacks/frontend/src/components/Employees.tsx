@@ -1316,16 +1316,8 @@ const Employees: React.FC = () => {
                                   {item.attendance_summary.present} days × ₹{item.base_salary.toLocaleString('en-IN')}
                                 </span>
                               ) : (
-                                <span>
-                                  {totalAbsent > 0 ? (
-                                    <span className="text-rose-600 font-medium">
-                                      ₹{item.base_salary.toLocaleString('en-IN')} − {totalAbsent} absent (₹{Math.round(totalAbsent * dailyRate).toLocaleString('en-IN')})
-                                    </span>
-                                  ) : (
-                                    <span className="text-emerald-700 font-medium">
-                                      Full Month ({daysInMonth} days)
-                                    </span>
-                                  )}
+                                <span className="text-emerald-700 font-medium">
+                                  {item.attendance_summary.present} days × ₹{Math.round(dailyRate).toLocaleString('en-IN')}/day ({daysInMonth} days month{totalAbsent > 0 ? `, ${totalAbsent} absent` : ''})
                                 </span>
                               )}
                             </div>

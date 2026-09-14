@@ -467,14 +467,16 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
     if ($salaryType === 'daily') {
         // Daily wage: (present days) * daily baseSalary
         $presentDays = (int)$attendance['present'] + ((int)$attendance['half_day'] * 0.5);
-        $calculatedSalary = $presentDays * $baseSalary;
+        $calculatedSalary = round($presentDays * $baseSalary, 2);
         $deductions = 0.0;
     } else {
-        // Monthly wage: baseSalary - (absent days * dailyRate)
-        // If absent, only that day's rate is deducted
-        $absentDays = (int)$attendance['absent'] + (int)$attendance['leave'] + ((int)$attendance['half_day'] * 0.5);
-        $deductions = $absentDays * $dailyRate;
-        $calculatedSalary = max(0.0, $baseSalary - $deductions);
+        // Monthly wage: calculated up to the date based on days present
+        // Daily rate = baseSalary / daysInMonth (30 days -> 1166.67, 31 days -> 1129.03, 28 days -> 1250)
+        // Due amount up to date = presentDays * dailyRate
+        $presentDays = (int)$attendance['present'] + ((int)$attendance['half_day'] * 0.5);
+        $calculatedSalary = round($presentDays * $dailyRate, 2);
+        $absentDays = (int)$attendance['absent'] + (int)$attendance['leave'];
+        $deductions = round($absentDays * $dailyRate, 2);
     }
 
     // 1. Get current month's actual salary record if exists
@@ -528,8 +530,8 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
                 $prevSalaryDue = ($prevAttendance['present'] + ($prevAttendance['half_day'] * 0.5)) * $baseSalary;
             } else {
                 $prevDailyRate = $baseSalary / $prevDaysInMonth;
-                $prevDeductions = ($prevAttendance['absent'] + $prevAttendance['leave'] + ($prevAttendance['half_day'] * 0.5)) * $prevDailyRate;
-                $prevSalaryDue = max(0.0, $baseSalary - $prevDeductions);
+                $prevPresentDays = $prevAttendance['present'] + ($prevAttendance['half_day'] * 0.5);
+                $prevSalaryDue = round($prevPresentDays * $prevDailyRate, 2);
             }
         }
 
