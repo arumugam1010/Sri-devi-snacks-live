@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Package, Tag, DollarSign, ArrowLeft, Store } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Tag, DollarSign, ArrowLeft, Store, Check, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { productsAPI, shopsAPI } from '../services/api';
 import { Pagination } from './Pagination';
@@ -49,6 +49,7 @@ const Products: React.FC = () => {
   const [selectedShop, setSelectedShop] = useState<number | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
   const [priceEditValue, setPriceEditValue] = useState<string>('');
+  const [rateEditValue, setRateEditValue] = useState<string>('');
   const [showProductSelector, setShowProductSelector] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -508,14 +509,42 @@ const Products: React.FC = () => {
     }
   };
 
-  const handlePriceEdit = (shopProduct: ShopProduct) => {
+  const handlePriceEdit = (shopProduct: ShopProduct, product?: Product) => {
     setEditingPriceId(shopProduct.id);
-    setPriceEditValue(shopProduct.price.toString());
+    const basePrice = shopProduct.price || 0;
+    const gst = product?.gst ?? shopProduct.gst ?? 0;
+    const initialRate = basePrice > 0 ? (basePrice * (1 + gst / 100)).toFixed(2) : '';
+    setPriceEditValue(basePrice.toString());
+    setRateEditValue(initialRate);
+  };
+
+  const handleRateEditChange = (newRate: string, gst: number) => {
+    setRateEditValue(newRate);
+    const rateVal = parseFloat(newRate);
+    if (!isNaN(rateVal) && rateVal >= 0) {
+      const gstVal = gst || 0;
+      const calculatedBase = (rateVal / (1 + gstVal / 100)).toFixed(2);
+      setPriceEditValue(calculatedBase);
+    } else if (newRate === '') {
+      setPriceEditValue('');
+    }
+  };
+
+  const handleBasePriceEditChange = (newBase: string, gst: number) => {
+    setPriceEditValue(newBase);
+    const baseVal = parseFloat(newBase);
+    if (!isNaN(baseVal) && baseVal >= 0) {
+      const gstVal = gst || 0;
+      const calculatedRate = (baseVal * (1 + gstVal / 100)).toFixed(2);
+      setRateEditValue(calculatedRate);
+    } else if (newBase === '') {
+      setRateEditValue('');
+    }
   };
 
   const handlePriceSave = async (shopProductId: number, newPrice?: number) => {
     const price = newPrice !== undefined ? newPrice : parseFloat(priceEditValue);
-    if (!isNaN(price)) {
+    if (!isNaN(price) && price >= 0) {
       try {
         const response = await productsAPI.updateShopProduct(shopProductId, { price });
         if (response.success) {
@@ -533,16 +562,22 @@ const Products: React.FC = () => {
       }
     }
     setEditingPriceId(null);
+    setPriceEditValue('');
+    setRateEditValue('');
   };
 
   const handlePriceCancel = () => {
     setEditingPriceId(null);
+    setPriceEditValue('');
+    setRateEditValue('');
   };
 
   const handleAddPricing = async (productId: number) => {
     if (!selectedShop) return;
 
-    const productPrice = products.find(p => p.id === productId)?.price || 0;
+    const product = products.find(p => p.id === productId);
+    const productPrice = product?.price || 0;
+    const gst = product?.gst || 0;
 
     try {
       const response = await productsAPI.createShopProduct({
@@ -573,12 +608,56 @@ const Products: React.FC = () => {
         }
         setEditingPriceId(response.data.id);
         setPriceEditValue(productPrice.toString());
+        const initialRate = productPrice > 0 ? (productPrice * (1 + gst / 100)).toFixed(2) : '';
+        setRateEditValue(initialRate);
       } else {
         alert(response.message || 'Failed to add pricing');
       }
     } catch (error) {
       console.error('Error adding pricing:', error);
       alert('Failed to add pricing');
+    }
+  };
+
+  const handleQuickRateAdjust = async (product: Product, pricing: ShopProduct | undefined, delta: number) => {
+    const gst = product.gst || 0;
+    const currentBase = pricing ? pricing.price : (product.price || 0);
+    const currentRate = currentBase > 0 ? currentBase * (1 + gst / 100) : 0;
+    const newRate = Math.max(0, Math.round(currentRate) + delta);
+    const newBase = parseFloat((newRate / (1 + gst / 100)).toFixed(2));
+
+    if (pricing) {
+      await handlePriceSave(pricing.id, newBase);
+    } else if (selectedShop) {
+      try {
+        const response = await productsAPI.createShopProduct({
+          shopId: selectedShop,
+          productId: product.id,
+          price: newBase
+        });
+        if (response.success) {
+          const shopProductsResponse = await shopsAPI.getShopProducts(selectedShop);
+          if (shopProductsResponse.success) {
+            const fetchedShopProducts: ShopProduct[] = shopProductsResponse.data.map((sp: any) => ({
+              id: sp.id,
+              shop_id: sp.shopId,
+              product_id: sp.productId,
+              price: sp.price,
+              shop_name: sp.shop?.shopName || '',
+              product_name: sp.product?.productName || '',
+              unit: sp.product?.unit || '',
+              gst: sp.product?.gst || 0,
+              hsn_code: sp.product?.hsnCode || ''
+            }));
+            setShopProducts([
+              ...shopProducts.filter(sp => sp.shop_id !== selectedShop),
+              ...fetchedShopProducts
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error('Error quick adjusting price:', error);
+      }
     }
   };
 
@@ -892,139 +971,245 @@ const Products: React.FC = () => {
 
               {/* Products Table */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-2.5 bg-blue-50/70 border-b border-blue-100 flex items-center justify-between">
+                  <p className="text-xs text-blue-900 font-medium">
+                    💡 <b>Tip:</b> Rate (with GST) enter பண்ணினால், GST % கழித்து Base Price தானாக calculate ஆகி save ஆகும். (எ.கா: Rate <b>₹35</b> கொடுத்தால் 5% GST கழித்து Base Price <b>₹33.33</b> வரும்).
+                  </p>
+                </div>
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                           Product
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                           Unit
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Price (₹)
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                          GST %
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                          Rate (₹ with GST)
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                          Base Price (₹ excl. GST)
                         </th>
                         {userRole !== 'STAFF' && (
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             Actions
                           </th>
                         )}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedShopProductsList.map(({ product, pricing }) => (
-                        <tr key={product.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-shrink-0 h-8 w-8">
-                                <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
-                                  <Package className="h-4 w-4 text-green-600" />
+                      {paginatedShopProductsList.map(({ product, pricing }) => {
+                        const gst = product.gst || 0;
+                        const basePrice = pricing ? pricing.price : (product.price || 0);
+                        const rateWithGst = basePrice > 0 ? (basePrice * (1 + gst / 100)).toFixed(2) : '0.00';
+                        const isEditing = pricing && editingPriceId === pricing.id;
+                        const gstAmount = rateEditValue && parseFloat(rateEditValue) > 0 && priceEditValue
+                          ? (parseFloat(rateEditValue) - parseFloat(priceEditValue)).toFixed(2)
+                          : '0.00';
+
+                        return (
+                          <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${isEditing ? 'bg-green-50/50' : ''}`}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-8 w-8">
+                                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                                    <Package className="h-4 w-4 text-green-600" />
+                                  </div>
+                                </div>
+                                <div className="ml-3">
+                                  <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
                                 </div>
                               </div>
-                              <div className="ml-3">
-                                <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
-                              {product.unit}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {pricing && editingPriceId === pricing.id ? (
-                              <div className="flex items-center">
-                                <DollarSign className="h-4 w-4 text-green-600 mr-1" />
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0"
-                                value={priceEditValue}
-                                onChange={(e) => setPriceEditValue(e.target.value)}
-                                className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                                autoFocus
-                              />
-                                <button
-                                  onClick={() => handlePriceSave(pricing.id)}
-                                  className="ml-2 px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={handlePriceCancel}
-                                  className="ml-1 px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-2">
-                                {userRole !== 'STAFF' && (
-                                  <button
-                                    onClick={() => {
-                                      if (pricing) {
-                                        const newPrice = pricing.price + 1;
-                                        handlePriceSave(pricing.id, newPrice);
-                                      }
-                                    }}
-                                    className="bg-green-600 text-white p-1 rounded hover:bg-green-700"
-                                    title="Increase Price"
-                                  >
-                                    +
-                                  </button>
-                                )}
-                                  <span className="text-sm font-medium text-gray-900">
-                                    {pricing ? `₹${pricing.price}` : `₹${product.price || 0}`}
-                                  </span>
-                                {userRole !== 'STAFF' && (
-                                  <button
-                                    onClick={() => {
-                                      if (pricing && pricing.price > 0) {
-                                        const newPrice = pricing.price - 1;
-                                        handlePriceSave(pricing.id, newPrice);
-                                      }
-                                    }}
-                                    className="bg-red-600 text-white p-1 rounded hover:bg-red-700"
-                                    title="Decrease Price"
-                                  >
-                                    -
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          {userRole !== 'STAFF' && (
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <div className="flex space-x-2">
-                                {pricing ? (
-                                  <>
-                                    <button
-                                      onClick={() => handlePriceEdit(pricing)}
-                                      className="text-blue-600 hover:text-blue-900 p-1 rounded transition"
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeletePricing(pricing.id)}
-                                      className="text-red-600 hover:text-red-900 p-1 rounded transition"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    onClick={() => handleAddPricing(product.id)}
-                                    className="text-green-600 hover:text-green-900 p-1 rounded transition"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
                             </td>
-                          )}
-                        </tr>
-                      ))}
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
+                                {product.unit}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+                                {gst}%
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {isEditing ? (
+                                <div className="space-y-1">
+                                  <div className="relative">
+                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-bold">₹</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="e.g. 35"
+                                      value={rateEditValue}
+                                      onChange={(e) => handleRateEditChange(e.target.value, gst)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handlePriceSave(pricing.id);
+                                        if (e.key === 'Escape') handlePriceCancel();
+                                      }}
+                                      className="w-28 pl-6 pr-2 py-1 text-sm font-bold text-gray-900 border-2 border-green-500 rounded-md focus:outline-none bg-white shadow-sm"
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-green-700 font-medium">Selling Rate (with GST)</div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-2">
+                                  {userRole !== 'STAFF' && (
+                                    <button
+                                      onClick={() => handleQuickRateAdjust(product, pricing, 1)}
+                                      className="bg-green-600 hover:bg-green-700 text-white w-6 h-6 flex items-center justify-center rounded text-xs font-bold transition shadow-sm"
+                                      title="Increase Rate by ₹1"
+                                    >
+                                      +
+                                    </button>
+                                  )}
+                                  <div
+                                    className="cursor-pointer group flex items-baseline space-x-1"
+                                    onClick={() => {
+                                      if (userRole !== 'STAFF') {
+                                        if (pricing) {
+                                          handlePriceEdit(pricing, product);
+                                        } else {
+                                          handleAddPricing(product.id);
+                                        }
+                                      }
+                                    }}
+                                    title="Click to edit rate"
+                                  >
+                                    <span className="text-base font-bold text-gray-900 group-hover:text-green-600 transition">
+                                      ₹{rateWithGst}
+                                    </span>
+                                  </div>
+                                  {userRole !== 'STAFF' && (
+                                    <button
+                                      onClick={() => handleQuickRateAdjust(product, pricing, -1)}
+                                      className="bg-red-600 hover:bg-red-700 text-white w-6 h-6 flex items-center justify-center rounded text-xs font-bold transition shadow-sm"
+                                      title="Decrease Rate by ₹1"
+                                    >
+                                      -
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {isEditing ? (
+                                <div className="space-y-1">
+                                  <div className="relative">
+                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-bold">₹</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="0.00"
+                                      value={priceEditValue}
+                                      onChange={(e) => handleBasePriceEditChange(e.target.value, gst)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handlePriceSave(pricing.id);
+                                        if (e.key === 'Escape') handlePriceCancel();
+                                      }}
+                                      className="w-28 pl-6 pr-2 py-1 text-sm font-semibold text-gray-800 border border-gray-300 rounded-md bg-gray-50 focus:outline-none focus:bg-white"
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-gray-500">
+                                    {rateEditValue && parseFloat(rateEditValue) > 0 ? (
+                                      <span className="text-green-700 font-semibold">
+                                        −{gst}% GST (₹{gstAmount})
+                                      </span>
+                                    ) : (
+                                      <span>Auto without GST</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className="cursor-pointer group flex items-center space-x-2"
+                                  onClick={() => {
+                                    if (userRole !== 'STAFF') {
+                                      if (pricing) {
+                                        handlePriceEdit(pricing, product);
+                                      } else {
+                                        handleAddPricing(product.id);
+                                      }
+                                    }
+                                  }}
+                                  title="Click to edit base price"
+                                >
+                                  <span className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition">
+                                    ₹{basePrice.toFixed(2)}
+                                  </span>
+                                  {pricing ? (
+                                    <span className="text-[10px] bg-green-100 text-green-800 font-medium px-1.5 py-0.5 rounded">
+                                      Custom
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-gray-100 text-gray-600 font-medium px-1.5 py-0.5 rounded">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            {userRole !== 'STAFF' && (
+                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                {isEditing ? (
+                                  <div className="flex items-center justify-end space-x-2">
+                                    <button
+                                      onClick={() => handlePriceSave(pricing.id)}
+                                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-md shadow-sm flex items-center space-x-1 transition"
+                                      title="Save Price"
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      <span>Save</span>
+                                    </button>
+                                    <button
+                                      onClick={handlePriceCancel}
+                                      className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium rounded-md transition"
+                                      title="Cancel"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end space-x-2">
+                                    {pricing ? (
+                                      <>
+                                        <button
+                                          onClick={() => handlePriceEdit(pricing, product)}
+                                          className="text-blue-600 hover:text-blue-900 p-1.5 hover:bg-blue-50 rounded transition"
+                                          title="Edit Price"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeletePricing(pricing.id)}
+                                          className="text-red-600 hover:text-red-900 p-1.5 hover:bg-red-50 rounded transition"
+                                          title="Delete Custom Price"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleAddPricing(product.id)}
+                                        className="inline-flex items-center px-2.5 py-1 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-200 transition"
+                                        title="Set custom price for this shop"
+                                      >
+                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                        Set Price
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
