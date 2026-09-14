@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Users,
   UserCheck,
+  CalendarCheck,
   IndianRupee,
   Plus,
   Edit,
@@ -50,6 +51,9 @@ interface SalarySummaryItem {
   status: 'active' | 'inactive';
   salary_type: 'monthly' | 'daily';
   base_salary: number;
+  days_in_month?: number;
+  daily_rate?: number;
+  deductions?: number;
   current_month_salary: number;
   previous_pending: number;
   total_owed: number;
@@ -639,6 +643,22 @@ const Employees: React.FC = () => {
     }));
   };
 
+  const handleMarkAll = (status: 'present' | 'absent') => {
+    setAttendanceMap(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(id => {
+        const numId = Number(id);
+        if (updated[numId]) {
+          updated[numId] = {
+            ...updated[numId],
+            status
+          };
+        }
+      });
+      return updated;
+    });
+  };
+
   const handleRemarksChange = (empId: number, remarks: string) => {
     setAttendanceMap(prev => ({
       ...prev,
@@ -661,6 +681,7 @@ const Employees: React.FC = () => {
       if (res.success) {
         showNotification('Attendance saved successfully');
         fetchAttendance();
+        fetchSalarySummary();
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save attendance');
@@ -805,6 +826,17 @@ const Employees: React.FC = () => {
             Employees List
           </button>
           <button
+            onClick={() => setActiveTab('attendance')}
+            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              activeTab === 'attendance'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <CalendarCheck className="h-4 w-4 mr-2" />
+            Attendance (வருகைப் பதிவு)
+          </button>
+          <button
             onClick={() => setActiveTab('salaries')}
             className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'salaries'
@@ -942,39 +974,88 @@ const Employees: React.FC = () => {
       {/* Attendance Tab */}
       {activeTab === 'attendance' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => {
-                  const d = new Date(attendanceDate);
-                  d.setDate(d.getDate() - 1);
-                  setAttendanceDate(d.toISOString().split('T')[0]);
-                }}
-                className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <div className="relative">
+          {/* Header Controls */}
+          <div className="p-5 border-b border-gray-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 bg-gray-50/60">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date Navigation */}
+              <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+                <button
+                  type="button"
+                  title="Previous Day"
+                  onClick={() => {
+                    const d = new Date(attendanceDate);
+                    d.setDate(d.getDate() - 1);
+                    setAttendanceDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-lg transition"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
                 <input
                   type="date"
                   value={attendanceDate}
                   onChange={e => setAttendanceDate(e.target.value)}
-                  className="pl-3 pr-8 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-semibold text-gray-700 bg-white"
+                  className="px-2 py-1 border-none focus:outline-none text-sm font-bold text-gray-800 bg-transparent"
                 />
+                <button
+                  type="button"
+                  title="Next Day"
+                  onClick={() => {
+                    const d = new Date(attendanceDate);
+                    d.setDate(d.getDate() + 1);
+                    setAttendanceDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-lg transition"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
+
+              {/* Today Button */}
               <button
-                onClick={() => {
-                  const d = new Date(attendanceDate);
-                  d.setDate(d.getDate() + 1);
-                  setAttendanceDate(d.toISOString().split('T')[0]);
-                }}
-                className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                type="button"
+                onClick={() => setAttendanceDate(new Date().toISOString().split('T')[0])}
+                className="px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm"
               >
-                <ChevronRight className="h-4 w-4" />
+                Today (இன்று)
               </button>
+
+              {/* Batch Quick Mark Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleMarkAll('present')}
+                  className="flex items-center px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-xl hover:bg-emerald-100 transition shadow-sm"
+                  title="Mark everyone Present for this date"
+                >
+                  <CheckCircle className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+                  Mark All Present (அனைவரும் வருகை)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMarkAll('absent')}
+                  className="flex items-center px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-300 rounded-xl hover:bg-rose-100 transition shadow-sm"
+                  title="Mark everyone Absent for this date"
+                >
+                  <XCircle className="h-3.5 w-3.5 mr-1 text-rose-600" />
+                  Mark All Absent (அனைவரும் விடுப்பு)
+                </button>
+              </div>
             </div>
-            <div className="text-sm text-gray-500">
-              Mark employee attendance for the selected date.
+
+            {/* Quick Top Save Button */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 hidden sm:inline">
+                Default: <strong className="text-emerald-700">Present (வருகை)</strong>. Click <strong className="text-rose-700">Absent (விடுப்பு)</strong> for missing staff.
+              </span>
+              <button
+                onClick={handleSaveAttendance}
+                disabled={loading}
+                className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition transform active:scale-95"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save Attendance (சேமிக்க)
+              </button>
             </div>
           </div>
 
@@ -985,38 +1066,44 @@ const Employees: React.FC = () => {
             </div>
           ) : Object.keys(attendanceMap).length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              No active employees to track attendance for.
+              No active employees found to track attendance.
             </div>
           ) : (
             <div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider border-b border-gray-200">
-                      <th className="py-4 px-6">Employee Name</th>
-                      <th className="py-4 px-6">Attendance Status</th>
-                      <th className="py-4 px-6">Remarks / Notes</th>
+                    <tr className="bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider border-b border-gray-200">
+                      <th className="py-4 px-6">Employee Details (பணியாளர்)</th>
+                      <th className="py-4 px-6 text-center">Attendance (2 Options: Present / Absent)</th>
+                      <th className="py-4 px-6">Remarks / Reason (குறிப்பு)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                     {Object.values(attendanceMap).map(record => {
                       const emp = employees.find(e => e.id === record.employee_id);
                       if (!emp) return null;
+                      const isPresent = record.status === 'present';
+                      const isAbsent = record.status === 'absent' || record.status === 'leave';
+                      const stats = monthlyAttendanceStats[emp.id] || { present: 0, absent: 0, half_day: 0, leave: 0 };
+                      const totalAbsentThisMonth = stats.absent + stats.leave;
+
                       return (
-                        <tr key={record.employee_id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-4 px-6 font-semibold text-gray-900">
-                            <div>{emp.name}</div>
-                            {(() => {
-                              const stats = monthlyAttendanceStats[emp.id] || { present: 0, absent: 0, half_day: 0, leave: 0 };
-                              const totalLeaves = stats.absent + stats.leave;
-                              return (
-                                <div className="text-xs text-gray-500 mt-1.5 flex flex-wrap items-center gap-1.5 font-normal">
-                                  <span className="font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">This Month:</span>
-                                  <span className="text-rose-700 font-bold bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded">Leaves/Absent: {totalLeaves}</span>
-                                  <span className="text-amber-700 font-bold bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded">Half Days: {stats.half_day}</span>
-                                </div>
-                              );
-                            })()}
+                        <tr key={record.employee_id} className={`transition-colors ${isAbsent ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-gray-50'}`}>
+                          <td className="py-4 px-6">
+                            <div className="font-bold text-gray-900 text-base">{emp.name}</div>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                emp.salary_type === 'daily'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : 'bg-purple-50 text-purple-700 border-purple-200'
+                              }`}>
+                                {emp.salary_type === 'daily' ? `Daily Wage: ₹${emp.monthly_salary}/day` : `Monthly: ₹${emp.monthly_salary}/mo`}
+                              </span>
+                              <span className="text-[11px] text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                Month Total: <strong className="text-emerald-700">{stats.present} Present</strong> / <strong className="text-rose-700">{totalAbsentThisMonth} Absent</strong>
+                              </span>
+                            </div>
                             {record.remarks === 'Biometric Check-In' && (
                               <div className="text-xs text-emerald-600 font-medium flex items-center mt-1">
                                 <Fingerprint className="h-3 w-3 mr-0.5" />
@@ -1024,55 +1111,34 @@ const Employees: React.FC = () => {
                               </div>
                             )}
                           </td>
-                          <td className="py-4 px-6">
-                            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                          <td className="py-4 px-6 text-center">
+                            <div className="inline-flex rounded-xl p-1 bg-gray-100 border border-gray-200 shadow-inner gap-2">
+                              {/* Option 1: Present */}
                               <button
                                 type="button"
                                 onClick={() => handleAttendanceChange(record.employee_id, 'present')}
-                                className={`flex items-center px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
-                                  record.status === 'present'
-                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-transparent'
+                                className={`flex items-center px-5 py-2.5 text-sm font-bold rounded-lg transition-all ${
+                                  isPresent
+                                    ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-400 scale-[1.03]'
+                                    : 'text-gray-600 hover:text-emerald-700 hover:bg-white'
                                 }`}
                               >
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Present
+                                <CheckCircle className={`h-4 w-4 mr-1.5 ${isPresent ? 'text-white' : 'text-emerald-600'}`} />
+                                Present (வருகை)
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleAttendanceChange(record.employee_id, 'half_day')}
-                                className={`flex items-center px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
-                                  record.status === 'half_day'
-                                    ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-transparent'
-                                }`}
-                              >
-                                <Clock className="h-3 w-3 mr-1" />
-                                Half Day
-                              </button>
+
+                              {/* Option 2: Absent */}
                               <button
                                 type="button"
                                 onClick={() => handleAttendanceChange(record.employee_id, 'absent')}
-                                className={`flex items-center px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
-                                  record.status === 'absent'
-                                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-transparent'
+                                className={`flex items-center px-5 py-2.5 text-sm font-bold rounded-lg transition-all ${
+                                  isAbsent
+                                    ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400 scale-[1.03]'
+                                    : 'text-gray-600 hover:text-rose-700 hover:bg-white'
                                 }`}
                               >
-                                <XCircle className="h-3 w-3 mr-1" />
-                                Absent
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleAttendanceChange(record.employee_id, 'leave')}
-                                className={`flex items-center px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
-                                  record.status === 'leave'
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-transparent'
-                                }`}
-                              >
-                                <Coffee className="h-3 w-3 mr-1" />
-                                Leave
+                                <XCircle className={`h-4 w-4 mr-1.5 ${isAbsent ? 'text-white' : 'text-rose-600'}`} />
+                                Absent (விடுப்பு)
                               </button>
                             </div>
                           </td>
@@ -1081,8 +1147,8 @@ const Employees: React.FC = () => {
                               type="text"
                               value={record.remarks}
                               onChange={e => handleRemarksChange(record.employee_id, e.target.value)}
-                              placeholder="e.g. sick leave, late arrival..."
-                              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder={isAbsent ? "Reason for absent (e.g. sick, function)..." : "Notes / Remarks..."}
+                              className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             />
                           </td>
                         </tr>
@@ -1091,13 +1157,27 @@ const Employees: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-              <div className="p-5 bg-gray-50 border-t border-gray-100 flex justify-end">
+
+              {/* Bottom Footer Bar */}
+              <div className="p-5 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-gray-600">
+                  <span>Total Staff: <strong className="text-gray-900">{Object.keys(attendanceMap).length}</strong></span>
+                  <span>•</span>
+                  <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+                    Present Today: {Object.values(attendanceMap).filter(r => r.status === 'present').length}
+                  </span>
+                  <span>•</span>
+                  <span className="text-rose-700 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">
+                    Absent Today: {Object.values(attendanceMap).filter(r => r.status === 'absent' || r.status === 'leave').length}
+                  </span>
+                </div>
                 <button
                   onClick={handleSaveAttendance}
-                  className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md transition"
+                  disabled={loading}
+                  className="flex items-center justify-center px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition transform active:scale-95"
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  Save Attendance
+                  Save Attendance (வருகைப் பதிவு சேமிக்க)
                 </button>
               </div>
             </div>
@@ -1161,8 +1241,8 @@ const Employees: React.FC = () => {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider border-b border-gray-200">
-                      <th className="py-4 px-4">Employee</th>
-                      <th className="py-4 px-4 text-center">Attendance (P/HD/A/L)</th>
+                      <th className="py-4 px-4">Employee (பணியாளர்)</th>
+                      <th className="py-4 px-4 text-center">Attendance (வருகை விவரம்)</th>
                       <th className="py-4 px-4">Base Salary</th>
                       <th className="py-4 px-4">Monthly Salary Due</th>
                       <th className="py-4 px-4">Prev. Pending</th>
@@ -1173,62 +1253,108 @@ const Employees: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                    {salarySummary.map(item => (
-                      <tr key={item.employee_id} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-4 px-4 font-semibold text-gray-900">
-                          <div>{item.name}</div>
-                          <div className="text-xs font-normal text-gray-500">{item.contact}</div>
-                        </td>
-                        <td className="py-4 px-4 text-center">
-                          <div className="inline-flex space-x-1 text-xs">
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium" title="Present">{item.attendance_summary.present}P</span>
-                            <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 font-medium" title="Half-day">{item.attendance_summary.half_day}H</span>
-                            <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-medium" title="Absent">{item.attendance_summary.absent}A</span>
-                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-medium" title="Leave">{item.attendance_summary.leave}L</span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-gray-500">
-                          ₹{item.base_salary.toLocaleString('en-IN')}
-                          <span className="text-xs text-gray-400 block font-normal">
-                            {item.salary_type === 'daily' ? 'Daily' : 'Monthly'}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center space-x-1.5">
-                            <span className="font-semibold text-gray-900">₹{item.current_month_salary.toLocaleString('en-IN')}</span>
-                            <button
-                              onClick={() => openAdjustSalaryModal(item)}
-                              className="text-gray-400 hover:text-blue-600 transition"
-                              title="Override Salary Due for this month"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 font-medium text-amber-600">₹{item.previous_pending.toLocaleString('en-IN')}</td>
-                        <td className="py-4 px-4 font-semibold text-gray-900">₹{item.total_owed.toLocaleString('en-IN')}</td>
-                        <td className="py-4 px-4 font-semibold text-emerald-600">₹{item.current_month_paid.toLocaleString('en-IN')}</td>
-                        <td className="py-4 px-4 font-bold text-blue-700">₹{item.net_pending.toLocaleString('en-IN')}</td>
-                        <td className="py-4 px-4 text-center">
-                          <div className="flex justify-center items-center space-x-2">
-                            <button
-                              onClick={() => openPaymentModal(item)}
-                              className="inline-flex items-center px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-md font-semibold text-xs transition"
-                            >
-                              <CreditCard className="h-3 w-3 mr-1" />
-                              Pay
-                            </button>
-                            <button
-                              onClick={() => openHistoryModal(item.employee_id, item.name)}
-                              className="inline-flex items-center px-2 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 rounded-md font-semibold text-xs transition"
-                            >
-                              <History className="h-3 w-3 mr-1" />
-                              History
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {salarySummary.map(item => {
+                      const totalAbsent = item.attendance_summary.absent + (item.attendance_summary.leave || 0);
+                      const daysInMonth = item.days_in_month || 30;
+                      const dailyRate = item.daily_rate || (item.salary_type === 'daily' ? item.base_salary : (item.base_salary / daysInMonth));
+
+                      return (
+                        <tr key={item.employee_id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-4 px-4 font-semibold text-gray-900">
+                            <div>{item.name}</div>
+                            <div className="text-xs font-normal text-gray-500">{item.contact}</div>
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="inline-flex items-center space-x-1.5 text-xs">
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold border border-emerald-200" title="Present Days">
+                                  {item.attendance_summary.present} Present
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-md font-bold border ${
+                                  totalAbsent > 0
+                                    ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                    : 'bg-gray-100 text-gray-400 border-gray-200'
+                                }`} title="Absent Days">
+                                  {totalAbsent} Absent
+                                </span>
+                              </div>
+                              {item.attendance_summary.half_day > 0 && (
+                                <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
+                                  {item.attendance_summary.half_day} Half-day
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="font-semibold text-gray-800">₹{item.base_salary.toLocaleString('en-IN')}</div>
+                            <span className="text-xs text-gray-400 block font-normal">
+                              {item.salary_type === 'daily' ? (
+                                <span className="inline-block bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[11px] font-semibold border border-blue-100">
+                                  ₹{item.base_salary}/day
+                                </span>
+                              ) : (
+                                <span className="inline-block bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded text-[11px] font-semibold border border-purple-100">
+                                  Monthly (₹{Math.round(dailyRate)}/day)
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="font-bold text-gray-900 text-base">₹{item.current_month_salary.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <button
+                                onClick={() => openAdjustSalaryModal(item)}
+                                className="text-gray-400 hover:text-blue-600 transition p-1 hover:bg-blue-50 rounded"
+                                title="Override Salary Due for this month"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">
+                              {item.salary_type === 'daily' ? (
+                                <span className="text-emerald-700 font-medium">
+                                  {item.attendance_summary.present} days × ₹{item.base_salary.toLocaleString('en-IN')}
+                                </span>
+                              ) : (
+                                <span>
+                                  {totalAbsent > 0 ? (
+                                    <span className="text-rose-600 font-medium">
+                                      ₹{item.base_salary.toLocaleString('en-IN')} − {totalAbsent} absent (₹{Math.round(totalAbsent * dailyRate).toLocaleString('en-IN')})
+                                    </span>
+                                  ) : (
+                                    <span className="text-emerald-700 font-medium">
+                                      Full Month ({daysInMonth} days)
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 font-medium text-amber-600">₹{item.previous_pending.toLocaleString('en-IN')}</td>
+                          <td className="py-4 px-4 font-semibold text-gray-900">₹{item.total_owed.toLocaleString('en-IN')}</td>
+                          <td className="py-4 px-4 font-semibold text-emerald-600">₹{item.current_month_paid.toLocaleString('en-IN')}</td>
+                          <td className="py-4 px-4 font-bold text-blue-700">₹{item.net_pending.toLocaleString('en-IN')}</td>
+                          <td className="py-4 px-4 text-center">
+                            <div className="flex justify-center items-center space-x-2">
+                              <button
+                                onClick={() => openPaymentModal(item)}
+                                className="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg font-semibold text-xs transition"
+                              >
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                Pay
+                              </button>
+                              <button
+                                onClick={() => openHistoryModal(item.employee_id, item.name)}
+                                className="inline-flex items-center px-2.5 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 rounded-lg font-semibold text-xs transition"
+                              >
+                                <History className="h-3 w-3 mr-1" />
+                                History
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

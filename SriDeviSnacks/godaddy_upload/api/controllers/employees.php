@@ -462,13 +462,18 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
 
     // Determine the calculated salary for this month based on attendance
     $daysInMonth = (int)date('t', $selectedTime);
+    $dailyRate = $salaryType === 'daily' ? $baseSalary : ($baseSalary / $daysInMonth);
+
     if ($salaryType === 'daily') {
-        // Daily wage: (present + 0.5 * half_day) * baseSalary
-        $calculatedSalary = ($attendance['present'] + ($attendance['half_day'] * 0.5)) * $baseSalary;
+        // Daily wage: (present days) * daily baseSalary
+        $presentDays = (int)$attendance['present'] + ((int)$attendance['half_day'] * 0.5);
+        $calculatedSalary = $presentDays * $baseSalary;
+        $deductions = 0.0;
     } else {
-        // Monthly wage: baseSalary - (absent + leave + 0.5 * half_day) * (baseSalary / daysInMonth)
-        $dailyRate = $baseSalary / $daysInMonth;
-        $deductions = ($attendance['absent'] + $attendance['leave'] + ($attendance['half_day'] * 0.5)) * $dailyRate;
+        // Monthly wage: baseSalary - (absent days * dailyRate)
+        // If absent, only that day's rate is deducted
+        $absentDays = (int)$attendance['absent'] + (int)$attendance['leave'] + ((int)$attendance['half_day'] * 0.5);
+        $deductions = $absentDays * $dailyRate;
         $calculatedSalary = max(0.0, $baseSalary - $deductions);
     }
 
@@ -550,6 +555,9 @@ function calculateEmployeeSalaryDetails($db, $employee, $selectedMonth) {
         'status' => $employee['status'],
         'salary_type' => $salaryType,
         'base_salary' => $baseSalary,
+        'days_in_month' => $daysInMonth,
+        'daily_rate' => round($dailyRate, 2),
+        'deductions' => round($deductions, 2),
         'current_month_salary' => $currentMonthSalary,
         'previous_pending' => $previousPending,
         'total_owed' => $totalOwed,
