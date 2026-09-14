@@ -364,6 +364,19 @@ const COMMON_TAMIL_WORDS: Record<string, string> = {
   kanyakumari: 'கன்னியாகுமரி',
   thuckalay: 'தக்கலை',
   marthandam: 'மார்த்தாண்டம்',
+  aswin: 'அஸ்வின்',
+  ashwin: 'அஸ்வின்',
+  ashok: 'அசோக்',
+  asok: 'அசோக்',
+  baskar: 'பாஸ்கர்',
+  bhaskar: 'பாஸ்கர்',
+  master: 'மாஸ்டர்',
+  vijay: 'விஜய்',
+  ajith: 'அஜித்',
+  suresh: 'சுரேஷ்',
+  ramesh: 'ரமேஷ்',
+  dinesh: 'தினேஷ்',
+  vignesh: 'விக்னேஷ்',
   devi: 'தேவி',
   jaya: 'ஜெய',
   jeya: 'ஜெய',
@@ -485,13 +498,14 @@ export function transliterateWord(word: string): string {
       continue;
     }
 
-    if (isAtStart && (sub.toLowerCase().startsWith('st') || sub.toLowerCase().startsWith('sp') || sub.toLowerCase().startsWith('sk') || sub.toLowerCase().startsWith('sm') || sub.toLowerCase().startsWith('sn') || sub.toLowerCase().startsWith('sw'))) {
+    const lowerSub = sub.toLowerCase();
+    if (lowerSub.startsWith('sw') || lowerSub.startsWith('sv') || lowerSub.startsWith('st') || lowerSub.startsWith('sp') || lowerSub.startsWith('sk') || lowerSub.startsWith('sm') || lowerSub.startsWith('sn') || lowerSub.startsWith('sl') || lowerSub.startsWith('sb') || lowerSub.startsWith('sd')) {
       res += 'ஸ்';
       i += 1;
       continue;
     }
 
-    if (sub.toLowerCase() === 's') {
+    if (lowerSub === 's') {
       res += 'ஸ்';
       i += 1;
       continue;
