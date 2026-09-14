@@ -337,7 +337,28 @@ const COMMON_TAMIL_WORDS: Record<string, string> = {
   kovil: 'கோவில்',
   nagercoil: 'நாகர்கோவில்',
   tirunelveli: 'திருநெல்வேலி',
+  thirunelveli: 'திருநெல்வேலி',
+  nellai: 'நெல்லை',
+  neduvalai: 'நெடுவாலை',
+  neduvaalai: 'நெடுவாலை',
+  neduvali: 'நெடுவாலை',
+  radhapuram: 'ராதாபுரம்',
   vallioor: 'வள்ளியூர்',
+  valliyur: 'வள்ளியூர்',
+  kudankulam: 'கூடங்குளம்',
+  thisayanvilai: 'திசையன்விளை',
+  tisayanvilai: 'திசையன்விளை',
+  palayamkottai: 'பாளையங்கோட்டை',
+  thoothukudi: 'தூத்துக்குடி',
+  tuticorin: 'தூத்துக்குடி',
+  tenkasi: 'தென்காசி',
+  kovilpatti: 'கோவில்பட்டி',
+  sankarankovil: 'சங்கரன்கோவில்',
+  kalakkad: 'களக்காடு',
+  kalakad: 'களக்காடு',
+  ambasamudram: 'அம்பாசமுத்திரம்',
+  ambai: 'அம்பை',
+  cheranmahadevi: 'சேரன்மகாதேவி',
   chennai: 'சென்னை',
   madurai: 'மதுரை',
   kanyakumari: 'கன்னியாகுமரி',
@@ -501,11 +522,15 @@ export function transliterateWord(word: string): string {
       if (vSign !== null) {
         if (matchedConsonant.pulli) {
           let baseChar = matchedConsonant.ta;
-          if (isAtStart && (matchedConsonant.en === 'd' || matchedConsonant.en === 't')) {
-            baseChar = 'த';
+          if (isAtStart) {
+            if (matchedConsonant.en === 'd' || matchedConsonant.en === 't') {
+              baseChar = 'த';
+            } else if (matchedConsonant.en === 'n' || matchedConsonant.en === 'N') {
+              baseChar = 'ந';
+            }
           }
           let sign = EN_VOWEL_SIGNS[vSign] !== undefined ? EN_VOWEL_SIGNS[vSign] : '';
-          if (vSign === 'e' && (matchedConsonant.en === 'd' || matchedConsonant.en === 'v' || matchedConsonant.en === 'm' || matchedConsonant.en === 'n')) {
+          if (vSign === 'e' && (matchedConsonant.en === 'd' || matchedConsonant.en === 'v' || matchedConsonant.en === 'm')) {
             sign = 'ே';
           }
           res += baseChar + sign;
@@ -514,10 +539,18 @@ export function transliterateWord(word: string): string {
         }
         i += vLen;
       } else {
+        let baseChar = matchedConsonant.ta;
+        if (isAtStart) {
+          if (matchedConsonant.en === 'd' || matchedConsonant.en === 't') {
+            baseChar = 'த';
+          } else if (matchedConsonant.en === 'n' || matchedConsonant.en === 'N') {
+            baseChar = 'ந';
+          }
+        }
         if (matchedConsonant.pulli) {
-          res += matchedConsonant.ta + '்';
+          res += baseChar + '்';
         } else {
-          res += matchedConsonant.ta;
+          res += baseChar;
         }
       }
     } else {
