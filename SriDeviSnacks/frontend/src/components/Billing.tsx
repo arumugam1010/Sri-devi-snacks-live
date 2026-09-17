@@ -2249,6 +2249,15 @@
 
     const handleExportExcel = (monthBills: Bill[], monthName: string) => {
       const dataForExcel: Array<Record<string, any>> = monthBills.map(bill => {
+        const shop = allShops.find(s =>
+          (bill.shop_id && Number(s.id) === Number(bill.shop_id)) ||
+          (s.shop_name && bill.shop_name && s.shop_name.trim().toLowerCase() === bill.shop_name.trim().toLowerCase()) ||
+          (s.shop_name && bill.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === bill.shop_name.replace(/[.\s]/g, '').toLowerCase())
+        );
+        const shopGst = (shop && shop.gst && shop.gst.trim())
+          ? shop.gst.trim()
+          : ((bill as any).shop_gst || (bill as any).shop?.gstNumber || (bill as any).shop?.gst || '');
+
         const items = bill.items || [];
         const sgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.sgst) || 0), 0).toFixed(2));
         const cgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.cgst) || 0), 0).toFixed(2));
@@ -2261,6 +2270,7 @@
         return {
           'Date': new Date(bill.bill_date).toLocaleDateString(),
           'Shop Name': bill.shop_name,
+          'Shop GST': shopGst || '-',
           'Bill No': bill.bill_number || bill.billNumber || bill.id,
           'Taxable Amount': taxableAmount,
           'CGST': cgst,
@@ -2280,6 +2290,7 @@
       dataForExcel.push({
         'Date': '',
         'Shop Name': 'TOTAL',
+        'Shop GST': '',
         'Bill No': `${monthBills.length} Bills`,
         'Taxable Amount': Number(totalTaxable.toFixed(2)),
         'CGST': Number(totalCgst.toFixed(2)),
@@ -2295,6 +2306,7 @@
         worksheet['!cols'] = [
           { wch: 12 }, // Date
           { wch: 25 }, // Shop Name
+          { wch: 18 }, // Shop GST
           { wch: 14 }, // Bill No
           { wch: 16 }, // Taxable Amount
           { wch: 12 }, // CGST
@@ -4754,38 +4766,37 @@
                       <p className="text-sm text-gray-700">Vallioor, Tirunelveli-627117</p>
                     </div>
 
-                    {/* Selected Shop Details */}
-                    {currentShop && (
-                      <div className="mb-4">
-                        <p className="text-sm text-gray-700">
-                          <span className="font-bold">Shop:</span> <span className="font-bold">{currentShop.shop_name}</span>
-                          {currentShop.address && ` - ${currentShop.address}`}
-                          {currentShop.gst && (
-                            <>
-                              <span className="mx-4">|</span>
-                              <span className="font-bold">Shop GST No:</span> <span className="font-bold">{currentShop.gst}</span>
-                            </>
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          <span className="font-bold">Date:</span> <span className="font-bold">{selectedBillForView ? formatDateWithDay(selectedBillForView.bill_date) : formatDateWithDay(new Date())}</span>
-                        </p>
-                      </div>
-                    )}
-
                     <div className="border-b-2 border-dashed border-gray-300 my-4"></div>
                   </div>
 
                   {/* Bill Info */}
-                  <div className="mb-4">
-                    <div className="flex justify-between">
-                      <div>Bill ID: {selectedBillForView.bill_number || selectedBillForView.billNumber || selectedBillForView.id}</div>
-                      <div>Date: {formatDateWithDay(selectedBillForView.bill_date)}</div>
-                    </div>
-                    <div className="flex justify-between">
-                      <div>Shop: {selectedBillForView.shop_name}</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const viewShop = allShops.find(s =>
+                      (selectedBillForView.shop_id && Number(s.id) === Number(selectedBillForView.shop_id)) ||
+                      (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
+                      (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
+                    );
+                    const viewShopGst = (viewShop && viewShop.gst && viewShop.gst.trim())
+                      ? viewShop.gst.trim()
+                      : ((selectedBillForView as any).shop_gst || (selectedBillForView as any).shop?.gstNumber || (selectedBillForView as any).shop?.gst || '');
+
+                    return (
+                      <div className="mb-4">
+                        <div className="flex justify-between">
+                          <div>Bill ID: {selectedBillForView.bill_number || selectedBillForView.billNumber || selectedBillForView.id}</div>
+                          <div>Date: {formatDateWithDay(selectedBillForView.bill_date)}</div>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <div>Shop: {selectedBillForView.shop_name}</div>
+                          {viewShopGst && (
+                            <div className="font-semibold text-gray-800">
+                              Shop GST No: <span className="font-mono text-indigo-700 font-bold">{viewShopGst}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Bill Items */}
                   <div className="mb-6 overflow-x-auto">
@@ -5046,6 +5057,14 @@
                           const shopName = selectedBillForView.shop_name;
                           const billDate = selectedBillForView.bill_date;
                           const billId = selectedBillForView.bill_number || selectedBillForView.billNumber || selectedBillForView.id;
+                          const viewShop = allShops.find(s =>
+                            (selectedBillForView.shop_id && Number(s.id) === Number(selectedBillForView.shop_id)) ||
+                            (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
+                            (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
+                          );
+                          const shopGstNo = (viewShop && viewShop.gst && viewShop.gst.trim())
+                            ? viewShop.gst.trim()
+                            : ((selectedBillForView as any).shop_gst || (selectedBillForView as any).shop?.gstNumber || (selectedBillForView as any).shop?.gst || '');
 
                           win.document.write(`
                               <html>
@@ -5194,7 +5213,7 @@
                                   <div class="company-city">Vallioor, Tirunelveli-627117</div>
                                   <div class="bill-no"><strong>Bill No:</strong> ${billId}</div>
                                   <div class="shop-info"><strong>Shop:</strong> ${shopName}</div>
-                                  <div class="shop-gst"><strong>Shop GST No:</strong> ${selectedBillForView.shop_id === 1 ? '33BBBBB5678B2Y6' : selectedBillForView.shop_id === 2 ? '33CCCCC9012C3Z7' : selectedBillForView.shop_id === 3 ? '33DDDDD3456D4A8' : ''}</div>
+                                  ${shopGstNo ? `<div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo}</div>` : ''}
                                   <div class="bill-date"><strong>Date:</strong> ${selectedBillForView ? formatDateWithDay(selectedBillForView.bill_date) : formatDateWithDay(new Date())}</div>
                                   <div class="dashed-line"></div>
                                 </div>

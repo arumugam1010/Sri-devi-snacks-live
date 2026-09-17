@@ -16,7 +16,8 @@ import {
   Fuel,
   Truck,
   FileText,
-  Coffee
+  Coffee,
+  WalletCards
 } from 'lucide-react';
 const Logo = '/Logo.png';
 import { useAppContext } from '../context/AppContext';
@@ -51,6 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { name: 'Stock', href: '/stock', icon: Warehouse },
     { name: 'Billing', href: '/billing', icon: Receipt },
     { name: 'Employees', href: '/employees', icon: Users },
+    { name: 'Expenses', href: '/expenses', icon: WalletCards },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Bakery Billing', href: '/bakery-billing', icon: Coffee },
     { name: 'Petrol/CNG', onClick: () => setIsFuelModalOpen(true), icon: Fuel },
@@ -60,9 +62,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   // Filter navigation based on user role
   const navigation = allNavigation.filter(item => {
     if (userRole === 'ACCOUNTS') {
-      return ['Dashboard', 'Suppliers', 'Purchase Bills', 'Billing'].includes(item.name);
+      return ['Dashboard', 'Suppliers', 'Purchase Bills', 'Billing', 'Expenses'].includes(item.name);
     }
-    if (['VTS GPS', 'Employees', 'Label Printer', 'Suppliers', 'Purchase Bills', 'Bakery Billing'].includes(item.name)) {
+    if (['VTS GPS', 'Employees', 'Label Printer', 'Suppliers', 'Purchase Bills', 'Bakery Billing', 'Expenses'].includes(item.name)) {
       return userRole === 'SUPER_ADMIN';
     }
     if (userRole === 'STAFF') {
@@ -71,7 +73,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     return true;
   });
 
-  const isActive = (href?: string) => href ? location.pathname === href : false;
+  const isActive = (href?: string) => {
+    if (!href) return false;
+    if (location.pathname === href) return true;
+    if (href !== '/' && location.pathname.startsWith(href + '/')) return true;
+    return false;
+  };
 
   const handleFuelSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

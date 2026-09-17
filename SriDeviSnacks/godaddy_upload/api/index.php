@@ -164,6 +164,10 @@ switch ($module) {
         require_once __DIR__ . '/controllers/fuel_expenses.php';
         handleFuelExpensesRoute($parts, $_SERVER['REQUEST_METHOD']);
         break;
+    case 'expenses':
+        require_once __DIR__ . '/controllers/expenses.php';
+        handleExpensesRoute($parts, $_SERVER['REQUEST_METHOD']);
+        break;
     case 'suppliers':
         require_once __DIR__ . '/controllers/suppliers.php';
         handleSuppliersRoute($parts, $_SERVER['REQUEST_METHOD']);

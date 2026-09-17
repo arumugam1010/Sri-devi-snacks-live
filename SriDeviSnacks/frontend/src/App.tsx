@@ -25,9 +25,11 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import DayScheduleDetails from './components/DayScheduleDetails';
 import VtsGps from './components/VtsGps';
 import Employees from './components/Employees';
+import EmployeeDetail from './components/EmployeeDetail';
 import BarcodeGenerator from './components/BarcodeGenerator';
 import BakeryLayout from './components/bakery_billing/BakeryLayout';
 import AdminLandingSettings from './components/AdminLandingSettings';
+import Expenses from './components/Expenses';
 
 
 
@@ -266,6 +268,22 @@ function App() {
               element={
                 <Layout user={user} onLogout={handleLogout}>
                   <Employees />
+                </Layout>
+              }
+            />
+            <Route
+              path="/employees/:id"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <EmployeeDetail />
+                </Layout>
+              }
+            />
+            <Route
+              path="/expenses"
+              element={
+                <Layout user={user} onLogout={handleLogout}>
+                  <Expenses />
                 </Layout>
               }
             />

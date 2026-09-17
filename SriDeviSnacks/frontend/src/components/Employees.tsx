@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Users,
   UserCheck,
@@ -20,13 +21,17 @@ import {
   CreditCard,
   History,
   X,
-  Fingerprint,
-  Smartphone
+  Eye,
+  Camera,
+  Briefcase,
+  Heart,
+  MapPin
 } from 'lucide-react';
 import { employeesAPI } from '../services/api';
 
 interface Employee {
   id: number;
+  employee_code?: string;
   name: string;
   contact: string;
   monthly_salary: number;
@@ -34,6 +39,10 @@ interface Employee {
   joining_date: string;
   status: 'active' | 'inactive';
   is_biometric_registered: boolean;
+  image?: string | null;
+  role?: string | null;
+  blood_group?: string | null;
+  address?: string | null;
   created_at?: string;
 }
 
@@ -45,6 +54,7 @@ interface AttendanceRecord {
 
 interface SalarySummaryItem {
   employee_id: number;
+  employee_code?: string;
   name: string;
   contact: string;
   joining_date: string;
@@ -83,43 +93,60 @@ interface CheckInLog {
   time: string;
 }
 
-// Biometric Byte Utility Helpers
-const hexToBytes = (hex: string): Uint8Array => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+// Compress image helper
+const compressImage = (base64Str: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH = 400;
+      const MAX_HEIGHT = 400;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width = Math.round((width * MAX_HEIGHT) / height);
+          height = MAX_HEIGHT;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => resolve(base64Str);
+  });
 };
 
-const bytesToHex = (bytes: Uint8Array): string => {
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-};
-
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+// Helper to always format and guarantee employee code in format SDS-YY-MM-XXX
+export const getEmployeeCode = (emp?: { id?: number; employee_code?: string; created_at?: string; joining_date?: string } | null): string => {
+  if (!emp) return 'SDS-26-09-001';
+  if (emp.employee_code && emp.employee_code.trim() !== '' && emp.employee_code.toLowerCase() !== 'not assigned') {
+    return emp.employee_code;
   }
-  return window.btoa(binary);
-};
-
-const base64ToBytes = (base64: string): Uint8Array => {
-  const cleaned = base64.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
-  const binary = window.atob(cleaned + padding);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+  const idNum = emp.id || 1;
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `SDS-${yy}-${mm}-${String(idNum).padStart(3, '0')}`;
 };
 
 const Employees: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'directory' | 'attendance' | 'salaries' | 'biometric-gate'>('directory');
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'directory' | 'attendance' | 'salaries'>('directory');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,16 +165,21 @@ const Employees: React.FC = () => {
   // Form states
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [selectedSummaryItem, setSelectedSummaryItem] = useState<SalarySummaryItem | null>(null);
+  const [previewAddImage, setPreviewAddImage] = useState<string | null>(null);
+  const [previewEditImage, setPreviewEditImage] = useState<string | null>(null);
+
   const [employeeForm, setEmployeeForm] = useState({
+    employee_code: '',
     name: '',
+    role: '',
     contact: '',
+    blood_group: '',
+    address: '',
     monthly_salary: '',
     salary_type: 'monthly' as 'monthly' | 'daily',
     joining_date: new Date().toISOString().split('T')[0],
     status: 'active' as 'active' | 'inactive'
   });
-
-  const [registerBioImmediately, setRegisterBioImmediately] = useState<boolean>(true);
 
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
@@ -173,13 +205,7 @@ const Employees: React.FC = () => {
   const [selectedEmployeePayments, setSelectedEmployeePayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  // Biometric Gate states
-  const [gateEmployees, setGateEmployees] = useState<Array<{ id: number; name: string }>>([]);
-  const [selectedGateEmpId, setSelectedGateEmpId] = useState<number | ''>('');
-  const [gateScanning, setGateScanning] = useState(false);
-  const [gateSuccess, setGateSuccess] = useState<{ name: string; time: string } | null>(null);
-  const [todayCheckIns, setTodayCheckIns] = useState<CheckInLog[]>([]);
-  const [loadingGate, setLoadingGate] = useState(false);
+
 
   useEffect(() => {
     fetchEmployees();
@@ -190,8 +216,7 @@ const Employees: React.FC = () => {
       fetchAttendance();
     } else if (activeTab === 'salaries') {
       fetchSalarySummary();
-    } else if (activeTab === 'biometric-gate') {
-      fetchGateData();
+
     }
   }, [activeTab, attendanceDate, selectedMonth]);
 
@@ -255,208 +280,80 @@ const Employees: React.FC = () => {
     }
   };
 
-  const fetchGateData = async () => {
-    setLoadingGate(true);
-    setError(null);
-    try {
-      // 1. Fetch active employees with biometrics registered
-      const res = await employeesAPI.getPublicActiveEmployees();
-      if (res.success) {
-        setGateEmployees(res.data || []);
-      }
-
-      // 2. Fetch today's check-ins from attendance log
-      const todayStr = new Date().toISOString().split('T')[0];
-      const attRes = await employeesAPI.getAttendance(todayStr);
-      if (attRes.success) {
-        const attendanceMap = attRes.data.attendance || {};
-        const logs: CheckInLog[] = [];
-
-        // Query all active employees to map names
-        const empRes = await employeesAPI.getEmployees({ status: 'active' });
-        const allActiveEmps: Employee[] = empRes.success ? empRes.data : [];
-
-        allActiveEmps.forEach(emp => {
-          const rec = attendanceMap[emp.id];
-          if (rec && rec.status === 'present' && rec.remarks === 'Biometric Check-In') {
-            logs.push({
-              id: emp.id,
-              name: emp.name,
-              time: 'Checked In'
-            });
-          }
-        });
-
-        setTodayCheckIns(logs);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load biometric gate data');
-    } finally {
-      setLoadingGate(false);
-    }
-  };
-
   const showNotification = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 
-  // WebAuthn Biometric Registration Handler
-  const handleRegisterBiometrics = async (emp: Employee) => {
-    setError(null);
-    if (!window.PublicKeyCredential) {
-      setError('Biometric authentication is not supported by your browser or system.');
-      return;
-    }
-
+  const openAddModal = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    setPreviewAddImage(null);
+    setEmployeeForm({
+      employee_code: '',
+      name: '',
+      role: '',
+      contact: '',
+      blood_group: '',
+      address: '',
+      monthly_salary: '',
+      salary_type: 'monthly',
+      joining_date: today,
+      status: 'active'
+    });
+    setIsAddModalOpen(true);
     try {
-      showNotification(`Preparing registry for ${emp.name}...`);
-      
-      // 1. Get registration challenge from server
-      const res = await employeesAPI.getRegisterChallenge(emp.id);
-      if (!res.success) throw new Error(res.message);
-      
-      const hexChallenge = res.data.challenge;
-      const challengeBuffer = hexToBytes(hexChallenge);
-      
-      // Generate a user ID buffer
-      const userIdBuffer = new TextEncoder().encode(`SDS-EMP-${emp.id}`);
-
-      // 2. Configure WebAuthn creation options
-      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-        challenge: challengeBuffer as any,
-        rp: {
-          name: "Sri Devi Snacks Portal",
-          id: window.location.hostname
-        },
-        user: {
-          id: userIdBuffer as any,
-          name: emp.name,
-          displayName: emp.name
-        },
-        pubKeyCredParams: [
-          { type: "public-key", alg: -7 },  // ES256
-          { type: "public-key", alg: -257 } // RS256
-        ],
-        authenticatorSelection: {
-          authenticatorAttachment: "platform",
-          userVerification: "required"
-        },
-        timeout: 60000
-      };
-
-      // 3. Request credential creation (prompts fingerprint dialog)
-      const credential = await navigator.credentials.create({
-        publicKey: publicKeyCredentialCreationOptions
-      }) as PublicKeyCredential;
-
-      if (!credential) {
-        throw new Error("Registry cancelled or failed.");
+      const res = await employeesAPI.getNextEmployeeCode(today);
+      if (res.success && res.data?.employee_code) {
+        setEmployeeForm(prev => ({ ...prev, employee_code: res.data.employee_code }));
       }
-
-      // 4. Extract public key and credential id
-      const attestationResponse = credential.response as AuthenticatorAttestationResponse;
-      const publicKeyDer = attestationResponse.getPublicKey();
-      if (!publicKeyDer) throw new Error("Could not retrieve public key from fingerprint hardware");
-      const publicKeyBase64 = bytesToBase64(new Uint8Array(publicKeyDer));
-      const credentialId = credential.id;
-
-      // 5. Send key to server
-      const regRes = await employeesAPI.registerBiometrics({
-        employee_id: emp.id,
-        credential_id: credentialId,
-        public_key: publicKeyBase64,
-        device_name: `${navigator.platform} (${navigator.userAgent.substring(0, 30)})`
-      });
-
-      if (regRes.success) {
-        showNotification(`Successfully registered fingerprint for ${emp.name}!`);
-        fetchEmployees();
-      } else {
-        throw new Error(regRes.message);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Fingerprint registration failed. Make sure biometrics are set up on your device.');
+    } catch (e) {
+      console.error('Failed to get next employee code', e);
     }
   };
 
-  // WebAuthn Biometric Verification Check-in
-  const handleBiometricGateCheckIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setGateSuccess(null);
-
-    if (!selectedGateEmpId) {
-      setError('Please select your name first.');
-      return;
-    }
-
-    if (!window.PublicKeyCredential) {
-      setError('Biometric authentication is not supported by your browser or system.');
-      return;
-    }
-
-    setGateScanning(true);
+  const handleJoiningDateChange = async (dateVal: string) => {
+    setEmployeeForm(prev => ({ ...prev, joining_date: dateVal }));
     try {
-      // 1. Fetch challenge & credential ID from server
-      const res = await employeesAPI.getVerifyChallenge(selectedGateEmpId);
-      if (!res.success) throw new Error(res.message);
+      const res = await employeesAPI.getNextEmployeeCode(dateVal);
+      if (res.success && res.data?.employee_code) {
+        setEmployeeForm(prev => ({ ...prev, employee_code: res.data.employee_code }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-      const { challenge, credential_id } = res.data;
-      const challengeBuffer = hexToBytes(challenge);
-      const credentialIdBuffer = base64ToBytes(credential_id);
-
-      // 2. Configure request parameters
-      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
-        challenge: challengeBuffer as any,
-        allowCredentials: [{
-          id: credentialIdBuffer as any,
-          type: 'public-key'
-        }],
-        userVerification: 'required',
-        timeout: 60000
+  const handleAddImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        try {
+          const compressed = await compressImage(base64);
+          setPreviewAddImage(compressed);
+        } catch {
+          setPreviewAddImage(base64);
+        }
       };
+      reader.readAsDataURL(file);
+    }
+  };
 
-      // 3. Scan finger
-      const assertion = await navigator.credentials.get({
-        publicKey: publicKeyCredentialRequestOptions
-      }) as PublicKeyCredential;
-
-      if (!assertion) {
-        throw new Error("Biometric scan cancelled.");
-      }
-
-      // 4. Encode assertion components as hex
-      const assertionResponse = assertion.response as AuthenticatorAssertionResponse;
-      const authDataHex = bytesToHex(new Uint8Array(assertionResponse.authenticatorData));
-      const signatureHex = bytesToHex(new Uint8Array(assertionResponse.signature));
-      const clientDataStr = new TextDecoder().decode(assertionResponse.clientDataJSON);
-
-      // 5. Send response to server to sign/mark present
-      const verifyRes = await employeesAPI.verifyBiometrics({
-        employee_id: selectedGateEmpId,
-        authenticator_data: authDataHex,
-        client_data_json: clientDataStr,
-        signature: signatureHex
-      });
-
-      if (verifyRes.success) {
-        const matchedEmp = gateEmployees.find(e => e.id === selectedGateEmpId);
-        setGateSuccess({
-          name: matchedEmp ? matchedEmp.name : 'Employee',
-          time: verifyRes.data.time
-        });
-        setSelectedGateEmpId('');
-        fetchGateData();
-      } else {
-        throw new Error(verifyRes.message);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Verification failed. Please scan your registered finger.');
-    } finally {
-      setGateScanning(false);
+  const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        try {
+          const compressed = await compressImage(base64);
+          setPreviewEditImage(compressed);
+        } catch {
+          setPreviewEditImage(base64);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -470,101 +367,37 @@ const Employees: React.FC = () => {
       }
 
       const res = await employeesAPI.createEmployee({
+        employee_code: employeeForm.employee_code,
         name: employeeForm.name,
+        role: employeeForm.role,
         contact: employeeForm.contact,
+        blood_group: employeeForm.blood_group,
+        address: employeeForm.address,
+        image: previewAddImage,
         monthly_salary: salary,
         salary_type: employeeForm.salary_type,
         joining_date: employeeForm.joining_date
       });
 
       if (res.success) {
-        const newId = res.data?.id;
-        const employeeName = employeeForm.name;
-
         showNotification('Employee added successfully');
         setIsAddModalOpen(false);
+        setPreviewAddImage(null);
         setEmployeeForm({
+          employee_code: '',
           name: '',
+          role: '',
           contact: '',
+          blood_group: '',
+          address: '',
           monthly_salary: '',
           salary_type: 'monthly',
           joining_date: new Date().toISOString().split('T')[0],
           status: 'active'
         });
         fetchEmployees();
-
-        if (registerBioImmediately && newId && window.PublicKeyCredential) {
-          try {
-            showNotification(`Preparing fingerprint registry for ${employeeName}...`);
-            
-            // 1. Get registration challenge from server
-            const chalRes = await employeesAPI.getRegisterChallenge(newId);
-            if (!chalRes.success) throw new Error(chalRes.message);
-            
-            const hexChallenge = chalRes.data.challenge;
-            const challengeBuffer = hexToBytes(hexChallenge);
-            
-            // Generate a user ID buffer
-            const userIdBuffer = new TextEncoder().encode(`SDS-EMP-${newId}`);
-
-            // 2. Configure WebAuthn creation options
-            const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-              challenge: challengeBuffer as any,
-              rp: {
-                name: "Sri Devi Snacks Portal",
-                id: window.location.hostname
-              },
-              user: {
-                id: userIdBuffer as any,
-                name: employeeName,
-                displayName: employeeName
-              },
-              pubKeyCredParams: [
-                { type: "public-key", alg: -7 },  // ES256
-                { type: "public-key", alg: -257 } // RS256
-              ],
-              authenticatorSelection: {
-                authenticatorAttachment: "platform",
-                userVerification: "required"
-              },
-              timeout: 60000
-            };
-
-            // 3. Request credential creation (prompts fingerprint dialog)
-            const credential = await navigator.credentials.create({
-              publicKey: publicKeyCredentialCreationOptions
-            }) as PublicKeyCredential;
-
-            if (!credential) {
-              throw new Error("Registry cancelled or failed.");
-            }
-
-            // 4. Extract public key and credential id
-            const attestationResponse = credential.response as AuthenticatorAttestationResponse;
-            const publicKeyDer = attestationResponse.getPublicKey();
-            if (!publicKeyDer) throw new Error("Could not retrieve public key from fingerprint hardware");
-            const publicKeyBase64 = bytesToBase64(new Uint8Array(publicKeyDer));
-            const credentialId = credential.id;
-
-            // 5. Send key to server
-            const regRes = await employeesAPI.registerBiometrics({
-              employee_id: newId,
-              credential_id: credentialId,
-              public_key: publicKeyBase64,
-              device_name: `${navigator.platform} (${navigator.userAgent.substring(0, 30)})`
-            });
-
-            if (regRes.success) {
-              showNotification(`Successfully registered fingerprint for ${employeeName}!`);
-              fetchEmployees();
-            } else {
-              throw new Error(regRes.message);
-            }
-          } catch (bioErr: any) {
-            console.error(bioErr);
-            setError(`Employee was added, but fingerprint registration was skipped: ${bioErr.message || 'Make sure biometrics are set up on your device.'}`);
-          }
-        }
+      } else {
+        throw new Error(res.message);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to add employee');
@@ -582,8 +415,13 @@ const Employees: React.FC = () => {
       }
 
       const res = await employeesAPI.updateEmployee(selectedEmployee.id, {
+        employee_code: employeeForm.employee_code,
         name: employeeForm.name,
+        role: employeeForm.role,
         contact: employeeForm.contact,
+        blood_group: employeeForm.blood_group,
+        address: employeeForm.address,
+        image: previewEditImage,
         monthly_salary: salary,
         salary_type: employeeForm.salary_type,
         joining_date: employeeForm.joining_date,
@@ -594,7 +432,10 @@ const Employees: React.FC = () => {
         showNotification('Employee updated successfully');
         setIsEditModalOpen(false);
         setSelectedEmployee(null);
+        setPreviewEditImage(null);
         fetchEmployees();
+      } else {
+        throw new Error(res.message);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to update employee');
@@ -622,9 +463,14 @@ const Employees: React.FC = () => {
 
   const openEditModal = (emp: Employee) => {
     setSelectedEmployee(emp);
+    setPreviewEditImage(emp.image || null);
     setEmployeeForm({
+      employee_code: emp.employee_code || '',
       name: emp.name,
+      role: emp.role || '',
       contact: emp.contact,
+      blood_group: emp.blood_group || '',
+      address: emp.address || '',
       monthly_salary: emp.monthly_salary.toString(),
       salary_type: emp.salary_type || 'monthly',
       joining_date: emp.joining_date,
@@ -685,6 +531,26 @@ const Employees: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save attendance');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearDemoAttendance = async () => {
+    if (!window.confirm("Are you sure you want to delete all demo attendance records before 01/10/2026?\n\n01/10/2026-க்கு முந்தைய அனைத்து டெமோ வருகைப் பதிவுகளையும் நீக்க விரும்புகிறீர்களா?")) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await employeesAPI.clearDemoAttendance();
+      if (res.success) {
+        showNotification(res.message || 'Demo attendance records deleted successfully');
+        fetchAttendance();
+        fetchSalarySummary();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete demo attendance');
     } finally {
       setLoading(false);
     }
@@ -780,10 +646,13 @@ const Employees: React.FC = () => {
     }
   };
 
-  const filteredEmployees = employees.filter(emp =>
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.contact.includes(searchTerm)
-  );
+  const filteredEmployees = employees.filter(emp => {
+    const code = getEmployeeCode(emp).toLowerCase();
+    const search = searchTerm.toLowerCase();
+    return emp.name.toLowerCase().includes(search) ||
+      emp.contact.includes(searchTerm) ||
+      code.includes(search);
+  });
 
   // Totals calculations for the salary summary tab
   const totalSalaries = salarySummary.reduce((sum, item) => sum + item.current_month_salary, 0);
@@ -851,7 +720,7 @@ const Employees: React.FC = () => {
 
         {activeTab === 'directory' && (
           <button
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={openAddModal}
             className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow transition"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -872,7 +741,7 @@ const Employees: React.FC = () => {
                 type="text"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Search employees by name or contact..."
+                placeholder="Search employees by name, ID or contact..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -895,20 +764,60 @@ const Employees: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider border-b border-gray-200">
-                    <th className="py-4 px-6">Name</th>
+                    <th className="py-4 px-6">Emp ID</th>
+                    <th className="py-4 px-6">Employee</th>
                     <th className="py-4 px-6">Contact</th>
                     <th className="py-4 px-6">Joining Date</th>
                     <th className="py-4 px-6">Base Salary</th>
-                    <th className="py-4 px-6">Biometrics</th>
                     <th className="py-4 px-6">Status</th>
                     <th className="py-4 px-6 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                   {filteredEmployees.map(emp => (
-                    <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-4 px-6 font-semibold text-gray-900">{emp.name}</td>
-                      <td className="py-4 px-6">{emp.contact}</td>
+                    <tr
+                      key={emp.id}
+                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <span className="text-xs font-mono font-bold bg-purple-100 text-purple-800 border border-purple-300 px-2.5 py-1 rounded-lg shadow-xs inline-block">
+                          {getEmployeeCode(emp)}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center space-x-3">
+                          {emp.image ? (
+                            <img
+                              src={emp.image}
+                              alt={emp.name}
+                              className="w-10 h-10 rounded-xl object-cover border border-gray-200 shadow-sm flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm flex-shrink-0">
+                              {emp.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-gray-900 group-hover:text-blue-600 transition block">
+                                {emp.name}
+                              </span>
+                              {emp.employee_code && (
+                                <span className="text-[11px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md shadow-xs">
+                                  {emp.employee_code}
+                                </span>
+                              )}
+                            </div>
+                            {emp.role && (
+                              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-medium inline-block mt-0.5">
+                                {emp.role}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 font-medium">{emp.contact}</td>
                       <td className="py-4 px-6">{new Date(emp.joining_date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</td>
                       <td className="py-4 px-6 font-medium text-gray-900">
                         ₹{emp.monthly_salary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -916,26 +825,7 @@ const Employees: React.FC = () => {
                           {emp.salary_type === 'daily' ? 'Daily Wage' : 'Monthly Wage'}
                         </span>
                       </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                            emp.is_biometric_registered
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {emp.is_biometric_registered ? 'Registered' : 'Not Setup'}
-                          </span>
-                          <button
-                            onClick={() => handleRegisterBiometrics(emp)}
-                            className="inline-flex items-center text-xs text-emerald-600 hover:text-emerald-800 font-semibold bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded transition border border-emerald-200"
-                            title="Register Fingerprint on this device"
-                          >
-                            <Fingerprint className="h-3.5 w-3.5 mr-1" />
-                            Setup
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
+                                            <td className="py-4 px-6">
                         <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full border ${
                           emp.status === 'active'
                             ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -944,20 +834,28 @@ const Employees: React.FC = () => {
                           {emp.status}
                         </span>
                       </td>
-                      <td className="py-4 px-6 text-center">
-                        <div className="flex justify-center space-x-3">
+                      <td className="py-4 px-6 text-center" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-center space-x-2">
+                          <button
+                            onClick={() => navigate(`/employees/${emp.id}`)}
+                            className="inline-flex items-center text-xs text-indigo-600 hover:text-indigo-800 font-semibold bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition border border-indigo-200 shadow-sm"
+                            title="View Full Profile"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            View
+                          </button>
                           <button
                             onClick={() => openEditModal(emp)}
-                            className="inline-flex items-center text-blue-600 hover:text-blue-800 font-semibold transition"
+                            className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 font-semibold bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition border border-blue-200 shadow-sm"
                           >
-                            <Edit className="h-4 w-4 mr-1" />
+                            <Edit className="h-3.5 w-3.5 mr-1" />
                             Edit
                           </button>
                           <button
                             onClick={() => handleDeleteEmployee(emp.id, emp.name)}
-                            className="inline-flex items-center text-red-600 hover:text-red-800 font-semibold transition"
+                            className="inline-flex items-center text-xs text-red-600 hover:text-red-800 font-semibold bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition border border-red-200 shadow-sm"
                           >
-                            <Trash2 className="h-4 w-4 mr-1" />
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
                             Delete
                           </button>
                         </div>
@@ -973,7 +871,9 @@ const Employees: React.FC = () => {
 
       {/* Attendance Tab */}
       {activeTab === 'attendance' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="space-y-4">
+          {/* Informational Banner: Auto-Attendance & Demo Notice */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {/* Header Controls */}
           <div className="p-5 border-b border-gray-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 bg-gray-50/60">
             <div className="flex flex-wrap items-center gap-3">
@@ -1091,7 +991,12 @@ const Employees: React.FC = () => {
                       return (
                         <tr key={record.employee_id} className={`transition-colors ${isAbsent ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'hover:bg-gray-50'}`}>
                           <td className="py-4 px-6">
-                            <div className="font-bold text-gray-900 text-base">{emp.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900 text-base">{emp.name}</span>
+                              <span className="text-xs font-mono font-bold bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md shadow-xs">
+                                {getEmployeeCode(emp)}
+                              </span>
+                            </div>
                             <div className="flex flex-wrap items-center gap-2 mt-1">
                               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                                 emp.salary_type === 'daily'
@@ -1104,12 +1009,7 @@ const Employees: React.FC = () => {
                                 Month Total: <strong className="text-emerald-700">{stats.present} Present</strong> / <strong className="text-rose-700">{totalAbsentThisMonth} Absent</strong>
                               </span>
                             </div>
-                            {record.remarks === 'Biometric Check-In' && (
-                              <div className="text-xs text-emerald-600 font-medium flex items-center mt-1">
-                                <Fingerprint className="h-3 w-3 mr-0.5" />
-                                Checked in via fingerprint
-                              </div>
-                            )}
+
                           </td>
                           <td className="py-4 px-6 text-center">
                             <div className="inline-flex rounded-xl p-1 bg-gray-100 border border-gray-200 shadow-inner gap-2">
@@ -1183,11 +1083,14 @@ const Employees: React.FC = () => {
             </div>
           )}
         </div>
+        </div>
       )}
 
       {/* Salaries & Payments Tab */}
       {activeTab === 'salaries' && (
         <div className="space-y-6">
+          {/* Live Salary Notice */}
+      
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Month Salaries</span>
@@ -1261,7 +1164,12 @@ const Employees: React.FC = () => {
                       return (
                         <tr key={item.employee_id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-4 px-4 font-semibold text-gray-900">
-                            <div>{item.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span>{item.name}</span>
+                              <span className="text-[11px] font-mono font-bold bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded shadow-xs">
+                                {getEmployeeCode({ id: item.employee_id, employee_code: item.employee_code })}
+                              </span>
+                            </div>
                             <div className="text-xs font-normal text-gray-500">{item.contact}</div>
                           </td>
                           <td className="py-4 px-4 text-center">
@@ -1355,238 +1263,221 @@ const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Biometric Gate Tab */}
-      {activeTab === 'biometric-gate' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Scanning Terminal */}
-          <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-between min-h-[480px]">
-            <div className="text-center w-full">
-              <h3 className="text-xl font-bold text-gray-800">Biometric Attendance Terminal</h3>
-              <p className="text-sm text-gray-500 mt-1">Select your name, then tap scan to register present status.</p>
-              <div className="text-2xl font-semibold text-gray-900 mt-4 tracking-wide font-mono">
-                {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-              </div>
-              <div className="text-sm font-medium text-gray-500">{new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}</div>
-            </div>
-
-            <form onSubmit={handleBiometricGateCheckIn} className="w-full max-w-sm space-y-6 my-8">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 text-center">Select Employee Name</label>
-                {loadingGate ? (
-                  <div className="flex justify-center py-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                  </div>
-                ) : gateEmployees.length === 0 ? (
-                  <p className="text-center text-xs text-rose-600 bg-rose-50 p-3 rounded-lg border border-rose-100">
-                    No employees have fingerprint biometrics registered yet. Please setup biometrics in the "Employees List" tab first.
-                  </p>
-                ) : (
-                  <select
-                    value={selectedGateEmpId}
-                    onChange={e => {
-                      setSelectedGateEmpId(e.target.value ? parseInt(e.target.value) : '');
-                      setGateSuccess(null);
-                    }}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg shadow-sm"
-                  >
-                    <option value="">-- Choose Your Name --</option>
-                    {gateEmployees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="flex flex-col items-center justify-center">
-                <button
-                  type="submit"
-                  disabled={!selectedGateEmpId || gateScanning}
-                  className={`w-36 h-36 rounded-full flex flex-col items-center justify-center border-4 transition shadow-lg ${
-                    gateScanning
-                      ? 'bg-blue-50 border-blue-600 text-blue-600 scale-95 shadow-inner cursor-wait animate-pulse'
-                      : selectedGateEmpId
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-600 hover:bg-emerald-100 hover:scale-105 active:scale-95 cursor-pointer'
-                        : 'bg-gray-50 border-gray-300 text-gray-300 cursor-not-allowed'
-                  }`}
-                >
-                  <Fingerprint className={`w-16 h-16 ${gateScanning ? 'animate-pulse' : ''}`} />
-                  <span className="text-xs font-bold mt-2 uppercase tracking-wider">
-                    {gateScanning ? 'Scanning...' : 'Scan Finger'}
-                  </span>
-                </button>
-              </div>
-            </form>
-
-            {/* Success visual banner */}
-            <div className="w-full min-h-[60px] flex items-center justify-center">
-              {gateSuccess && (
-                <div className="bg-emerald-100 border border-emerald-200 text-emerald-800 px-6 py-3 rounded-2xl flex items-center space-x-3 w-full max-w-md shadow-sm animate-in fade-in zoom-in-95">
-                  <CheckCircle className="h-6 w-6 text-emerald-600 flex-shrink-0" />
-                  <div>
-                    <div className="font-bold text-sm">Check-in Success!</div>
-                    <div className="text-xs">{gateSuccess.name} marked Present at {gateSuccess.time}.</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Logs of today's check-ins */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col min-h-[480px]">
-            <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center">
-              <Smartphone className="h-4 w-4 mr-1.5 text-blue-600" />
-              Today's Biometric Logs
-            </h4>
-            <div className="flex-1 overflow-y-auto max-h-[360px] divide-y divide-gray-100">
-              {loadingGate ? (
-                <div className="py-12 flex flex-col items-center text-gray-500">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2 mb-2 text-blue-600" />
-                  <span className="text-xs">Loading logs...</span>
-                </div>
-              ) : todayCheckIns.length === 0 ? (
-                <div className="py-12 text-center text-xs text-gray-400">
-                  No biometric check-ins recorded yet today.
-                </div>
-              ) : (
-                todayCheckIns.map(log => (
-                  <div key={log.id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center space-x-2.5">
-                      <div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-full">
-                        <Fingerprint className="h-4 w-4" />
-                      </div>
-                      <span className="font-semibold text-gray-800 text-sm">{log.name}</span>
-                    </div>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">Checked In</span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="text-xs text-gray-400 text-center border-t border-gray-100 pt-3 mt-3">
-              Employees unchecked remain registered as "Absent/Leave" by default in salary summaries.
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Employee Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 overflow-y-auto">
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">Add New Employee</h3>
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h3 className="text-xl font-extrabold text-gray-900">Add New Employee</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Enter employee personal, job, and wage details</p>
+              </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleAddEmployee} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employee Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Saravanan K"
-                  value={employeeForm.name}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Contact Number</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="e.g. 9943206339"
-                  value={employeeForm.contact}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, contact: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
-                <div className="flex space-x-4 mb-2">
-                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="add_salary_type"
-                      value="monthly"
-                      checked={employeeForm.salary_type === 'monthly'}
-                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Monthly Wage</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="add_salary_type"
-                      value="daily"
-                      checked={employeeForm.salary_type === 'daily'}
-                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Daily Wage</span>
-                  </label>
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Auto-Generated Employee ID */}
+              <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs">
+                <div>
+                  <span className="text-xs font-bold text-purple-900 uppercase tracking-wider block">
+                    Employee ID (பணியாளர் எண்)
+                  </span>
+                  <p className="text-xs text-purple-600 mt-0.5">Auto-generated format: SDS-YY-MM-XXX</p>
+                </div>
+                <div className="flex items-center">
+                  <span className="font-mono text-base font-extrabold bg-white text-purple-800 px-3.5 py-1.5 rounded-xl border border-purple-300 shadow-sm">
+                    {employeeForm.employee_code || 'SDS-26-09-...'}
+                  </span>
                 </div>
               </div>
+
+              {/* Photo Upload Section */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                  {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹)' : 'Base Monthly Salary (₹)'}
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  placeholder={employeeForm.salary_type === 'daily' ? "e.g. 500" : "e.g. 15000"}
-                  value={employeeForm.monthly_salary}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Employee Photo</label>
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-gray-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {previewAddImage ? (
+                      <img src={previewAddImage} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="h-7 w-7 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <input
+                      type="file"
+                      id="add-emp-photo"
+                      accept="image/*"
+                      onChange={handleAddImageChange}
+                      className="hidden"
+                    />
+                    <div className="flex space-x-2">
+                      <label
+                        htmlFor="add-emp-photo"
+                        className="cursor-pointer px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition shadow-sm"
+                      >
+                        Choose Photo
+                      </label>
+                      {previewAddImage && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAddImage(null)}
+                          className="px-3 py-1.5 border border-transparent rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 transition"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-gray-400 block">Optional image upload</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Name & Job Role */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Employee Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Saravanan K"
+                    value={employeeForm.name}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Job Role / Work (வேலை) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Master Baker, Driver, Helper"
+                    value={employeeForm.role}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, role: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Contact & Blood Group */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Contact Phone *</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="e.g. 9943206339"
+                    value={employeeForm.contact}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, contact: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Blood Group</label>
+                  <select
+                    value={employeeForm.blood_group}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, blood_group: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-medium"
+                  >
+                    <option value="">-- Select Blood Group --</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Residential Address */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Residential Address (முகவரி)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Street name, door no, area, city, pincode"
+                  value={employeeForm.address}
+                  onChange={e => setEmployeeForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+
+              {/* Salary Structure */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
+                  <div className="flex space-x-3 pt-1.5">
+                    <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                      <input
+                        type="radio"
+                        name="add_salary_type"
+                        value="monthly"
+                        checked={employeeForm.salary_type === 'monthly'}
+                        onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Monthly Wage</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                      <input
+                        type="radio"
+                        name="add_salary_type"
+                        value="daily"
+                        checked={employeeForm.salary_type === 'daily'}
+                        onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Daily Wage</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹) *' : 'Base Monthly Salary (₹) *'}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder={employeeForm.salary_type === 'daily' ? "e.g. 500" : "e.g. 15000"}
+                    value={employeeForm.monthly_salary}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-bold text-gray-900"
+                  />
+                </div>
+              </div>
+
+              {/* Joining Date */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Joining Date</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Joining Date *</label>
                 <input
                   type="date"
                   required
                   value={employeeForm.joining_date}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, joining_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                  onChange={e => handleJoiningDateChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
                 />
               </div>
-              <div className="pt-2 border-t border-gray-100 mt-2">
-                {window.PublicKeyCredential ? (
-                  <label className="flex items-center space-x-2.5 cursor-pointer p-1.5 rounded hover:bg-gray-50 transition">
-                    <input
-                      type="checkbox"
-                      checked={registerBioImmediately}
-                      onChange={e => setRegisterBioImmediately(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <span className="text-sm font-semibold text-gray-700 flex items-center select-none">
-                      <Fingerprint className="h-4 w-4 mr-1.5 text-emerald-600 animate-pulse" />
-                      Register Fingerprint Now
-                    </span>
-                  </label>
-                ) : (
-                  <div className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-xl border border-amber-100 flex items-center">
-                    <Fingerprint className="h-4.5 w-4.5 mr-2 text-amber-600 flex-shrink-0" />
-                    <span>Fingerprint setup requires a secure connection (HTTPS).</span>
-                  </div>
-                )}
-              </div>
-              <div className="pt-2 flex justify-end space-x-2">
+
+              <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                  className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-semibold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm text-sm font-semibold"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md text-sm font-semibold transition"
                 >
                   Save Employee
                 </button>
@@ -1599,110 +1490,228 @@ const Employees: React.FC = () => {
       {/* Edit Employee Modal */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 overflow-y-auto">
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">Edit Employee Details</h3>
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h3 className="text-xl font-extrabold text-gray-900">Edit Employee Details</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Update profile, role, address, or compensation</p>
+              </div>
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleEditEmployee} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employee Name</label>
-                <input
-                  type="text"
-                  required
-                  value={employeeForm.name}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Contact Number</label>
-                <input
-                  type="tel"
-                  required
-                  value={employeeForm.contact}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, contact: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
-                <div className="flex space-x-4 mb-2">
-                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="edit_salary_type"
-                      value="monthly"
-                      checked={employeeForm.salary_type === 'monthly'}
-                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Monthly Wage</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="edit_salary_type"
-                      value="daily"
-                      checked={employeeForm.salary_type === 'daily'}
-                      onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Daily Wage</span>
-                  </label>
+            <form onSubmit={handleEditEmployee} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Employee ID */}
+              <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs">
+                <div>
+                  <span className="text-xs font-bold text-purple-900 uppercase tracking-wider block">
+                    Employee ID (பணியாளர் எண்)
+                  </span>
+                  <p className="text-xs text-purple-600 mt-0.5">Permanent employee identifier</p>
+                </div>
+                <div className="flex items-center">
+                  <span className="font-mono text-base font-extrabold bg-white text-purple-800 px-3.5 py-1.5 rounded-xl border border-purple-300 shadow-sm">
+                    {employeeForm.employee_code || 'Not Assigned'}
+                  </span>
                 </div>
               </div>
+
+              {/* Photo Upload Section */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                  {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹)' : 'Base Monthly Salary (₹)'}
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  placeholder={employeeForm.salary_type === 'daily' ? "e.g. 500" : "e.g. 15000"}
-                  value={employeeForm.monthly_salary}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Employee Photo</label>
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-gray-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {previewEditImage ? (
+                      <img src={previewEditImage} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="h-7 w-7 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <input
+                      type="file"
+                      id="edit-emp-photo-modal"
+                      accept="image/*"
+                      onChange={handleEditImageChange}
+                      className="hidden"
+                    />
+                    <div className="flex space-x-2">
+                      <label
+                        htmlFor="edit-emp-photo-modal"
+                        className="cursor-pointer px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition shadow-sm"
+                      >
+                        Choose Photo
+                      </label>
+                      {previewEditImage && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewEditImage(null)}
+                          className="px-3 py-1.5 border border-transparent rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 transition"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Name & Job Role */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Employee Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={employeeForm.name}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Job Role / Work (வேலை) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Master Baker, Driver, Helper"
+                    value={employeeForm.role}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, role: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Contact & Blood Group */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Contact Phone *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={employeeForm.contact}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, contact: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Blood Group</label>
+                  <select
+                    value={employeeForm.blood_group}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, blood_group: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-medium"
+                  >
+                    <option value="">-- Select Blood Group --</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Residential Address */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Residential Address (முகவரி)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Street name, door no, area, city, pincode"
+                  value={employeeForm.address}
+                  onChange={e => setEmployeeForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Joining Date</label>
-                <input
-                  type="date"
-                  required
-                  value={employeeForm.joining_date}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, joining_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                />
+
+              {/* Salary Structure */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Salary Type</label>
+                  <div className="flex space-x-3 pt-1.5">
+                    <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                      <input
+                        type="radio"
+                        name="edit_salary_type"
+                        value="monthly"
+                        checked={employeeForm.salary_type === 'monthly'}
+                        onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'monthly' }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Monthly Wage</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-sm font-semibold cursor-pointer">
+                      <input
+                        type="radio"
+                        name="edit_salary_type"
+                        value="daily"
+                        checked={employeeForm.salary_type === 'daily'}
+                        onChange={() => setEmployeeForm(prev => ({ ...prev, salary_type: 'daily' }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Daily Wage</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    {employeeForm.salary_type === 'daily' ? 'Daily Wage Rate (₹) *' : 'Base Monthly Salary (₹) *'}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={employeeForm.monthly_salary}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, monthly_salary: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-bold text-gray-900"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</label>
-                <select
-                  value={employeeForm.status}
-                  onChange={e => setEmployeeForm(prev => ({ ...prev, status: e.target.value as 'active' | 'inactive' }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700 bg-white"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+
+              {/* Joining Date & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Joining Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={employeeForm.joining_date}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, joining_date: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Status</label>
+                  <select
+                    value={employeeForm.status}
+                    onChange={e => setEmployeeForm(prev => ({ ...prev, status: e.target.value as 'active' | 'inactive' }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700 bg-white font-semibold"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
               </div>
-              <div className="pt-2 flex justify-end space-x-2">
+
+              <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                  className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-semibold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm text-sm font-semibold"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md text-sm font-semibold transition"
                 >
                   Save Changes
                 </button>

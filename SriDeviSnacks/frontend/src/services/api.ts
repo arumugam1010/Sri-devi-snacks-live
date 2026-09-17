@@ -406,14 +406,49 @@ export const employeesAPI = {
     return authenticatedFetch(`${API_BASE_URL}/employees${query}`);
   },
 
-  createEmployee: async (employeeData: { name: string; contact: string; monthly_salary: number; salary_type: 'monthly' | 'daily'; joining_date: string }) => {
+  getEmployee: async (id: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/${id}`);
+  },
+
+  getNextEmployeeCode: async (joiningDate?: string) => {
+    const query = joiningDate ? `?joining_date=${joiningDate}` : '';
+    return authenticatedFetch(`${API_BASE_URL}/employees/next-code${query}`);
+  },
+
+  createEmployee: async (employeeData: {
+    employee_code?: string;
+    name: string;
+    contact: string;
+    monthly_salary: number;
+    salary_type: 'monthly' | 'daily';
+    joining_date: string;
+    image?: string | null;
+    role?: string;
+    blood_group?: string;
+    address?: string;
+  }) => {
     return authenticatedFetch(`${API_BASE_URL}/employees`, {
       method: 'POST',
       body: JSON.stringify(employeeData),
     });
   },
 
-  updateEmployee: async (id: number, employeeData: { name: string; contact: string; monthly_salary: number; salary_type: 'monthly' | 'daily'; joining_date: string; status: string }) => {
+  updateEmployee: async (
+    id: number,
+    employeeData: {
+      employee_code?: string;
+      name: string;
+      contact: string;
+      monthly_salary: number;
+      salary_type: 'monthly' | 'daily';
+      joining_date: string;
+      status: string;
+      image?: string | null;
+      role?: string;
+      blood_group?: string;
+      address?: string;
+    }
+  ) => {
     return authenticatedFetch(`${API_BASE_URL}/employees/${id}`, {
       method: 'PUT',
       body: JSON.stringify(employeeData),
@@ -435,6 +470,12 @@ export const employeesAPI = {
     return authenticatedFetch(`${API_BASE_URL}/employees/attendance`, {
       method: 'POST',
       body: JSON.stringify(attendanceData),
+    });
+  },
+
+  clearDemoAttendance: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/employees/attendance/clear-demo`, {
+      method: 'POST',
     });
   },
 
@@ -528,6 +569,47 @@ export const fuelExpensesAPI = {
     return authenticatedFetch(`${API_BASE_URL}/fuel-expenses`, {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+};
+
+export interface CompanyExpenseInput {
+  category: 'fuel' | 'marapodi' | 'small_items' | 'other';
+  sub_category?: string;
+  item_name: string;
+  amount: number;
+  expense_date?: string;
+  quantity?: string;
+  payment_mode?: string;
+  remarks?: string;
+}
+
+// Company Expenses API
+export const expensesAPI = {
+  getExpenses: async (params?: { month?: string; from?: string; to?: string; category?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') queryParams.append(key, value);
+      });
+    }
+    return authenticatedFetch(`${API_BASE_URL}/expenses?${queryParams}`);
+  },
+  createExpense: async (data: CompanyExpenseInput) => {
+    return authenticatedFetch(`${API_BASE_URL}/expenses`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  updateExpense: async (id: number, data: CompanyExpenseInput) => {
+    return authenticatedFetch(`${API_BASE_URL}/expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  deleteExpense: async (id: number) => {
+    return authenticatedFetch(`${API_BASE_URL}/expenses/${id}`, {
+      method: 'DELETE',
     });
   },
 };
