@@ -173,11 +173,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
         settingsRes,
         gstFilingsRes
       ] = await Promise.all([
-        productsAPI.getProducts({ limit: 1000 }),
+        productsAPI.getProducts({ limit: 10000 }),
         stocksAPI.getStocks(),
-        shopsAPI.getShops({ limit: 1000 }),
+        shopsAPI.getShops({ limit: 10000 }),
         schedulesAPI.getSchedules(),
-        billsAPI.getBills({ limit: 1000 }),
+        billsAPI.getBills({ all: true, limit: 1000000 }),
         shopsAPI.getAllShopProducts(),
         settingsAPI.getSettings(),
         (user?.role === 'SUPER_ADMIN' || user?.role === 'ACCOUNTS') ? gstFilingsAPI.getFilings() : Promise.resolve({ success: true, data: [] })

@@ -103,7 +103,7 @@ export const authAPI = {
 
 // Bills API
 export const billsAPI = {
-  getBills: async (params?: { page?: number; limit?: number; search?: string; sortBy?: string; sortOrder?: string }) => {
+  getBills: async (params?: { page?: number; limit?: number; search?: string; sortBy?: string; sortOrder?: string; all?: boolean }) => {
     const queryParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {

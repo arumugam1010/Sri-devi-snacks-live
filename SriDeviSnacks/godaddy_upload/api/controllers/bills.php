@@ -208,6 +208,8 @@
         $sortBy = isset($_GET['sortBy']) ? $_GET['sortBy'] : 'createdAt';
         $sortOrder = isset($_GET['sortOrder']) && strtolower($_GET['sortOrder']) === 'asc' ? 'asc' : 'desc';
         
+        $isUnlimited = ($limit <= 0 || $limit >= 10000 || isset($_GET['all']));
+
         $sortFieldMap = [
             'id' => 'b.id',
             'billNumber' => 'b.bill_number',
@@ -221,8 +223,6 @@
             'shopName' => 's.shop_name'
         ];
         $sortBySql = $sortFieldMap[$sortBy] ?? 'b.createdAt';
-        
-        $offset = ($page - 1) * $limit;
         
         $db = getDatabaseConnection();
         try {
@@ -242,38 +242,173 @@
             $total = (int)$countStmt->fetchColumn();
             
             // Fetch bills
-            $querySql = "SELECT b.* FROM bills b
-                        JOIN shops s ON b.shop_id = s.id
-                        {$whereSql}
-                        ORDER BY {$sortBySql} {$sortOrder}
-                        LIMIT :limit OFFSET :offset";
-                        
-            $stmt = $db->prepare($querySql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-            foreach ($params as $key => $val) {
-                $stmt->bindValue(':' . $key, $val);
+            if ($isUnlimited) {
+                $querySql = "SELECT b.* FROM bills b
+                            JOIN shops s ON b.shop_id = s.id
+                            {$whereSql}
+                            ORDER BY {$sortBySql} {$sortOrder}";
+                $stmt = $db->prepare($querySql);
+                foreach ($params as $key => $val) {
+                    $stmt->bindValue(':' . $key, $val);
+                }
+            } else {
+                $offset = ($page - 1) * $limit;
+                $querySql = "SELECT b.* FROM bills b
+                            JOIN shops s ON b.shop_id = s.id
+                            {$whereSql}
+                            ORDER BY {$sortBySql} {$sortOrder}
+                            LIMIT :limit OFFSET :offset";
+                $stmt = $db->prepare($querySql);
+                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                foreach ($params as $key => $val) {
+                    $stmt->bindValue(':' . $key, $val);
+                }
             }
+            
             $stmt->execute();
             $billRows = $stmt->fetchAll();
             
+            // Batch load related records to prevent N+1 query performance bottleneck
             $bills = [];
-            foreach ($billRows as $row) {
-                $bills[] = formatBillRecord($db, $row);
+            if (!empty($billRows)) {
+                $billIds = array_map('intval', array_column($billRows, 'id'));
+                $shopIds = array_filter(array_unique(array_map('intval', array_column($billRows, 'shop_id'))));
+                $userIds = array_filter(array_unique(array_map('intval', array_column($billRows, 'user_id'))));
+
+                // 1. Batch fetch shops
+                $shopsMap = [];
+                if (!empty($shopIds)) {
+                    $shopChunks = array_chunk($shopIds, 500);
+                    foreach ($shopChunks as $chunk) {
+                        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                        $shopStmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt FROM shops WHERE id IN ($placeholders)");
+                        $shopStmt->execute($chunk);
+                        foreach ($shopStmt->fetchAll() as $s) {
+                            $s['id'] = (int)$s['id'];
+                            $shopsMap[$s['id']] = $s;
+                        }
+                    }
+                }
+
+                // 2. Batch fetch users
+                $usersMap = [];
+                if (!empty($userIds)) {
+                    $userChunks = array_chunk($userIds, 500);
+                    foreach ($userChunks as $chunk) {
+                        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                        $userStmt = $db->prepare("SELECT id, name, email FROM users WHERE id IN ($placeholders)");
+                        $userStmt->execute($chunk);
+                        foreach ($userStmt->fetchAll() as $u) {
+                            $u['id'] = (int)$u['id'];
+                            $usersMap[$u['id']] = $u;
+                        }
+                    }
+                }
+
+                // 3. Batch fetch bill items with products
+                $itemsMap = [];
+                if (!empty($billIds)) {
+                    $billIdChunks = array_chunk($billIds, 500);
+                    foreach ($billIdChunks as $chunk) {
+                        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                        $itemStmt = $db->prepare("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.hsn_code as hsnCode, bi.createdAt,
+                                                         p.product_name as productName, p.unit, p.hsn_code as p_hsnCode, p.gst as p_gst, p.price as p_price
+                                                  FROM bill_items bi
+                                                  JOIN products p ON bi.product_id = p.id
+                                                  WHERE bi.bill_id IN ($placeholders)");
+                        $itemStmt->execute($chunk);
+                        foreach ($itemStmt->fetchAll() as $item) {
+                            $bId = (int)$item['billId'];
+                            $itemsMap[$bId][] = [
+                                'id' => (int)$item['id'],
+                                'billId' => $bId,
+                                'productId' => (int)$item['productId'],
+                                'quantity' => (float)$item['quantity'],
+                                'rate' => (float)$item['rate'],
+                                'amount' => (float)$item['amount'],
+                                'sgst' => (float)$item['sgst'],
+                                'cgst' => (float)$item['cgst'],
+                                'hsnCode' => $item['hsnCode'],
+                                'createdAt' => $item['createdAt'],
+                                'product' => [
+                                    'id' => (int)$item['productId'],
+                                    'productName' => $item['productName'],
+                                    'unit' => $item['unit'],
+                                    'hsnCode' => $item['p_hsnCode'],
+                                    'gst' => (float)$item['p_gst'],
+                                    'price' => (float)$item['p_price']
+                                ]
+                            ];
+                        }
+                    }
+                }
+
+                // 4. Batch fetch payments
+                $paymentsMap = [];
+                if (!empty($billIds)) {
+                    $billIdChunks = array_chunk($billIds, 500);
+                    foreach ($billIdChunks as $chunk) {
+                        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                        $payStmt = $db->prepare("SELECT bill_id, amount, payment_mode FROM bill_payments WHERE bill_id IN ($placeholders)");
+                        $payStmt->execute($chunk);
+                        foreach ($payStmt->fetchAll() as $pay) {
+                            $bId = (int)$pay['bill_id'];
+                            if (!isset($paymentsMap[$bId])) {
+                                $paymentsMap[$bId] = ['cash' => 0, 'gpay' => 0];
+                            }
+                            if ($pay['payment_mode'] === 'CASH') {
+                                $paymentsMap[$bId]['cash'] += (float)$pay['amount'];
+                            } else if ($pay['payment_mode'] === 'GPAY') {
+                                $paymentsMap[$bId]['gpay'] += (float)$pay['amount'];
+                            }
+                        }
+                    }
+                }
+
+                // Assemble formatted bills
+                foreach ($billRows as $billRow) {
+                    $billId = (int)$billRow['id'];
+                    $shopId = (int)$billRow['shop_id'];
+                    $userId = (int)$billRow['user_id'];
+                    $pays = $paymentsMap[$billId] ?? ['cash' => 0, 'gpay' => 0];
+
+                    $bills[] = [
+                        'id' => $billId,
+                        'billNumber' => $billRow['bill_number'],
+                        'shopId' => $shopId,
+                        'userId' => $userId,
+                        'billDate' => $billRow['bill_date'],
+                        'totalAmount' => (float)$billRow['total_amount'],
+                        'receivedAmount' => (float)$billRow['received_amount'],
+                        'pendingAmount' => (float)$billRow['pending_amount'],
+                        'status' => $billRow['status'],
+                        'notes' => $billRow['notes'],
+                        'payment_mode' => $billRow['payment_mode'] ?? null,
+                        'cash_amount' => $pays['cash'],
+                        'gpay_amount' => $pays['gpay'],
+                        'signature' => $billRow['signature'],
+                        'createdAt' => $billRow['createdAt'],
+                        'updatedAt' => $billRow['updatedAt'],
+                        'shop' => $shopsMap[$shopId] ?? null,
+                        'user' => $usersMap[$userId] ?? null,
+                        'billItems' => $itemsMap[$billId] ?? []
+                    ];
+                }
             }
             
-            $totalPages = ceil($total / $limit);
+            $totalPages = $isUnlimited ? 1 : max(1, (int)ceil($total / max(1, $limit)));
             
             echo json_encode([
                 'success' => true,
                 'data' => $bills,
                 'pagination' => [
                     'page' => $page,
-                    'limit' => $limit,
+                    'limit' => $isUnlimited ? $total : $limit,
                     'total' => $total,
                     'totalPages' => $totalPages,
-                    'hasNext' => $page < $totalPages,
-                    'hasPrev' => $page > 1
+                    'hasNext' => $isUnlimited ? false : ($page < $totalPages),
+                    'hasPrev' => $isUnlimited ? false : ($page > 1)
                 ]
             ]);
             exit;
