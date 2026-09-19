@@ -35,9 +35,21 @@ export default function BakeryBilling() {
   const [allShops, setAllShops] = useState<BakeryShop[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const [billItems, setBillItems] = useState<BillItem[]>([]);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [billItems, setBillItems] = useState<BillItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('bakery_current_bill');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to load saved bakery bill items', e);
+      return [];
+    }
+  });
+  const [customerName, setCustomerName] = useState<string>(() => {
+    return localStorage.getItem('bakery_customer_name') || '';
+  });
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    return localStorage.getItem('bakery_customer_phone') || '';
+  });
   
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paidAmount, setPaidAmount] = useState<string>('');
@@ -45,7 +57,10 @@ export default function BakeryBilling() {
 
   const [currentLocation, setCurrentLocation] = useState<string>('Main Branch');
   const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
-  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('bakery_selected_shop_id');
+    return saved ? Number(saved) : null;
+  });
   const [nearbyShops, setNearbyShops] = useState<(BakeryShop & { distance: number })[]>([]);
   const [showNearbyModal, setShowNearbyModal] = useState(false);
 
@@ -86,6 +101,43 @@ export default function BakeryBilling() {
         .catch(err => console.error('Failed to convert logo to base64:', err));
     }
   }, []);
+
+  // Auto-persist draft bill items to localStorage so refreshing won't lose items
+  useEffect(() => {
+    try {
+      if (billItems && billItems.length > 0) {
+        localStorage.setItem('bakery_current_bill', JSON.stringify(billItems));
+      } else {
+        localStorage.removeItem('bakery_current_bill');
+      }
+    } catch (e) {
+      console.error('Failed to save bakery bill items to localStorage', e);
+    }
+  }, [billItems]);
+
+  useEffect(() => {
+    if (customerName) {
+      localStorage.setItem('bakery_customer_name', customerName);
+    } else {
+      localStorage.removeItem('bakery_customer_name');
+    }
+  }, [customerName]);
+
+  useEffect(() => {
+    if (customerPhone) {
+      localStorage.setItem('bakery_customer_phone', customerPhone);
+    } else {
+      localStorage.removeItem('bakery_customer_phone');
+    }
+  }, [customerPhone]);
+
+  useEffect(() => {
+    if (selectedShopId !== null && selectedShopId !== undefined) {
+      localStorage.setItem('bakery_selected_shop_id', String(selectedShopId));
+    } else {
+      localStorage.removeItem('bakery_selected_shop_id');
+    }
+  }, [selectedShopId]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3; // metres
@@ -209,6 +261,13 @@ export default function BakeryBilling() {
     if (confirm('Clear current bill?')) {
       setBillItems([]);
       setPaidAmount('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setSelectedShopId(null);
+      localStorage.removeItem('bakery_current_bill');
+      localStorage.removeItem('bakery_customer_name');
+      localStorage.removeItem('bakery_customer_phone');
+      localStorage.removeItem('bakery_selected_shop_id');
     }
   };
 
@@ -391,6 +450,10 @@ export default function BakeryBilling() {
       setCustomerPhone('');
       setSelectedShopId(null);
       setPaidAmount('');
+      localStorage.removeItem('bakery_current_bill');
+      localStorage.removeItem('bakery_customer_name');
+      localStorage.removeItem('bakery_customer_phone');
+      localStorage.removeItem('bakery_selected_shop_id');
       fetchProducts();
       
       if (andPrint) {
@@ -429,6 +492,10 @@ export default function BakeryBilling() {
       setCustomerPhone('');
       setSelectedShopId(null);
       setPaidAmount('');
+      localStorage.removeItem('bakery_current_bill');
+      localStorage.removeItem('bakery_customer_name');
+      localStorage.removeItem('bakery_customer_phone');
+      localStorage.removeItem('bakery_selected_shop_id');
       fetchProducts();
       alert("Bill saved as pending successfully!");
 
