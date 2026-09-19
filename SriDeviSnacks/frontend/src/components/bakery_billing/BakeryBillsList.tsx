@@ -1,15 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { bakeryBillsAPI } from '../../services/api';
-import { Receipt, Calendar, User, Phone, CheckCircle, Clock, ArrowLeft } from 'lucide-react';
+import { Receipt, Calendar, User, Phone, CheckCircle, Clock, ArrowLeft, Printer } from 'lucide-react';
+import { printBakeryBill } from '../../utils/bakeryPrint';
 
 export default function BakeryBillsList() {
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [logoBase64String, setLogoBase64String] = useState<string>('');
+
+  const [useRawBT] = useState<boolean>(() => {
+    const saved = localStorage.getItem('useRawBT');
+    if (saved !== null) return saved === 'true';
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
+  });
 
   useEffect(() => {
     fetchBills();
+
+    fetch('/Logo.png')
+      .then(res => res.blob())
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setLogoBase64String(reader.result as string);
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(err => console.error('Failed to convert logo to base64:', err));
   }, []);
 
   const fetchBills = async () => {
@@ -107,6 +127,7 @@ export default function BakeryBillsList() {
                   <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total (₹)</th>
                   <th className="px-3 md:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Pending (₹)</th>
                   <th className="px-3 md:px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-3 md:px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
@@ -163,6 +184,17 @@ export default function BakeryBillsList() {
                           <CheckCircle className="w-3 h-3 md:mr-1" /> <span className="hidden md:inline">Paid</span>
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 md:px-6 py-4 whitespace-nowrap text-center">
+                      <button
+                        type="button"
+                        onClick={() => printBakeryBill(bill, useRawBT, logoBase64String || '/Logo.png')}
+                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                        title="Print Bill"
+                      >
+                        <Printer className="w-3.5 h-3.5 mr-1" />
+                        Print
+                      </button>
                     </td>
                   </tr>
                 ))}

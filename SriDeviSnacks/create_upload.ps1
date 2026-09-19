@@ -10,6 +10,9 @@ Copy-Item -Path "$source_dir\frontend\dist\*" -Destination $upload_dir -Recurse 
 Write-Host "Copying backend files..."
 New-Item -ItemType Directory -Force -Path "$upload_dir\api" | Out-Null
 Get-ChildItem -Path "$source_dir\php-backend" -Force | Where-Object { $_.Name -ne 'db.sqlite' -and $_.Name -ne 'test_query.php' -and $_.Name -ne 'README.md' } | Copy-Item -Destination "$upload_dir\api" -Recurse -Force
+if (Test-Path "$source_dir\php-backend\.env.godaddy") {
+    Copy-Item -Path "$source_dir\php-backend\.env.godaddy" -Destination "$upload_dir\api\.env" -Force
+}
 
 if (Test-Path "$source_dir\SriDeviSnacks_Upload.zip") {
     Write-Host "Removing old zip..."

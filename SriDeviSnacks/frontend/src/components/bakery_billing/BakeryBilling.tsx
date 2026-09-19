@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff, Search } from 'lucide-react';
+import { ShoppingCart, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff, Search, Clock } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI, bakeryShopsAPI } from '../../services/api';
-import html2canvas from 'html2canvas';
+import { printBakeryBill } from '../../utils/bakeryPrint';
 
 const Logo = '/Logo.png';
 
@@ -62,6 +62,8 @@ export default function BakeryBilling() {
     return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
   });
 
+  const [logoBase64String, setLogoBase64String] = useState<string>('');
+
   const handleToggleRawBT = (checked: boolean) => {
     setUseRawBT(checked);
     localStorage.setItem('useRawBT', String(checked));
@@ -70,6 +72,19 @@ export default function BakeryBilling() {
   useEffect(() => {
     fetchProducts();
     fetchShopsAndDetectLocation();
+
+    if (Logo) {
+      fetch(Logo)
+        .then(res => res.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setLogoBase64String(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(err => console.error('Failed to convert logo to base64:', err));
+    }
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -425,259 +440,27 @@ export default function BakeryBilling() {
   };
 
   const handlePrint = async (billData: any) => {
-    const isMobileOrTablet = () => {
-      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
-      return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
-    };
+    await printBakeryBill(billData, useRawBT, logoBase64String || Logo);
+  };
 
-    const isMobile = isMobileOrTablet();
-    
-    const printContent = `
-      <div class="print-receipt px-2">
-        <div class="text-center mb-2">
-          <div style="font-size: 10px; font-weight: bold;">"ஸ்ரீ தேவி சந்தன மாரியம்மன் துணை"</div>
-          <div style="font-size: 11px;">GST No: 33BAPPS2831B2ZU</div>
-          <div style="font-size: 11px;">Mobile: 8807810021</div>
-          <div class="font-bold text-base sm:text-lg">SRI DEVI SNACKS</div>
-          <div style="font-size: 10px;">128 C Santhanamari Amman Kovil Street, Vallioor</div>
-          <div class="text-sm font-bold mt-1">Bakery Bill</div>
-          <div>Date: ${billData.date}</div>
-          <div>Bill No: ${billData.id}</div>
-        </div>
-        
-        ${(billData.customer_name || billData.customer_phone) ? `
-          <div class="my-2 border-t border-b py-1 text-xs">
-            ${billData.customer_name ? `<div>Shop/Cust: ${billData.customer_name}</div>` : ''}
-            ${billData.customer_phone ? `<div>Ph: ${billData.customer_phone}</div>` : ''}
-            ${billData.location_name ? `<div>Loc: ${billData.location_name}</div>` : ''}
-          </div>
-        ` : ''}
-
-        <div class="my-2 border-t py-1">
-          <table>
-            <thead>
-              <tr class="border-b">
-                <th>Item</th>
-                <th class="text-center">Qty</th>
-                <th class="text-right">Price</th>
-                <th class="text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${billData.items.map((item: any) => `
-                <tr>
-                  <td>${item.product_name.substring(0, 14)}</td>
-                  <td class="text-center">${item.quantity}</td>
-                  <td class="text-right">${item.price.toFixed(2)}</td>
-                  <td class="text-right">${item.total.toFixed(2)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        
-        <div class="border-t py-1">
-          <div class="flex justify-between font-bold">
-            <span>Total:</span>
-            <span>₹${billData.total_amount.toFixed(2)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span>Paid:</span>
-            <span>₹${billData.paid_amount.toFixed(2)}</span>
-          </div>
-          ${billData.pending_amount > 0 ? `
-            <div class="flex justify-between font-bold text-lg">
-              <span>Pending:</span>
-              <span>₹${billData.pending_amount.toFixed(2)}</span>
-            </div>
-          ` : ''}
-        </div>
-        
-        <div class="text-center mt-4 border-t py-2 font-bold">
-          <div>Thank You - Visit Again!</div>
-        </div>
-      </div>
-    `;
-    
-    const fullHtml = `
-      <html>
-        <head>
-          <title>Print Bakery Bill</title>
-          <style>
-            @page { size: 80mm auto; margin: 0; }
-            body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px; font-size: 12px; }
-            .text-center { text-align: center; }
-            .font-bold { font-weight: bold; }
-            .text-lg { font-size: 16px; }
-            .mb-2 { margin-bottom: 8px; }
-            .mb-4 { margin-bottom: 16px; }
-            .flex { display: flex; }
-            .justify-between { justify-content: space-between; }
-            .border-t { border-top: 1px dashed #000; }
-            .border-b { border-bottom: 1px dashed #000; }
-            .py-1 { padding: 4px 0; }
-            .my-2 { margin: 8px 0; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { text-align: left; padding: 4px 0; }
-            th.text-right, td.text-right { text-align: right; }
-            th.text-center, td.text-center { text-align: center; }
-          </style>
-        </head>
-        <body>
-          ${printContent}
-        </body>
-      </html>
-    `;
-
-    const fallbackPrint = (html: string) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0px';
-      iframe.style.height = '0px';
-      iframe.style.border = 'none';
-      iframe.style.visibility = 'hidden';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow?.document || iframe.contentDocument;
-      if (doc) {
-        doc.open();
-        const optimizedHtml = html
-          .replace(/size:\s*80mm\s*auto/gi, 'size: auto')
-          .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
-          .replace(/width:\s*(72mm|80mm)\s*!important/gi, 'width: 100% !important')
-          .replace(/padding:\s*2mm\s*0mm/gi, 'padding: 10px')
-          .replace(/padding:\s*4mm\s*2mm/gi, 'padding: 10px')
-          .replace(/₹/g, '<span class="rupee">₹</span>');
-          
-        doc.write(optimizedHtml);
-        doc.close();
-
-        setTimeout(() => {
-          if (iframe.contentWindow) {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            setTimeout(() => {
-              document.body.removeChild(iframe);
-            }, 1000);
-          } else {
-            document.body.removeChild(iframe);
-          }
-        }, 250);
-      } else {
-        document.body.removeChild(iframe);
-      }
-    };
-
-    if (isMobile && useRawBT) {
-      try {
-        const optimizedHtml = printContent
-            .replace(/width:\s*(72mm|80mm)/gi, 'width: 100%')
-            .replace(/width:\s*(72mm|80mm)\s*!important/gi, 'width: 100% !important')
-            .replace(/₹/g, '<span class="rupee">₹</span>');
-            
-        const container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.left = '-9999px';
-        container.style.width = '800px';
-        container.style.background = 'white';
-        container.style.padding = '0px';
-        container.style.boxSizing = 'border-box';
-        container.innerHTML = optimizedHtml + `
-          <style>
-                * {
-                  font-family: 'Arial Black', Arial, Helvetica, sans-serif !important;
-                  font-weight: 900 !important;
-                  color: #000 !important;
-                  -webkit-text-stroke: 0.5px black !important;
-                  text-stroke: 0.5px black !important;
-                }
-                body {
-                  width: 100% !important;
-                  max-width: 100% !important;
-                  padding: 0px !important;
-                  margin: 0 !important;
-                  box-sizing: border-box !important;
-                }
-                .print-receipt {
-                  width: 100% !important;
-                  padding: 0 !important;
-                  margin: 0 !important;
-                }
-                body, div, p, td, th, span {
-                  font-size: 38px !important;
-                  line-height: 1.4 !important;
-                }
-                .font-bold {
-                  font-weight: bold !important;
-                }
-                .text-lg, .text-base { 
-                  font-size: 64px !important; 
-                  margin: 15px 0 !important; 
-                }
-                .mb-2 { margin-bottom: 8px !important; }
-                .mb-4 { margin-bottom: 16px !important; }
-                .flex { display: flex !important; }
-                .justify-between { justify-content: space-between !important; }
-                .text-center { text-align: center !important; }
-                table {
-                  width: 100% !important;
-                  table-layout: fixed !important;
-                  border-collapse: collapse !important;
-                }
-                th {
-                  font-size: 26px !important;
-                  padding: 10px 2px !important;
-                  border: 2px solid #888 !important;
-                  word-wrap: break-word !important;
-                  white-space: normal !important;
-                }
-                td { 
-                  font-size: 30px !important; 
-                  padding: 10px 2px !important; 
-                  border: 2px solid #888 !important;
-                  word-wrap: break-word !important;
-                  white-space: normal !important;
-                }
-                th.text-right, td.text-right { text-align: right !important; }
-                th.text-center, td.text-center { text-align: center !important; }
-                .border-t {
-                  border-top: 4px solid #000 !important;
-                  margin: 15px 0 !important;
-                }
-                .border-b {
-                  border-bottom: 4px solid #000 !important;
-                  margin: 15px 0 !important;
-                }
-                .py-1, .py-2 { padding: 15px 0 !important; }
-                .my-2 { margin: 15px 0 !important; }
-                .mt-4 { margin-top: 25px !important; }
-                .rupee {
-                  color: #000 !important;
-                  font-weight: 900 !important;
-                }
-          </style>
-        `;
-        document.body.appendChild(container);
-
-        await new Promise(resolve => setTimeout(resolve, 600));
-
-        const canvas = await html2canvas(container, {
-          scale: 1.0,
-          useCORS: true,
-          backgroundColor: '#ffffff'
-        });
-
-        document.body.removeChild(container);
-        
-        const base64Image = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-        window.location.href = `rawbt:data:image/jpeg;base64,` + base64Image;
-      } catch (e) {
-        console.error('RawBT print failed:', e);
-        fallbackPrint(fullHtml);
-      }
-    } else {
-      fallbackPrint(fullHtml);
+  const handlePrintCurrentBill = () => {
+    if (billItems.length === 0) {
+      alert("No items in bill to print");
+      return;
     }
+    const paid = parseFloat(paidAmount) || totalAmount;
+    const billData = {
+      id: 'DRAFT',
+      customer_name: customerName || (selectedShop ? selectedShop.name : ''),
+      customer_phone: customerPhone || (selectedShop ? selectedShop.phone : ''),
+      location_name: currentLocation,
+      items: billItems,
+      total_amount: totalAmount,
+      paid_amount: paid,
+      pending_amount: Math.max(0, totalAmount - paid),
+      date: new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    handlePrint(billData);
   };
 
   const filteredProducts = products.filter(p => 
@@ -856,14 +639,25 @@ export default function BakeryBilling() {
               </div>
               
               {billItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={clearBill}
-                  className="inline-flex items-center px-2.5 py-1 text-xs sm:text-sm text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition"
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Clear All
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handlePrintCurrentBill}
+                    className="inline-flex items-center px-2.5 py-1 text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-semibold hover:bg-blue-50 border border-blue-200 rounded-lg transition"
+                    title="Print Current Bill"
+                  >
+                    <Printer className="h-4 w-4 mr-1" />
+                    Print Bill
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearBill}
+                    className="inline-flex items-center px-2.5 py-1 text-xs sm:text-sm text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear All
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1016,16 +810,40 @@ export default function BakeryBilling() {
                       setPaidAmount(totalAmount.toString());
                       setIsPaymentModalOpen(true);
                     }}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow transition flex items-center justify-center text-base"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center text-base"
                   >
-                    <Save className="mr-2 h-5 w-5" />
-                    Save Bill (₹{totalAmount.toFixed(2)})
+                    <Printer className="mr-2 h-5 w-5" />
+                    Save & Print Bill (₹{totalAmount.toFixed(2)})
                   </button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaidAmount(totalAmount.toString());
+                        setIsPaymentModalOpen(true);
+                      }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-3 rounded-xl shadow-sm transition flex items-center justify-center text-xs sm:text-sm"
+                    >
+                      <Save className="mr-1.5 h-4 w-4" />
+                      Save Bill
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintCurrentBill}
+                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2.5 px-3 rounded-xl border border-gray-300 transition flex items-center justify-center text-xs sm:text-sm"
+                    >
+                      <Printer className="mr-1.5 h-4 w-4 text-gray-600" />
+                      Print Draft
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={handleSaveAsPending}
                     disabled={submitting}
-                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center text-sm"
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-xl transition flex items-center justify-center text-xs sm:text-sm"
                   >
                     <Save className="mr-2 h-4 w-4" />
                     Save as Pending
@@ -1097,11 +915,11 @@ export default function BakeryBilling() {
                 </div>
 
               </div>
-              <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 border-t border-gray-100">
+              <div className="bg-gray-50 px-6 py-4 flex flex-wrap justify-end gap-2 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setIsPaymentModalOpen(false)}
-                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition"
+                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition text-sm"
                 >
                   Cancel
                 </button>
@@ -1117,10 +935,19 @@ export default function BakeryBilling() {
                   type="button"
                   onClick={() => handleSaveBill(false)}
                   disabled={submitting}
-                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center transition disabled:opacity-50 text-sm"
+                  className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center transition disabled:opacity-50 text-sm"
                 >
                   <Save className="mr-1.5 h-4 w-4" />
-                  {submitting ? 'Saving...' : 'Save Bill'}
+                  {submitting ? 'Saving...' : 'Save Only'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveBill(true)}
+                  disabled={submitting}
+                  className="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 flex items-center transition disabled:opacity-50 text-sm shadow-md"
+                >
+                  <Printer className="mr-1.5 h-4 w-4" />
+                  {submitting ? 'Saving & Printing...' : 'Save & Print'}
                 </button>
               </div>
             </div>
