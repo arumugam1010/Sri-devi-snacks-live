@@ -810,34 +810,11 @@ export default function BakeryBilling() {
                       setPaidAmount(totalAmount.toString());
                       setIsPaymentModalOpen(true);
                     }}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center text-base"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow transition flex items-center justify-center text-base"
                   >
-                    <Printer className="mr-2 h-5 w-5" />
-                    Save & Print Bill (₹{totalAmount.toFixed(2)})
+                    <Save className="mr-2 h-5 w-5" />
+                    Save Bill (₹{totalAmount.toFixed(2)})
                   </button>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaidAmount(totalAmount.toString());
-                        setIsPaymentModalOpen(true);
-                      }}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-3 rounded-xl shadow-sm transition flex items-center justify-center text-xs sm:text-sm"
-                    >
-                      <Save className="mr-1.5 h-4 w-4" />
-                      Save Bill
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handlePrintCurrentBill}
-                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2.5 px-3 rounded-xl border border-gray-300 transition flex items-center justify-center text-xs sm:text-sm"
-                    >
-                      <Printer className="mr-1.5 h-4 w-4 text-gray-600" />
-                      Print Draft
-                    </button>
-                  </div>
 
                   <button
                     type="button"
