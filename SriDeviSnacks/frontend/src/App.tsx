@@ -30,8 +30,15 @@ import BarcodeGenerator from './components/BarcodeGenerator';
 import BakeryLayout from './components/bakery_billing/BakeryLayout';
 import AdminLandingSettings from './components/AdminLandingSettings';
 import Expenses from './components/Expenses';
+import { authAPI } from './services/api';
 
-
+export interface UserData {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  username?: string;
+}
 
 const getBasename = () => {
   if (typeof window !== 'undefined') {
@@ -54,6 +61,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
 
+  const isStaff2 = user?.username?.toLowerCase() === 'staff2' || user?.username?.toLowerCase() === 'stafff2';
+
   useEffect(() => {
     const checkAuthStatus = () => {
       const storedUser = localStorage.getItem('user');
@@ -63,15 +72,73 @@ function App() {
       } else {
         setIsAuthenticated(false);
       }
-    }
+    };
 
     checkAuthStatus();
   }, []);
 
-
   const logoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const handleLogout = () => {
+    if (logoutTimer.current) {
+      clearTimeout(logoutTimer.current);
+    }
+    setIsAuthenticated(false);
+    setUser(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('authToken');
+    // Redirect to login page on logout
+    window.location.href = getBasename() + '/';
+  };
+
+  // Listen to remote revocation event from api.ts (401 response)
   useEffect(() => {
+    const handleAuthRevoked = () => {
+      console.warn('Session has been revoked or expired. Logging out.');
+      handleLogout();
+    };
+
+    window.addEventListener('auth:revoked', handleAuthRevoked);
+    return () => {
+      window.removeEventListener('auth:revoked', handleAuthRevoked);
+    };
+  }, []);
+
+  // Heartbeat check specifically for staff2: poll every 30s to detect Super Admin remote revoke
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff2) return;
+
+    const checkSessionActive = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+          handleLogout();
+          return;
+        }
+        const res = await authAPI.verify();
+        if (!res || !res.success) {
+          handleLogout();
+        }
+      } catch (err) {
+        // If 401 or revoked, auth:revoked event or here triggers logout
+        console.warn('Session verification failed:', err);
+      }
+    };
+
+    const heartbeatInterval = setInterval(checkSessionActive, 30000); // 30 seconds
+    return () => clearInterval(heartbeatInterval);
+  }, [isAuthenticated, isStaff2]);
+
+  // Idle timeout & 11 PM timer: ONLY run if NOT staff2!
+  useEffect(() => {
+    // Staff2 must NEVER be logged out due to inactivity or end of day!
+    if (isStaff2) {
+      if (logoutTimer.current) {
+        clearTimeout(logoutTimer.current);
+      }
+      return;
+    }
+
     const resetTimer = () => {
       if (logoutTimer.current) {
         clearTimeout(logoutTimer.current);
@@ -106,35 +173,12 @@ function App() {
         clearTimeout(logoutTimer.current);
       }
     };
-  }, []);
-
-
-
-
-
-
-  interface UserData {
-    id: number;
-    name: string;
-    email: string;
-    role: string;
-    username?: string;
-  }
+  }, [isAuthenticated, isStaff2]);
 
   const handleLogin = (userData: UserData) => {
     setIsAuthenticated(true);
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-  };
-
-  const handleLogout = () => {
-    clearTimeout(logoutTimer.current as ReturnType<typeof setTimeout>);
-    setIsAuthenticated(false);
-    setUser(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('authToken');
-    // Redirect to login page on logout
-    window.location.href = getBasename() + '/';
   };
 
   if (isAuthenticated === null) {

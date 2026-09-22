@@ -39,9 +39,19 @@ const authenticatedFetch = async (url: string, options: RequestInit = {}): Promi
     headers,
   });
 
-  const data = await response.json();
+  let data: any = {};
+  try {
+    data = await response.json();
+  } catch (e) {
+    data = {};
+  }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:revoked', { detail: data.message || 'Session revoked' }));
+      }
+    }
     throw new Error(data.message || 'API request failed');
   }
 
@@ -690,6 +700,11 @@ export const bakeryBillsAPI = {
   getBill: async (id: number) => authenticatedFetch(`${API_BASE_URL}/bakery-bills/${id}`),
   createBill: async (data: { items: any[]; total_amount: number; paid_amount: number; customer_name?: string; customer_phone?: string; location_name?: string; shop_id?: number }) => 
     authenticatedFetch(`${API_BASE_URL}/bakery-bills`, { method: 'POST', body: JSON.stringify(data) }),
+  collectPayment: async (id: number, amount: number) =>
+    authenticatedFetch(`${API_BASE_URL}/bakery-bills/${id}/collect-pending`, {
+      method: 'POST',
+      body: JSON.stringify({ amount }),
+    }),
 };
 
 export const bakeryShopsAPI = {
@@ -766,6 +781,11 @@ export const adminAPI = {
   revokeSession: async (sessionId: number) => {
     return authenticatedFetch(`${API_BASE_URL}/users/sessions/${sessionId}`, {
       method: 'DELETE',
+    });
+  },
+  revokeStaff2Sessions: async () => {
+    return authenticatedFetch(`${API_BASE_URL}/users/sessions/revoke-staff2`, {
+      method: 'POST',
     });
   }
 };

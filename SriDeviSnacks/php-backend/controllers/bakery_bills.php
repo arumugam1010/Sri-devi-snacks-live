@@ -21,8 +21,22 @@ function handleBakeryBillsRoute($parts, $method) {
 
     if (is_numeric($action)) {
         $billId = (int)$action;
-        if ($method === 'GET') {
-            getBakeryBillById($billId);
+        $subAction = $parts[2] ?? '';
+
+        if (empty($subAction)) {
+            if ($method === 'GET') {
+                getBakeryBillById($billId);
+            } elseif ($method === 'PUT' || $method === 'PATCH' || $method === 'POST') {
+                collectBakeryBillPayment($billId);
+            } else {
+                sendResponse(false, 'Method not allowed', null, 405);
+            }
+        } elseif ($subAction === 'collect-pending' || $subAction === 'payment') {
+            if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
+                collectBakeryBillPayment($billId);
+            } else {
+                sendResponse(false, 'Method not allowed', null, 405);
+            }
         } else {
             sendResponse(false, 'Method not allowed', null, 405);
         }
@@ -164,3 +178,57 @@ function createBakeryBill() {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }
 }
+
+/**
+ * Collect pending payment for a bakery bill
+ */
+function collectBakeryBillPayment($billId) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $amountToCollect = isset($data['amount']) ? (float)$data['amount'] : (isset($data['collected_amount']) ? (float)$data['collected_amount'] : 0);
+
+    if ($amountToCollect <= 0) {
+        sendResponse(false, 'Invalid amount to collect', null, 400);
+        return;
+    }
+
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("SELECT * FROM bakery_bills WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $billId]);
+        $bill = $stmt->fetch();
+
+        if (!$bill) {
+            sendResponse(false, 'Bill not found', null, 404);
+            return;
+        }
+
+        $totalAmount = (float)$bill['total_amount'];
+        $currentPaid = (float)$bill['paid_amount'];
+        $currentPending = (float)$bill['pending_amount'];
+
+        if ($amountToCollect > $currentPending) {
+            sendResponse(false, 'Collected amount cannot exceed pending amount of Rs. ' . number_format($currentPending, 2), null, 400);
+            return;
+        }
+
+        $newPaidAmount = $currentPaid + $amountToCollect;
+        $newPendingAmount = max(0, $totalAmount - $newPaidAmount);
+
+        $updateStmt = $db->prepare("UPDATE bakery_bills SET paid_amount = :paid, pending_amount = :pending WHERE id = :id");
+        $updateStmt->execute([
+            ':paid' => $newPaidAmount,
+            ':pending' => $newPendingAmount,
+            ':id' => $billId
+        ]);
+
+        sendResponse(true, 'Payment collected successfully', [
+            'id' => $billId,
+            'total_amount' => $totalAmount,
+            'paid_amount' => $newPaidAmount,
+            'pending_amount' => $newPendingAmount
+        ]);
+    } catch (\PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+

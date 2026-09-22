@@ -34,7 +34,7 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'billing': return <BakeryBilling />;
+      case 'billing': return <BakeryBilling isStaff2={isStaff2} />;
       case 'products': return <BakeryProducts />;
       case 'shops': return <BakeryShops />;
       case 'stock': return <BakeryStock />;
@@ -144,13 +144,15 @@ export default function BakeryLayout({ user, onLogout }: BakeryLayoutProps) {
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-700">Welcome, {user?.name}</span>
-                  <button
-                    onClick={onLogout}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 transition"
-                  >
-                    <LogOut className="h-4 w-4 mr-1" />
-                    Logout
-                  </button>
+                  {!isStaff2 && (
+                    <button
+                      onClick={onLogout}
+                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 transition"
+                    >
+                      <LogOut className="h-4 w-4 mr-1" />
+                      Logout
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

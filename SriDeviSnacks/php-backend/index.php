@@ -61,6 +61,20 @@ function getAuthenticatedUser() {
     if (!$decoded) {
         sendResponse(false, 'Unauthorized: Invalid or expired token', null, 401);
     }
+    
+    // Check if session has been revoked by admin
+    try {
+        $db = getDatabaseConnection();
+        $stmt = $db->prepare("SELECT is_active FROM user_sessions WHERE token = :token LIMIT 1");
+        $stmt->execute(['token' => $token]);
+        $session = $stmt->fetch();
+        if ($session && (int)$session['is_active'] === 0) {
+            sendResponse(false, 'Session revoked by administrator', null, 401);
+        }
+    } catch (PDOException $e) {
+        // Fallback if DB check fails transiently
+    }
+    
     return $decoded;
 }
 

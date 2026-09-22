@@ -30,7 +30,21 @@ interface BillItem {
   total: number;
 }
 
-export default function BakeryBilling() {
+interface BakeryBillingProps {
+  isStaff2?: boolean;
+}
+
+export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingProps = {}) {
+  const isStaff2 = propIsStaff2 ?? (() => {
+    try {
+      const saved = localStorage.getItem('user');
+      const u = saved ? JSON.parse(saved) : null;
+      return u?.username?.toLowerCase() === 'staff2' || u?.username?.toLowerCase() === 'stafff2';
+    } catch {
+      return false;
+    }
+  })();
+
   const [products, setProducts] = useState<BakeryProduct[]>([]);
   const [allShops, setAllShops] = useState<BakeryShop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +87,7 @@ export default function BakeryBilling() {
   const [useRawBT, setUseRawBT] = useState<boolean>(() => {
     const saved = localStorage.getItem('useRawBT');
     if (saved !== null) return saved === 'true';
+    if (isStaff2) return true;
     const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
     return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent.toLowerCase());
   });
@@ -552,17 +567,21 @@ export default function BakeryBilling() {
           <h2 className="text-2xl font-bold text-gray-900">Bakery Billing</h2>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
             <p className="text-gray-600 text-sm">Create bills and manage bakery orders</p>
-            <span className="text-gray-300 hidden sm:inline">|</span>
-            <label className="inline-flex items-center cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={useRawBT}
-                onChange={(e) => handleToggleRawBT(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="relative w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
-              <span className="ms-2 text-xs font-semibold text-gray-700">Use RawBT Printer</span>
-            </label>
+            {!isStaff2 && (
+              <>
+                <span className="text-gray-300 hidden sm:inline">|</span>
+                <label className="inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useRawBT}
+                    onChange={(e) => handleToggleRawBT(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="relative w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                  <span className="ms-2 text-xs font-semibold text-gray-700">Use RawBT Printer</span>
+                </label>
+              </>
+            )}
           </div>
         </div>
 

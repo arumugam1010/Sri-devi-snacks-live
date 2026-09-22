@@ -24,11 +24,13 @@ function handleUsersRoute($parts, $method) {
         return;
     }
     
-    // GET /users/sessions or DELETE /users/sessions/:id
+    // GET /users/sessions or DELETE /users/sessions/:id or POST /users/sessions/revoke-staff2
     if ($action === 'sessions') {
         $subAction = $parts[2] ?? '';
         if (empty($subAction) && $method === 'GET') {
             getUserSessions();
+        } elseif ($subAction === 'revoke-staff2' && ($method === 'POST' || $method === 'DELETE')) {
+            revokeStaff2Sessions();
         } elseif (!empty($subAction) && $method === 'DELETE') {
             revokeUserSession($subAction);
         } else {
@@ -236,7 +238,7 @@ function getUserSessions() {
     $db = getDatabaseConnection();
     try {
         $stmt = $db->prepare("
-            SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.device_type, s.created_at, s.last_active_at, s.is_active, u.name as user_name, u.email as user_email
+            SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.device_type, s.created_at, s.last_active_at, s.is_active, u.name as user_name, u.username, u.email as user_email, u.role as user_role
             FROM user_sessions s
             JOIN users u ON s.user_id = u.id
             ORDER BY s.last_active_at DESC
@@ -261,6 +263,26 @@ function getUserSessions() {
         }
         
         sendResponse(true, '', $sessions);
+    } catch (PDOException $e) {
+        sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
+    }
+}
+
+/**
+ * Handle POST or DELETE /api/users/sessions/revoke-staff2
+ */
+function revokeStaff2Sessions() {
+    $db = getDatabaseConnection();
+    try {
+        $stmt = $db->prepare("
+            UPDATE user_sessions 
+            SET is_active = 0 
+            WHERE user_id IN (
+                SELECT id FROM users WHERE LOWER(username) IN ('staff2', 'stafff2')
+            )
+        ");
+        $stmt->execute();
+        sendResponse(true, 'All bakery staff2 sessions revoked successfully');
     } catch (PDOException $e) {
         sendResponse(false, 'Database error: ' . $e->getMessage(), null, 500);
     }

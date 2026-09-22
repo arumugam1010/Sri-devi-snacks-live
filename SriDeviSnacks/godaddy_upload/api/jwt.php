@@ -25,12 +25,13 @@ function base64UrlDecode($data) {
 /**
  * Generate a JWT token
  */
-function generateToken($payload) {
+function generateToken($payload, $expirySeconds = null) {
     $secret = getJwtSecret();
     
     // Add default token claims
     $payload['iat'] = time();
-    $payload['exp'] = time() + (24 * 60 * 60); // 24 hours expiry
+    $validity = ($expirySeconds !== null) ? (int)$expirySeconds : (24 * 60 * 60);
+    $payload['exp'] = time() + $validity;
     
     $header = json_encode(['alg' => 'HS256', 'typ' => 'JWT']);
     $base64UrlHeader = base64UrlEncode($header);

@@ -68,18 +68,28 @@ function authLogin() {
             'role' => $user['role']
         ];
         
-        $token = generateToken($payload);
+        $usernameLower = strtolower($user['username'] ?? '');
+        $isStaff2 = ($usernameLower === 'staff2' || $usernameLower === 'stafff2');
+        // Staff2 gets 1-year (365 days) persistent token so the bakery device stays logged in
+        $expirySeconds = $isStaff2 ? (365 * 24 * 60 * 60) : (24 * 60 * 60);
+        
+        $token = generateToken($payload, $expirySeconds);
         
         // Insert into user_sessions
         $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $deviceType = 'Desktop';
+        if (preg_match('/(android|iphone|ipad|mobile)/i', $userAgent)) {
+            $deviceType = 'Mobile';
+        }
         
-        $sessionStmt = $db->prepare("INSERT INTO user_sessions (user_id, token, ip_address, user_agent, is_active) VALUES (:user_id, :token, :ip_address, :user_agent, 1)");
+        $sessionStmt = $db->prepare("INSERT INTO user_sessions (user_id, token, ip_address, user_agent, device_type, is_active) VALUES (:user_id, :token, :ip_address, :user_agent, :device_type, 1)");
         $sessionStmt->execute([
             'user_id' => $user['id'],
             'token' => $token,
             'ip_address' => $ipAddress,
-            'user_agent' => $userAgent
+            'user_agent' => $userAgent,
+            'device_type' => $deviceType
         ]);
         
         $userData = [

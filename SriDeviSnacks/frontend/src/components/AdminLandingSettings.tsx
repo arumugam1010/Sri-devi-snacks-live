@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { uploadAPI, landingCmsAPI, adminAPI } from '../services/api';
-import { Upload, CheckCircle, AlertCircle, Image as ImageIcon, Save, Plus, Trash2, Edit2, LogOut, Activity, Monitor } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Image as ImageIcon, Save, Plus, Trash2, Edit2, LogOut, Activity, Monitor, Smartphone } from 'lucide-react';
 
 const AdminLandingSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'images' | 'text' | 'products' | 'sessions'>('products');
@@ -374,8 +374,65 @@ const AdminLandingSettings: React.FC = () => {
 
       {/* SESSIONS TAB */}
       {activeTab === 'sessions' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
+        <div className="space-y-6">
+          {/* Quick Bakery Device Management Card */}
+          {(() => {
+            const bakerySessions = sessions.filter(s => 
+              (s.username?.toLowerCase() === 'staff2' || s.username?.toLowerCase() === 'stafff2' || s.user_name?.toLowerCase().includes('staff2')) && s.is_active
+            );
+            const isBakeryActive = bakerySessions.length > 0;
+            return (
+              <div className={`p-5 rounded-xl border ${isBakeryActive ? 'bg-amber-50/70 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-3 rounded-xl ${isBakeryActive ? 'bg-amber-500 text-white shadow-sm' : 'bg-gray-200 text-gray-500'}`}>
+                      <Smartphone className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-gray-900 text-lg">Bakery Staff2 Mobile Device</h3>
+                        {isBakeryActive ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
+                            <span className="w-2 h-2 mr-1.5 rounded-full bg-green-500 animate-pulse"></span> Logged In
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">
+                            Logged Out
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-0.5">
+                        {isBakeryActive 
+                          ? `Active on ${bakerySessions[0].device_type || 'Mobile'} (${bakerySessions[0].ip_address}). Last active: ${new Date(bakerySessions[0].last_active_at).toLocaleTimeString()}`
+                          : 'No active login on Bakery device right now.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isBakeryActive && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm("Are you sure you want to FORCE LOGOUT the bakery mobile device (staff2)? The mobile app will be logged out immediately.")) {
+                          try {
+                            await adminAPI.revokeStaff2Sessions();
+                            fetchSessions();
+                            window.alert("Bakery device has been logged out successfully!");
+                          } catch (e: any) {
+                            window.alert("Error: " + e.message);
+                          }
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold text-sm shadow-sm flex items-center transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" /> Force Logout Bakery Device
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex justify-between items-center">
             <p className="text-gray-600">Monitor and manage all active user logins across all devices.</p>
             <button onClick={fetchSessions} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md flex items-center hover:bg-gray-200 border border-gray-300">
               <Activity className="w-4 h-4 mr-2" /> Refresh
@@ -396,17 +453,30 @@ const AdminLandingSettings: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sessions.map(s => (
-                    <tr key={s.id} className={`border-b border-gray-100 hover:bg-gray-50 ${s.is_current ? 'bg-blue-50/30' : (!s.is_active ? 'opacity-60' : '')}`}>
+                  {sessions.map(s => {
+                    const isStaff2Row = s.username?.toLowerCase() === 'staff2' || s.username?.toLowerCase() === 'stafff2';
+                    return (
+                    <tr key={s.id} className={`border-b border-gray-100 hover:bg-gray-50 ${isStaff2Row && s.is_active ? 'bg-amber-50/40' : (s.is_current ? 'bg-blue-50/30' : (!s.is_active ? 'opacity-60' : ''))}`}>
                       <td className="p-4">
-                        <div className="font-medium text-gray-800">{s.user_name}</div>
-                        <div className="text-xs text-gray-500">{s.user_email}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-800">{s.user_name}</span>
+                          {isStaff2Row && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[11px] rounded-full font-semibold border border-amber-200">
+                              Bakery Staff
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">{s.username ? `@${s.username}` : s.user_email}</div>
                         {s.is_current && <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded-full font-medium">Current Session</span>}
                       </td>
                       <td className="p-4">
                         <div className="flex items-center text-sm text-gray-700">
-                          <Monitor className="w-4 h-4 mr-2 text-gray-400" />
-                          <span className="truncate max-w-[200px]" title={s.user_agent}>{s.user_agent ? (s.user_agent.split(' ')[0] || 'Unknown Device') : 'Unknown'}</span>
+                          {s.device_type === 'Mobile' ? (
+                            <Smartphone className="w-4 h-4 mr-2 text-blue-500" />
+                          ) : (
+                            <Monitor className="w-4 h-4 mr-2 text-gray-400" />
+                          )}
+                          <span className="truncate max-w-[200px]" title={s.user_agent}>{s.device_type ? `${s.device_type} ` : ''}({s.user_agent ? (s.user_agent.split(' ')[0] || 'Unknown Device') : 'Unknown'})</span>
                         </div>
                       </td>
                       <td className="p-4 text-sm text-gray-600">{s.ip_address}</td>
@@ -415,7 +485,7 @@ const AdminLandingSettings: React.FC = () => {
                       </td>
                       <td className="p-4 text-sm">
                         {s.is_active ? (
-                          <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                          <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Active</span>
                         ) : (
                           <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">Logged Out</span>
                         )}
@@ -433,19 +503,19 @@ const AdminLandingSettings: React.FC = () => {
                                 }
                               }
                             }}
-                            className="px-3 py-1.5 text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-md transition-colors flex items-center text-sm ml-auto"
+                            className="px-3 py-1.5 text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-md transition-colors flex items-center text-sm ml-auto font-medium"
                           >
-                            <LogOut className="w-4 h-4 mr-1.5" /> Revoke
+                            <LogOut className="w-4 h-4 mr-1.5" /> Logout Device
                           </button>
                         ) : (s.is_current ? (
                           <span className="text-xs text-gray-400 italic">Current</span>
                         ) : null)}
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {sessions.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500">No active sessions found.</td>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">No active sessions found.</td>
                     </tr>
                   )}
                 </tbody>

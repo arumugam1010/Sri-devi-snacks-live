@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { bakeryBillsAPI } from '../../services/api';
-import { Receipt, Calendar, User, Phone, CheckCircle, Clock, ArrowLeft, Printer } from 'lucide-react';
+import { Receipt, Calendar, User, Phone, CheckCircle, Clock, ArrowLeft, Printer, IndianRupee, X } from 'lucide-react';
 import { printBakeryBill } from '../../utils/bakeryPrint';
 
 export default function BakeryBillsList() {
@@ -9,6 +9,12 @@ export default function BakeryBillsList() {
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [logoBase64String, setLogoBase64String] = useState<string>('');
+
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState<any | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
 
   const [useRawBT] = useState<boolean>(() => {
     const saved = localStorage.getItem('useRawBT');
@@ -42,6 +48,39 @@ export default function BakeryBillsList() {
       setError(err.message || 'Failed to load bills');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCollectPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBillForPayment) return;
+
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setPaymentError('Please enter a valid amount');
+      return;
+    }
+
+    if (amount > selectedBillForPayment.pending_amount) {
+      setPaymentError(`Amount cannot exceed pending amount of ₹${selectedBillForPayment.pending_amount.toFixed(2)}`);
+      return;
+    }
+
+    try {
+      setSubmittingPayment(true);
+      setPaymentError(null);
+      await bakeryBillsAPI.collectPayment(selectedBillForPayment.id, amount);
+      setPaymentSuccess(`₹${amount.toFixed(2)} collected successfully!`);
+      await fetchBills();
+      setTimeout(() => {
+        setSelectedBillForPayment(null);
+        setPaymentAmount('');
+        setPaymentSuccess(null);
+      }, 700);
+    } catch (err: any) {
+      setPaymentError(err.message || 'Failed to collect payment');
+    } finally {
+      setSubmittingPayment(false);
     }
   };
 
@@ -186,15 +225,33 @@ export default function BakeryBillsList() {
                       )}
                     </td>
                     <td className="px-3 md:px-6 py-4 whitespace-nowrap text-center">
-                      <button
-                        type="button"
-                        onClick={() => printBakeryBill(bill, useRawBT, logoBase64String || '/Logo.png')}
-                        className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
-                        title="Print Bill"
-                      >
-                        <Printer className="w-3.5 h-3.5 mr-1" />
-                        Print
-                      </button>
+                      <div className="flex items-center justify-center space-x-1.5">
+                        {bill.pending_amount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBillForPayment(bill);
+                              setPaymentAmount(bill.pending_amount.toString());
+                              setPaymentError(null);
+                              setPaymentSuccess(null);
+                            }}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition shadow-xs"
+                            title="Receive Pending Amount"
+                          >
+                            <IndianRupee className="w-3.5 h-3.5 mr-0.5" />
+                            Receive
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => printBakeryBill(bill, useRawBT, logoBase64String || '/Logo.png')}
+                          className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                          title="Print Bill"
+                        >
+                          <Printer className="w-3.5 h-3.5 mr-1" />
+                          Print
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -202,6 +259,115 @@ export default function BakeryBillsList() {
             </table>
           </div>
         </div>
+
+        {/* Receive Payment Modal */}
+        {selectedBillForPayment && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+              <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Receive Pending Payment</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Bill #{selectedBillForPayment.id} • {selectedBillForPayment.customer_name || 'Walk-in'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBillForPayment(null);
+                    setPaymentError(null);
+                    setPaymentSuccess(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {paymentSuccess ? (
+                <div className="py-8 text-center">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-6 h-6" />
+                  </div>
+                  <p className="text-emerald-700 font-bold">{paymentSuccess}</p>
+                </div>
+              ) : (
+                <form onSubmit={handleCollectPayment} className="space-y-4 pt-4">
+                  <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200 text-center">
+                    <div>
+                      <span className="text-[11px] text-gray-500 font-medium">Total Bill</span>
+                      <p className="font-bold text-gray-800 text-sm">₹{selectedBillForPayment.total_amount.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-gray-500 font-medium">Already Paid</span>
+                      <p className="font-bold text-emerald-600 text-sm">₹{selectedBillForPayment.paid_amount.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-gray-500 font-medium">Pending</span>
+                      <p className="font-bold text-red-600 text-sm">₹{selectedBillForPayment.pending_amount.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  {paymentError && (
+                    <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200">
+                      {paymentError}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Amount Receiving Now (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-400 font-bold text-sm">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={selectedBillForPayment.pending_amount}
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        required
+                        autoFocus
+                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold text-lg text-gray-900"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAmount(selectedBillForPayment.pending_amount.toString())}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                      >
+                        Fill Full Pending (₹{selectedBillForPayment.pending_amount.toFixed(2)})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBillForPayment(null);
+                        setPaymentError(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingPayment}
+                      className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-sm transition disabled:opacity-50 flex items-center justify-center"
+                    >
+                      {submittingPayment ? 'Saving...' : 'Confirm & Collect'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
