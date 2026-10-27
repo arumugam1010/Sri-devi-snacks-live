@@ -59,6 +59,8 @@ interface Shop {
   contact: string;
   email?: string;
   gst?: string;
+  gst_type?: 'GST' | 'IGST';
+  gst_effective_date?: string;
   status: 'active' | 'inactive';
   created_date: string;
 }
@@ -192,6 +194,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           contact: shop.contact,
           email: shop.email,
           gst: shop.gstNumber,
+          gst_type: (shop.gstType || shop.gst_type || 'GST') as 'GST' | 'IGST',
+          gst_effective_date: shop.gstEffectiveDate || shop.gst_effective_date || '',
           status: shop.status.toLowerCase(),
           created_date: new Date(shop.createdAt).toISOString().split('T')[0],
         }));
@@ -248,6 +252,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
               contact: s.shop.contact,
               email: s.shop.email,
               gst: s.shop.gstNumber || s.shop.gst,
+              gst_type: (s.shop.gstType || s.shop.gst_type || 'GST') as 'GST' | 'IGST',
+              gst_effective_date: s.shop.gstEffectiveDate || s.shop.gst_effective_date || '',
               status: s.shop.status?.toLowerCase(),
               created_date: s.shop.createdAt ? new Date(s.shop.createdAt).toISOString().split('T')[0] : (s.shop.created_date || ''),
             };
@@ -268,34 +274,92 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
       }
 
       if (billsRes.success) {
-        setBills(billsRes.data.map((b: any) => ({
-          id: b.id.toString(),
-          bill_number: b.billNumber,
-          shop_id: b.shopId,
-          shop_name: b.shop.shopName,
-          bill_date: b.billDate,
-          total_amount: b.totalAmount,
-          received_amount: b.receivedAmount,
-          pending_amount: b.pendingAmount,
-          status: b.status,
-          payment_mode: b.payment_mode,
-          cash_amount: b.cash_amount,
-          gpay_amount: b.gpay_amount,
-          updated_at: b.updatedAt,
-          created_at: b.createdAt,
-          user_name: b.user?.name,
-          items: b.billItems.map((item: any) => ({
-            product_id: item.productId,
-            product_name: item.product.productName,
-            quantity: item.quantity,
-            price: item.rate,
-            rate: item.rate,
-            amount: item.amount,
-            sgst: item.sgst,
-            cgst: item.cgst,
-            hsnCode: item.hsnCode,
-          })),
-        })));
+        setBills(billsRes.data.map((b: any) => {
+          const shop = fetchedShops.find((s: any) => Number(s.id) === Number(b.shopId));
+          const shopGstNo = shop?.gst || shop?.gstNumber || b.shop?.gstNumber || b.shop?.gst;
+          const isInterstate = Boolean(shopGstNo) && !String(shopGstNo).trim().startsWith('33');
+          const isShopIgst = ((shop?.gst_type === 'IGST' || shop?.gstType === 'IGST') && Boolean(shopGstNo)) || isInterstate;
+
+          let calculatedItemTotal = 0;
+          let calculatedGstTotal = 0;
+
+          const items = (b.billItems || []).map((item: any) => {
+            const pId = item.productId || item.product_id;
+            const pName = (item.product?.productName || item.product_name || '').trim().toLowerCase();
+            const pInfo = productsData.find((p: any) => (pId && Number(p.id) === Number(pId)) || (pName && p.product_name && p.product_name.trim().toLowerCase() === pName));
+            const pGst = Number(item.gst ?? pInfo?.gst ?? 5);
+            const amt = Number(item.amount) || 0;
+            const qty = Number(item.quantity) || 0;
+
+            let sgstVal = Number(item.sgst) || 0;
+            let cgstVal = Number(item.cgst) || 0;
+            let igstVal = Number(item.igst) || 0;
+
+            // Auto-heal IGST for IGST shops if igst is 0
+            if (isShopIgst && igstVal === 0 && qty > 0) {
+              if (sgstVal > 0 || cgstVal > 0) {
+                igstVal = sgstVal + cgstVal;
+                sgstVal = 0;
+                cgstVal = 0;
+              } else if (pGst > 0) {
+                igstVal = Math.round(((amt * pGst) / 100) * 100) / 100;
+                sgstVal = 0;
+                cgstVal = 0;
+              }
+            }
+
+            calculatedItemTotal += amt;
+            calculatedGstTotal += (sgstVal + cgstVal + igstVal);
+
+            return {
+              product_id: item.productId || item.product_id,
+              product_name: item.product?.productName || item.product_name || pInfo?.product_name || '',
+              quantity: item.quantity,
+              price: item.rate,
+              rate: item.rate,
+              amount: item.amount,
+              sgst: sgstVal,
+              cgst: cgstVal,
+              igst: igstVal,
+              hsnCode: item.hsnCode,
+            };
+          });
+
+          let totalAmount = Number(b.totalAmount) || 0;
+          let receivedAmount = Number(b.receivedAmount) || 0;
+          let pendingAmount = Number(b.pendingAmount) || 0;
+          let status = b.status;
+
+          // If IGST was missing from total_amount
+          if (isShopIgst && calculatedGstTotal > 0) {
+            const unroundedExpected = calculatedItemTotal + calculatedGstTotal;
+            const expectedTotal = Math.round(unroundedExpected);
+            if (expectedTotal > totalAmount) {
+              totalAmount = unroundedExpected;
+              pendingAmount = Math.max(0, Math.round((totalAmount - receivedAmount) * 100) / 100);
+              status = pendingAmount <= 0 ? 'COMPLETED' : 'PENDING';
+            }
+          }
+
+          return {
+            id: b.id.toString(),
+            bill_number: b.billNumber,
+            shop_id: b.shopId,
+            shop_name: b.shop?.shopName || b.shop_name || shop?.shop_name || '',
+            bill_date: b.billDate,
+            total_amount: totalAmount,
+            received_amount: receivedAmount,
+            pending_amount: pendingAmount,
+            status: status,
+            payment_mode: b.payment_mode,
+            cash_amount: b.cash_amount,
+            gpay_amount: b.gpay_amount,
+            updated_at: b.updatedAt,
+            created_at: b.createdAt,
+            user_name: b.user?.name,
+            items: items,
+          };
+        }));
       }
 
       if (shopProductsRes.success) {
@@ -388,6 +452,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
           rate: item.price,
           sgst: item.sgst !== undefined ? item.sgst : 0,
           cgst: item.cgst !== undefined ? item.cgst : 0,
+          igst: item.igst !== undefined ? item.igst : 0,
           hsnCode: item.hsnCode,
         })),
       };
@@ -422,6 +487,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children, user }) => {
             amount: item.amount,
             sgst: item.sgst,
             cgst: item.cgst,
+            igst: item.igst || 0,
             hsnCode: item.hsnCode,
           })) : bill.items,
         };

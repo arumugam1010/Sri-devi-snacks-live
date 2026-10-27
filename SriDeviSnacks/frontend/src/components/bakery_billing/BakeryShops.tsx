@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Store, Plus, Save, X, Edit, Trash2, MapPin, Languages } from 'lucide-react';
 import { bakeryShopsAPI } from '../../services/api';
 import { useAppContext } from '../../context/AppContext';
-import { transliterateWord, englishToTamil } from '../../utils/tamilTransliteration';
+import { englishToTamil } from '../../utils/tamilTransliteration';
 
 interface BakeryShop {
   id: number;
@@ -84,49 +84,6 @@ const BakeryShops: React.FC = () => {
     );
   };
 
-  const handleTamilKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-    fieldName: 'name' | 'address'
-  ) => {
-    if (!tamilTypingEnabled) return;
-
-    if (e.key === ' ') {
-      const target = e.currentTarget;
-      const { selectionStart, value } = target;
-      if (selectionStart !== null) {
-        const textBeforeCursor = value.slice(0, selectionStart);
-        const textAfterCursor = value.slice(selectionStart);
-
-        const match = textBeforeCursor.match(/([a-zA-Z]+)$/);
-        if (match) {
-          e.preventDefault();
-          const lastWord = match[1];
-          const converted = transliterateWord(lastWord);
-          const newBefore = textBeforeCursor.slice(0, textBeforeCursor.length - lastWord.length) + converted + ' ';
-          const newValue = newBefore + textAfterCursor;
-
-          setFormData(prev => ({ ...prev, [fieldName]: newValue }));
-
-          requestAnimationFrame(() => {
-            if (target) {
-              const newPos = newBefore.length;
-              target.setSelectionRange(newPos, newPos);
-            }
-          });
-        }
-      }
-    }
-  };
-
-  const handleTamilBlur = (fieldName: 'name' | 'address') => {
-    if (!tamilTypingEnabled) return;
-    const currentVal = formData[fieldName];
-    if (/[a-zA-Z]/.test(currentVal)) {
-      const converted = englishToTamil(currentVal);
-      setFormData(prev => ({ ...prev, [fieldName]: converted }));
-    }
-  };
-
   const convertFieldToTamil = (fieldName: 'name' | 'address') => {
     const currentVal = formData[fieldName];
     if (currentVal) {
@@ -146,8 +103,8 @@ const BakeryShops: React.FC = () => {
       setError('');
       const finalPayload = {
         ...formData,
-        name: (tamilTypingEnabled && /[a-zA-Z]/.test(formData.name)) ? englishToTamil(formData.name) : formData.name,
-        address: (tamilTypingEnabled && /[a-zA-Z]/.test(formData.address)) ? englishToTamil(formData.address) : formData.address,
+        name: formData.name.trim(),
+        address: formData.address.trim(),
       };
 
       if (editingId) {
@@ -265,7 +222,7 @@ const BakeryShops: React.FC = () => {
                 }`}
               >
                 <Languages className="w-3.5 h-3.5 mr-1" />
-                {tamilTypingEnabled ? '🇮🇳 தமிழ் தட்டச்சு: ON' : 'English Typing'}
+                {tamilTypingEnabled ? '🇮🇳 தமிழ் பரிந்துரை: ON' : 'தமிழ் பரிந்துரை: OFF'}
               </button>
               <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
@@ -275,9 +232,9 @@ const BakeryShops: React.FC = () => {
 
           {tamilTypingEnabled && (
             <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start space-x-2 mb-4">
-              <span className="font-bold text-blue-900 shrink-0">💡 தமிழ்:</span>
+              <span className="font-bold text-blue-900 shrink-0">💡 குறிப்பு:</span>
               <span>
-                ஆங்கிலத்தில் டைப் செய்து <b>Space</b> அழுத்தினால் தமிழில் மாறும் (எ.கா: <code>bavani store</code> ➔ <code>பவானி ஸ்டோர்</code>).
+                கடை பெயர் ஆங்கிலத்தில் இருக்கும். தேவைப்பட்டால் தமிழில் மாற்ற <b>"🔄 தமிழில் மாற்றுக"</b> பட்டனையோ அல்லது கீழே தோன்றும் தமிழ் பரிந்துரையையோ கிளிக் செய்யவும்.
               </span>
             </div>
           )}
@@ -292,6 +249,7 @@ const BakeryShops: React.FC = () => {
                       type="button"
                       onClick={() => convertFieldToTamil('name')}
                       className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
+                      title="கடை பெயரை தமிழில் மாற்ற கிளிக் செய்யவும்"
                     >
                       🔄 தமிழில் மாற்றுக
                     </button>
@@ -302,9 +260,7 @@ const BakeryShops: React.FC = () => {
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  onKeyDown={(e) => handleTamilKeyDown(e, 'name')}
-                  onBlur={() => handleTamilBlur('name')}
-                  placeholder={tamilTypingEnabled ? "e.g. sridevi bakery (ஸ்ரீதேவி பேக்கரி)" : "Shop Name"}
+                  placeholder="Shop Name (e.g. sridevi bakery or ஸ்ரீதேவி பேக்கரி)"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   required
                 />
@@ -312,6 +268,7 @@ const BakeryShops: React.FC = () => {
                   <div
                     onClick={() => convertFieldToTamil('name')}
                     className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
+                    title="தமிழ் பெயரை பயன்படுத்த கிளிக் செய்க"
                   >
                     <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.name)}</span>
                     <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
@@ -331,37 +288,15 @@ const BakeryShops: React.FC = () => {
               </div>
               
               <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Address / Area</label>
-                  {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
-                    <button
-                      type="button"
-                      onClick={() => convertFieldToTamil('address')}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
-                    >
-                      🔄 தமிழில் மாற்றுக
-                    </button>
-                  )}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address / Area</label>
                 <textarea
                   name="address"
                   value={formData.address}
                   onChange={handleInputChange}
-                  onKeyDown={(e) => handleTamilKeyDown(e, 'address')}
-                  onBlur={() => handleTamilBlur('address')}
-                  placeholder={tamilTypingEnabled ? "e.g. main road, vallioor (மெயின் ரோடு, வள்ளியூர்)" : "Address / Area"}
+                  placeholder="Address / Area"
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                 ></textarea>
-                {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
-                  <div
-                    onClick={() => convertFieldToTamil('address')}
-                    className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
-                  >
-                    <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.address)}</span>
-                    <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
-                  </div>
-                )}
               </div>
             </div>
 

@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { shopsAPI, schedulesAPI } from '../services/api';
 import { Pagination } from './Pagination';
-import type { DaySchedule } from '../context/AppContext';
-import { matchesTamilSearch, transliterateWord, englishToTamil } from '../utils/tamilTransliteration';
+import { matchesTamilSearch, englishToTamil } from '../utils/tamilTransliteration';
 
 interface Shop {
   id: number;
@@ -14,12 +13,14 @@ interface Shop {
   contact: string;
   email?: string;
   gst?: string;
+  gst_type?: 'GST' | 'IGST';
+  gst_effective_date?: string;
   status: 'active' | 'inactive';
   created_date: string;
 }
 
 const Shops: React.FC = () => {
-  const { weeklySchedule, setWeeklySchedule, userRole } = useAppContext();
+  const { weeklySchedule, setWeeklySchedule, userRole, refreshData } = useAppContext();
   const navigate = useNavigate();
 
   const [shops, setShops] = useState<Shop[]>([]);
@@ -42,6 +43,8 @@ const Shops: React.FC = () => {
     contact: '',
     email: '',
     gst: '',
+    gst_type: 'GST' as 'GST' | 'IGST',
+    gst_effective_date: '',
     status: 'active' as 'active' | 'inactive'
   });
   const [tamilTypingEnabled, setTamilTypingEnabled] = useState(true);
@@ -63,6 +66,8 @@ const Shops: React.FC = () => {
             contact: shop.contact,
             email: shop.email,
             gst: shop.gstNumber,
+            gst_type: (shop.gstType || shop.gst_type || 'GST') as 'GST' | 'IGST',
+            gst_effective_date: shop.gstEffectiveDate || shop.gst_effective_date || '',
             status: shop.status.toLowerCase(),
             created_date: new Date(shop.createdAt).toISOString().split('T')[0],
           }));
@@ -155,49 +160,6 @@ const Shops: React.FC = () => {
     setCurrentPage(page);
   };
 
-  const handleTamilKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-    fieldName: 'shop_name' | 'address'
-  ) => {
-    if (!tamilTypingEnabled) return;
-
-    if (e.key === ' ') {
-      const target = e.currentTarget;
-      const { selectionStart, value } = target;
-      if (selectionStart !== null) {
-        const textBeforeCursor = value.slice(0, selectionStart);
-        const textAfterCursor = value.slice(selectionStart);
-
-        const match = textBeforeCursor.match(/([a-zA-Z]+)$/);
-        if (match) {
-          e.preventDefault();
-          const lastWord = match[1];
-          const converted = transliterateWord(lastWord);
-          const newBefore = textBeforeCursor.slice(0, textBeforeCursor.length - lastWord.length) + converted + ' ';
-          const newValue = newBefore + textAfterCursor;
-
-          setFormData(prev => ({ ...prev, [fieldName]: newValue }));
-
-          requestAnimationFrame(() => {
-            if (target) {
-              const newPos = newBefore.length;
-              target.setSelectionRange(newPos, newPos);
-            }
-          });
-        }
-      }
-    }
-  };
-
-  const handleTamilBlur = (fieldName: 'shop_name' | 'address') => {
-    if (!tamilTypingEnabled) return;
-    const currentVal = formData[fieldName];
-    if (/[a-zA-Z]/.test(currentVal)) {
-      const converted = englishToTamil(currentVal);
-      setFormData(prev => ({ ...prev, [fieldName]: converted }));
-    }
-  };
-
   const convertFieldToTamil = (fieldName: 'shop_name' | 'address') => {
     const currentVal = formData[fieldName];
     if (currentVal) {
@@ -210,12 +172,8 @@ const Shops: React.FC = () => {
     e.preventDefault();
 
     try {
-      const finalShopName = (tamilTypingEnabled && /[a-zA-Z]/.test(formData.shop_name))
-        ? englishToTamil(formData.shop_name)
-        : formData.shop_name;
-      const finalAddress = (tamilTypingEnabled && /[a-zA-Z]/.test(formData.address))
-        ? englishToTamil(formData.address)
-        : formData.address;
+      const finalShopName = formData.shop_name.trim();
+      const finalAddress = formData.address.trim();
 
       if (editingShop) {
         // Update existing shop via API
@@ -225,6 +183,8 @@ const Shops: React.FC = () => {
           contact: formData.contact,
           email: formData.email,
           gstNumber: formData.gst,
+          gstType: formData.gst_type || 'GST',
+          gstEffectiveDate: formData.gst ? (formData.gst_effective_date || new Date().toISOString().split('T')[0]) : undefined,
           status: formData.status.toUpperCase(),
         });
 
@@ -236,9 +196,12 @@ const Shops: React.FC = () => {
                   ...formData,
                   shop_name: finalShopName,
                   address: finalAddress,
+                  gst_type: formData.gst_type || 'GST',
+                  gst_effective_date: formData.gst ? (formData.gst_effective_date || new Date().toISOString().split('T')[0]) : '',
                 }
               : shop
           ));
+          await refreshData();
           resetForm();
         } else {
           alert(updatedShopResponse.message || 'Failed to update shop');
@@ -251,6 +214,8 @@ const Shops: React.FC = () => {
           contact: formData.contact,
           email: formData.email,
           gstNumber: formData.gst,
+          gstType: formData.gst_type || 'GST',
+          gstEffectiveDate: formData.gst ? (formData.gst_effective_date || new Date().toISOString().split('T')[0]) : undefined,
         });
 
         if (newShopResponse.success) {
@@ -262,10 +227,13 @@ const Shops: React.FC = () => {
             contact: createdShop.contact,
             email: createdShop.email,
             gst: createdShop.gstNumber,
+            gst_type: (createdShop.gstType || createdShop.gst_type || formData.gst_type || 'GST') as 'GST' | 'IGST',
+            gst_effective_date: createdShop.gstEffectiveDate || formData.gst_effective_date || '',
             status: createdShop.status.toLowerCase(),
             created_date: new Date(createdShop.createdAt).toISOString().split('T')[0],
           };
           setShops([...shops, newShop]);
+          await refreshData();
           resetForm();
         } else {
           alert(newShopResponse.message || 'Failed to create shop');
@@ -283,6 +251,8 @@ const Shops: React.FC = () => {
       contact: '',
       email: '',
       gst: '',
+      gst_type: 'GST',
+      gst_effective_date: '',
       status: 'active'
     });
     setEditingShop(null);
@@ -297,6 +267,8 @@ const Shops: React.FC = () => {
       contact: shop.contact,
       email: shop.email || '',
       gst: shop.gst || '',
+      gst_type: (shop.gst_type || 'GST') as 'GST' | 'IGST',
+      gst_effective_date: shop.gst_effective_date || '',
       status: shop.status
     });
     setShowModal(true);
@@ -538,6 +510,20 @@ const Shops: React.FC = () => {
                               <MapPin className="h-4 w-4 mr-1" />
                               {shop.address}
                             </div>
+                            {shop.gst && (
+                              <div className="mt-1 flex items-center space-x-1.5">
+                                <span className="text-[11px] font-mono text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                  GST: {shop.gst}
+                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  shop.gst_type === 'IGST'
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                                    : 'bg-blue-100 text-blue-800 border border-blue-300'
+                                }`}>
+                                  {shop.gst_type === 'IGST' ? 'IGST' : 'GST'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -632,18 +618,18 @@ const Shops: React.FC = () => {
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
                           : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
                       }`}
-                      title="Toggle Tamil / English typing"
+                      title="Toggle Tamil translation suggestion"
                     >
                       <Languages className="w-3.5 h-3.5 mr-1" />
-                      {tamilTypingEnabled ? '🇮🇳 தமிழ் தட்டச்சு: ON' : 'English Typing'}
+                      {tamilTypingEnabled ? '🇮🇳 தமிழ் பரிந்துரை: ON' : 'தமிழ் பரிந்துரை: OFF'}
                     </button>
                   </div>
 
                   {tamilTypingEnabled && (
                     <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start space-x-2 mb-4">
-                      <span className="font-bold text-blue-900 shrink-0">💡 தமிழ்:</span>
+                      <span className="font-bold text-blue-900 shrink-0">💡 குறிப்பு:</span>
                       <span>
-                        ஆங்கிலத்தில் டைப் செய்து <b>Space</b> அழுத்தினால் தமிழில் மாறும் (எ.கா: <code>bavani store</code> ➔ <code>பவானி ஸ்டோர்</code>).
+                        கடை பெயர் ஆங்கிலத்தில் இருக்கும். தேவைப்பட்டால் தமிழில் மாற்ற <b>"🔄 தமிழில் மாற்றுக"</b> பட்டனையோ அல்லது கீழே தோன்றும் தமிழ் பரிந்துரையையோ கிளிக் செய்யவும்.
                       </span>
                     </div>
                   )}
@@ -659,6 +645,7 @@ const Shops: React.FC = () => {
                             type="button"
                             onClick={() => convertFieldToTamil('shop_name')}
                             className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
+                            title="கடை பெயரை தமிழில் மாற்ற கிளிக் செய்யவும்"
                           >
                             🔄 தமிழில் மாற்றுக
                           </button>
@@ -669,16 +656,14 @@ const Shops: React.FC = () => {
                         required
                         value={formData.shop_name}
                         onChange={(e) => setFormData({ ...formData, shop_name: e.target.value })}
-                        onKeyDown={(e) => handleTamilKeyDown(e, 'shop_name')}
-                        onBlur={() => handleTamilBlur('shop_name')}
-                        placeholder={tamilTypingEnabled ? "e.g. bavani store (பவானி ஸ்டோர்)" : "Shop Name"}
+                        placeholder="Shop Name (e.g. LRS or பவானி ஸ்டோர்)"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       {tamilTypingEnabled && /[a-zA-Z]/.test(formData.shop_name) && (
                         <div
                           onClick={() => convertFieldToTamil('shop_name')}
                           className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
-                          title="Click to apply Tamil translation"
+                          title="தமிழ் பெயரை பயன்படுத்த கிளிக் செய்க"
                         >
                           <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.shop_name)}</span>
                           <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
@@ -686,40 +671,17 @@ const Shops: React.FC = () => {
                       )}
                     </div>
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Address *
-                        </label>
-                        {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
-                          <button
-                            type="button"
-                            onClick={() => convertFieldToTamil('address')}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
-                          >
-                            🔄 தமிழில் மாற்றுக
-                          </button>
-                        )}
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Address *
+                      </label>
                       <textarea
                         required
                         value={formData.address}
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        onKeyDown={(e) => handleTamilKeyDown(e, 'address')}
-                        onBlur={() => handleTamilBlur('address')}
-                        placeholder={tamilTypingEnabled ? "e.g. thomas mandapam, chidambarapuram" : "Shop Address"}
+                        placeholder="Shop Address"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         rows={3}
                       />
-                      {tamilTypingEnabled && /[a-zA-Z]/.test(formData.address) && (
-                        <div
-                          onClick={() => convertFieldToTamil('address')}
-                          className="mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded cursor-pointer transition flex items-center justify-between"
-                          title="Click to apply Tamil translation"
-                        >
-                          <span>✨ <b>தமிழ்:</b> {englishToTamil(formData.address)}</span>
-                          <span className="text-[11px] text-emerald-600 underline">மாற்ற கிளிக் செய்க</span>
-                        </div>
-                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -751,11 +713,84 @@ const Shops: React.FC = () => {
                       <input
                         type="text"
                         value={formData.gst}
-                        onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
+                        onChange={(e) => {
+                          const newGst = e.target.value.toUpperCase();
+                          const updates: any = { gst: newGst };
+                          if (newGst.trim() && !formData.gst_effective_date) {
+                            updates.gst_effective_date = new Date().toISOString().split('T')[0];
+                          }
+                          setFormData(prev => ({ ...prev, ...updates }));
+                        }}
                         placeholder="e.g., 33AAAAA1234A1Z5"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono uppercase"
                       />
                     </div>
+                    {formData.gst.trim() && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Tax Type (வரி வகை)
+                          </label>
+                          <div className="grid grid-cols-2 gap-3 mt-1">
+                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${
+                              formData.gst_type !== 'IGST'
+                                ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-200'
+                                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                            }`}>
+                              <input
+                                type="radio"
+                                name="shop_gst_type"
+                                value="GST"
+                                checked={formData.gst_type !== 'IGST'}
+                                onChange={() => setFormData(prev => ({ ...prev, gst_type: 'GST' }))}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                              />
+                              <div className="ml-2.5">
+                                <span className="block text-sm font-bold">GST</span>
+                                <span className="block text-[11px] text-gray-500 font-normal">SGST + CGST (Default)</span>
+                              </div>
+                            </label>
+                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${
+                              formData.gst_type === 'IGST'
+                                ? 'bg-purple-50 border-purple-500 text-purple-900 ring-2 ring-purple-200'
+                                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                            }`}>
+                              <input
+                                type="radio"
+                                name="shop_gst_type"
+                                value="IGST"
+                                checked={formData.gst_type === 'IGST'}
+                                onChange={() => setFormData(prev => ({ ...prev, gst_type: 'IGST' }))}
+                                className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300"
+                              />
+                              <div className="ml-2.5">
+                                <span className="block text-sm font-bold text-purple-700">IGST</span>
+                                <span className="block text-[11px] text-purple-600 font-normal">Inter-state (Only IGST)</span>
+                              </div>
+                            </label>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1.5">
+                            {formData.gst_type === 'IGST'
+                              ? 'ℹ️ IGST: பில்லில் SGST / CGST தெரியாது, IGST மட்டும் தனியாகக் காட்டப்படும்.'
+                              : 'ℹ️ GST: பில்லில் IGST தெரியாது, SGST மற்றும் CGST பிரித்துக் காட்டப்படும்.'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            GST Effective From (GST தொடங்கும் தேதி)
+                          </label>
+                          <input
+                            type="date"
+                            value={formData.gst_effective_date || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, gst_effective_date: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-blue-600 mt-1">
+                            இந்த தேதி அல்லது அதற்குப் பிறகு போடும் பில்கள் மட்டுமே GST பில்களாக மாறும். முந்தைய தேதியில் உள்ள பில்களில் GST வராது.
+                          </p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Status

@@ -96,7 +96,7 @@ function getShopsList() {
         $total = (int)$countStmt->fetchColumn();
         
         // Get Shops
-        $querySql = "SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt 
+        $querySql = "SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt 
                      FROM shops 
                      {$whereSql} 
                      ORDER BY {$sortBySql} {$sortOrder} 
@@ -204,7 +204,7 @@ function getShopById($shopId) {
     $db = getDatabaseConnection();
     try {
         // Fetch base shop
-        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt 
+        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt 
                               FROM shops 
                               WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $shopId]);
@@ -274,7 +274,7 @@ function getShopById($shopId) {
             $billIdsStr = implode(',', $billIds);
             
             // Fetch bill items
-            $itemsStmt = $db->query("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.hsn_code as hsnCode, bi.createdAt,
+            $itemsStmt = $db->query("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.igst, bi.hsn_code as hsnCode, bi.createdAt,
                                             p.product_name as productName, p.unit
                                      FROM bill_items bi
                                      JOIN products p ON bi.product_id = p.id
@@ -292,6 +292,7 @@ function getShopById($shopId) {
                     'amount' => (float)$item['amount'],
                     'sgst' => (float)$item['sgst'],
                     'cgst' => (float)$item['cgst'],
+                    'igst' => (float)($item['igst'] ?? 0.00),
                     'hsnCode' => $item['hsnCode'],
                     'createdAt' => $item['createdAt'],
                     'product' => [
@@ -338,6 +339,11 @@ function createShop() {
     $contact = $body['contact'] ?? '';
     $email = $body['email'] ?? null;
     $gstNumber = $body['gstNumber'] ?? null;
+    $gstType = !empty($body['gstType']) && in_array(strtoupper($body['gstType']), ['GST', 'IGST']) ? strtoupper($body['gstType']) : 'GST';
+    $gstEffectiveDate = $body['gstEffectiveDate'] ?? null;
+    if (!empty($gstNumber) && empty($gstEffectiveDate)) {
+        $gstEffectiveDate = date('Y-m-d');
+    }
     $status = $body['status'] ?? 'ACTIVE';
     
     if (empty($shopName) || empty($address) || empty($contact)) {
@@ -354,21 +360,23 @@ function createShop() {
             return;
         }
 
-        $stmt = $db->prepare("INSERT INTO shops (shop_name, address, contact, email, gst_number, status, createdAt, updatedAt) 
-                              VALUES (:shop_name, :address, :contact, :email, :gst_number, :status, NOW(), NOW())");
+        $stmt = $db->prepare("INSERT INTO shops (shop_name, address, contact, email, gst_number, gst_type, gst_effective_date, status, createdAt, updatedAt) 
+                              VALUES (:shop_name, :address, :contact, :email, :gst_number, :gst_type, :gst_effective_date, :status, NOW(), NOW())");
         $stmt->execute([
             'shop_name' => $shopName,
             'address' => $address,
             'contact' => $contact,
             'email' => $email,
             'gst_number' => $gstNumber,
+            'gst_type' => $gstType,
+            'gst_effective_date' => $gstEffectiveDate,
             'status' => $status
         ]);
         
         $shopId = (int)$db->lastInsertId();
         
         // Fetch new shop
-        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt 
+        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt 
                               FROM shops WHERE id = :id");
         $stmt->execute(['id' => $shopId]);
         $shop = $stmt->fetch();
@@ -418,8 +426,29 @@ function updateShop($shopId) {
             'contact' => 'contact',
             'email' => 'email',
             'gstNumber' => 'gst_number',
+            'gstType' => 'gst_type',
+            'gstEffectiveDate' => 'gst_effective_date',
             'status' => 'status'
         ];
+        
+        // Auto-handle gst_effective_date if gstNumber is set but gstEffectiveDate is not provided
+        if (isset($body['gstNumber'])) {
+            $newGst = trim($body['gstNumber']);
+            if ($newGst !== '') {
+                if (!isset($body['gstEffectiveDate'])) {
+                    $currStmt = $db->prepare("SELECT gst_number, gst_effective_date FROM shops WHERE id = :id");
+                    $currStmt->execute(['id' => $shopId]);
+                    $currShop = $currStmt->fetch();
+                    if (empty($currShop['gst_number']) || empty($currShop['gst_effective_date'])) {
+                        $body['gstEffectiveDate'] = date('Y-m-d');
+                    }
+                }
+            } else {
+                if (!isset($body['gstEffectiveDate'])) {
+                    $body['gstEffectiveDate'] = null;
+                }
+            }
+        }
         
         foreach ($fields as $bodyKey => $dbCol) {
             if (isset($body[$bodyKey])) {
@@ -439,7 +468,7 @@ function updateShop($shopId) {
         $stmt->execute($params);
         
         // Fetch updated shop
-        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt 
+        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt 
                               FROM shops WHERE id = :id");
         $stmt->execute(['id' => $shopId]);
         $shop = $stmt->fetch();

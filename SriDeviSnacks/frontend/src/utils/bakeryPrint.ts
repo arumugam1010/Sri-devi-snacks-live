@@ -109,8 +109,8 @@ export const printBakeryBill = async (
 
       <div style="border-top: 1px dashed #000; padding-top: 5px; margin-top: 6px; font-size: 11px; line-height: 1.5;">
         <div style="display: flex; justify-content: space-between;">
-          <span>Item Total (${totalQty} items):</span>
-          <span>₹${total.toFixed(2)}</span>
+          <span>Item Total:</span>
+          <span>${totalQty} ${totalQty === 1 ? 'item' : 'items'}</span>
         </div>
         <div style="display: flex; justify-content: space-between; font-weight: bold;">
           <span>Today Total Amount (இன்றைய பில்):</span>
@@ -120,10 +120,6 @@ export const printBakeryBill = async (
         <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 900;">
           <span>Final Total:</span>
           <span style="color: #1d4ed8;">₹${total.toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 2px;">
-          <span>Paid Amount:</span>
-          <span>₹${paid.toFixed(2)}</span>
         </div>
         ${pending > 0 ? `
           <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; color: #b91c1c; margin-top: 2px;">

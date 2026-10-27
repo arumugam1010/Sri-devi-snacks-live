@@ -622,10 +622,47 @@ const PurchaseBills: React.FC = () => {
       return;
     }
 
+    // 1. Detect all unique GST percentage rates across bills to export
+    const detectedRates = new Set<number>();
+    billsToExport.forEach(bill => {
+      if (bill.is_gst === 1) {
+        if (bill.items && bill.items.length > 0) {
+          bill.items.forEach(it => {
+            const g = parseFloat(it.gst_percentage?.toString() || '0') || 0;
+            if (g > 0) detectedRates.add(g);
+          });
+        } else if (bill.gst_amount !== undefined && parseFloat(bill.gst_amount.toString()) > 0) {
+          const tot = parseFloat(bill.total_amount.toString()) || 0;
+          const gst = parseFloat(bill.gst_amount.toString()) || 0;
+          const taxable = bill.taxable_amount !== undefined ? parseFloat(bill.taxable_amount.toString()) : (tot - gst);
+          if (taxable > 0) {
+            const calculated = (gst / taxable) * 100;
+            const standardRates = [5, 12, 18, 28];
+            const matched = standardRates.find(r => Math.abs(calculated - r) <= 0.6);
+            detectedRates.add(matched !== undefined ? matched : (Math.round(calculated * 10) / 10 || 5));
+          } else {
+            detectedRates.add(5);
+          }
+        }
+      }
+    });
+
+    if (detectedRates.size === 0) {
+      detectedRates.add(5);
+    }
+
+    const rates = Array.from(detectedRates).sort((a, b) => a - b);
+
+    // 2. Build rows with dynamic CGST / SGST rate columns
     const dataForExcel: Array<Record<string, any>> = billsToExport.map((bill, index) => {
       const tot = parseFloat(bill.total_amount.toString()) || 0;
       let taxable = bill.taxable_amount !== undefined ? parseFloat(bill.taxable_amount.toString()) : 0;
       let totalGst = bill.gst_amount !== undefined ? parseFloat(bill.gst_amount.toString()) : 0;
+
+      const taxesByRate: Record<number, { cgst: number; sgst: number }> = {};
+      rates.forEach(r => {
+        taxesByRate[r] = { cgst: 0, sgst: 0 };
+      });
 
       if (bill.items && bill.items.length > 0) {
         const itemTaxable = bill.items.reduce((s, it) => {
@@ -633,26 +670,42 @@ const PurchaseBills: React.FC = () => {
           const p = parseFloat(it.price.toString()) || 0;
           return s + (q * p);
         }, 0);
-        const itemGst = bill.items.reduce((s, it) => {
+
+        let sumItemGst = 0;
+        bill.items.forEach(it => {
           const q = parseFloat(it.quantity.toString()) || 0;
           const p = parseFloat(it.price.toString()) || 0;
-          const g = parseFloat(it.gst_percentage.toString()) || 0;
-          return s + (q * p * (g / 100));
-        }, 0);
+          const g = parseFloat(it.gst_percentage?.toString() || '0') || 0;
+          const itTaxable = q * p;
+          const itGst = bill.is_gst === 1 ? itTaxable * (g / 100) : 0;
+          sumItemGst += itGst;
+          if (bill.is_gst === 1 && itGst > 0) {
+            let targetRate = g;
+            if (!taxesByRate[targetRate]) {
+              targetRate = rates[0] || 5;
+            }
+            if (taxesByRate[targetRate]) {
+              taxesByRate[targetRate].cgst += itGst / 2;
+              taxesByRate[targetRate].sgst += itGst / 2;
+            }
+          }
+        });
+
         taxable = bill.is_gst === 1 ? itemTaxable : tot;
-        totalGst = bill.is_gst === 1 ? itemGst : 0;
+        totalGst = bill.is_gst === 1 ? sumItemGst : 0;
       } else if (bill.is_gst === 0) {
         taxable = tot;
         totalGst = 0;
       } else if (bill.taxable_amount === undefined && bill.gst_amount === undefined) {
         taxable = tot;
         totalGst = 0;
+      } else if (bill.is_gst === 1 && totalGst > 0) {
+        const defaultRate = rates[0] || 5;
+        taxesByRate[defaultRate].cgst += totalGst / 2;
+        taxesByRate[defaultRate].sgst += totalGst / 2;
       }
 
-      const cgst = totalGst > 0 ? totalGst / 2 : 0;
-      const sgst = totalGst > 0 ? totalGst / 2 : 0;
-
-      return {
+      const row: Record<string, any> = {
         'S.No': index + 1,
         'Bill Date': new Date(bill.bill_date).toLocaleDateString('en-GB'),
         'Supplier Name': bill.supplier_name,
@@ -660,23 +713,28 @@ const PurchaseBills: React.FC = () => {
         'Bill Number': bill.bill_number,
         'Bill Type': bill.is_gst === 1 ? 'GST' : 'Zero-Rated GST',
         'Taxable Amount (₹)': parseFloat(taxable.toFixed(2)),
-        'CGST (₹)': parseFloat(cgst.toFixed(2)),
-        'SGST (₹)': parseFloat(sgst.toFixed(2)),
-        'Total GST (₹)': parseFloat(totalGst.toFixed(2)),
-        'Total Amount (₹)': parseFloat(tot.toFixed(2))
       };
+
+      rates.forEach(r => {
+        const halfRate = (r / 2) % 1 === 0 ? (r / 2).toString() : (r / 2).toFixed(1);
+        row[`CGST (${halfRate}%) (₹)`] = parseFloat((taxesByRate[r]?.cgst || 0).toFixed(2));
+        row[`SGST (${halfRate}%) (₹)`] = parseFloat((taxesByRate[r]?.sgst || 0).toFixed(2));
+      });
+
+      row['Total GST (₹)'] = parseFloat(totalGst.toFixed(2));
+      row['Total Amount (₹)'] = parseFloat(tot.toFixed(2));
+
+      return row;
     });
 
     const totalTaxable = dataForExcel.reduce((sum, b) => sum + (Number(b['Taxable Amount (₹)']) || 0), 0);
-    const totalCgst = dataForExcel.reduce((sum, b) => sum + (Number(b['CGST (₹)']) || 0), 0);
-    const totalSgst = dataForExcel.reduce((sum, b) => sum + (Number(b['SGST (₹)']) || 0), 0);
     const grandTotalGst = dataForExcel.reduce((sum, b) => sum + (Number(b['Total GST (₹)']) || 0), 0);
     const totalAmount = dataForExcel.reduce((sum, b) => sum + (Number(b['Total Amount (₹)']) || 0), 0);
     const gstCount = billsToExport.filter(b => b.is_gst === 1).length;
     const nonGstCount = billsToExport.filter(b => b.is_gst === 0).length;
 
     // Summary row
-    dataForExcel.push({
+    const totalRow: Record<string, any> = {
       'S.No': '',
       'Bill Date': '',
       'Supplier Name': 'TOTAL',
@@ -684,15 +742,26 @@ const PurchaseBills: React.FC = () => {
       'Bill Number': `Total: ${billsToExport.length} bills`,
       'Bill Type': '',
       'Taxable Amount (₹)': parseFloat(totalTaxable.toFixed(2)),
-      'CGST (₹)': parseFloat(totalCgst.toFixed(2)),
-      'SGST (₹)': parseFloat(totalSgst.toFixed(2)),
-      'Total GST (₹)': parseFloat(grandTotalGst.toFixed(2)),
-      'Total Amount (₹)': parseFloat(totalAmount.toFixed(2))
+    };
+
+    rates.forEach(r => {
+      const halfRate = (r / 2) % 1 === 0 ? (r / 2).toString() : (r / 2).toFixed(1);
+      const cgstKey = `CGST (${halfRate}%) (₹)`;
+      const sgstKey = `SGST (${halfRate}%) (₹)`;
+      const totalCgstForRate = dataForExcel.reduce((sum, b) => sum + (Number(b[cgstKey]) || 0), 0);
+      const totalSgstForRate = dataForExcel.reduce((sum, b) => sum + (Number(b[sgstKey]) || 0), 0);
+      totalRow[cgstKey] = parseFloat(totalCgstForRate.toFixed(2));
+      totalRow[sgstKey] = parseFloat(totalSgstForRate.toFixed(2));
     });
+
+    totalRow['Total GST (₹)'] = parseFloat(grandTotalGst.toFixed(2));
+    totalRow['Total Amount (₹)'] = parseFloat(totalAmount.toFixed(2));
+
+    dataForExcel.push(totalRow);
 
     try {
       const worksheet = utils.json_to_sheet(dataForExcel);
-      worksheet['!cols'] = [
+      const colWidths = [
         { wch: 8 },  // S.No
         { wch: 14 }, // Bill Date
         { wch: 30 }, // Supplier Name
@@ -700,11 +769,15 @@ const PurchaseBills: React.FC = () => {
         { wch: 18 }, // Bill Number
         { wch: 16 }, // Bill Type
         { wch: 18 }, // Taxable Amount (₹)
-        { wch: 12 }, // CGST (₹)
-        { wch: 12 }, // SGST (₹)
-        { wch: 14 }, // Total GST (₹)
-        { wch: 18 }  // Total Amount (₹)
       ];
+      rates.forEach(() => {
+        colWidths.push({ wch: 15 }); // CGST (x%) (₹)
+        colWidths.push({ wch: 15 }); // SGST (x%) (₹)
+      });
+      colWidths.push({ wch: 14 }); // Total GST (₹)
+      colWidths.push({ wch: 18 }); // Total Amount (₹)
+      worksheet['!cols'] = colWidths;
+
       const workbook = utils.book_new();
       utils.book_append_sheet(workbook, worksheet, 'Purchase Bills');
       writeFile(workbook, `${fileName}.xlsx`);

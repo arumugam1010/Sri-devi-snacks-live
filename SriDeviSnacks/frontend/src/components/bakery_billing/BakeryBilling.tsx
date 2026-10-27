@@ -1,9 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff, Search, Clock } from 'lucide-react';
+import { ShoppingCart, Trash2, Printer, Save, Image as ImageIcon, MapPin, Mic, MicOff, Search, Clock, RotateCw } from 'lucide-react';
 import { bakeryProductsAPI, bakeryBillsAPI, bakeryShopsAPI } from '../../services/api';
 import { printBakeryBill } from '../../utils/bakeryPrint';
 
 const Logo = '/Logo.png';
+
+const KNOWN_REGION_LOCATIONS: Array<{ name: string; lat: number; lon: number; radiusKm: number }> = [
+  { name: 'Padmaneri', lat: 8.5437, lon: 77.5703, radiusKm: 2.5 },
+  { name: 'Kalakad', lat: 8.5135, lon: 77.5500, radiusKm: 3.0 },
+  { name: 'Vallioor', lat: 8.3780, lon: 77.6140, radiusKm: 3.5 },
+  { name: 'Kanganankulam', lat: 8.6156, lon: 77.5686, radiusKm: 3.0 },
+  { name: 'Eruvadi', lat: 8.4440, lon: 77.6050, radiusKm: 2.5 },
+  { name: 'Nanguneri', lat: 8.4893, lon: 77.6597, radiusKm: 3.0 },
+  { name: 'Vadakankulam', lat: 8.2435, lon: 77.5668, radiusKm: 2.5 },
+  { name: 'Kavalkinaru', lat: 8.2773, lon: 77.5795, radiusKm: 2.5 },
+  { name: 'Radhapuram', lat: 8.2875, lon: 77.6410, radiusKm: 3.0 },
+  { name: 'Kudankulam', lat: 8.1724, lon: 77.7042, radiusKm: 3.0 },
+  { name: 'Panagudi', lat: 8.3275, lon: 77.5815, radiusKm: 3.0 },
+  { name: 'Kallikulam', lat: 8.3370, lon: 77.6360, radiusKm: 2.5 },
+  { name: 'Chettikulam', lat: 8.1737, lon: 77.4339, radiusKm: 2.5 },
+  { name: 'Idinthakarai', lat: 8.1764, lon: 77.7471, radiusKm: 2.5 },
+  { name: 'Navaladi', lat: 8.2250, lon: 77.7950, radiusKm: 2.5 },
+  { name: 'Anjugramam', lat: 8.1650, lon: 77.5350, radiusKm: 2.5 },
+  { name: 'Kannankulam', lat: 8.1950, lon: 77.5120, radiusKm: 2.5 },
+  { name: 'Kanyakumari', lat: 8.0883, lon: 77.5385, radiusKm: 3.5 },
+  { name: 'Kottaram', lat: 8.1180, lon: 77.5210, radiusKm: 2.5 },
+  { name: 'Palavoor', lat: 8.2560, lon: 77.5920, radiusKm: 2.5 },
+  { name: 'Nagercoil', lat: 8.1833, lon: 77.4119, radiusKm: 4.0 },
+  { name: 'Poothapandi', lat: 8.2560, lon: 77.4380, radiusKm: 3.0 },
+  { name: 'Aralvaimozhi', lat: 8.2430, lon: 77.5130, radiusKm: 3.0 },
+  { name: 'Tirunelveli', lat: 8.7139, lon: 77.7567, radiusKm: 5.0 },
+  { name: 'Kovilpatti', lat: 9.1724, lon: 77.8690, radiusKm: 4.0 },
+  { name: 'Sattur', lat: 9.3590, lon: 77.9250, radiusKm: 3.5 },
+  { name: 'Virudhunagar', lat: 9.5872, lon: 77.9514, radiusKm: 4.0 }
+];
 
 interface BakeryProduct {
   id: number;
@@ -69,8 +99,16 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
-  const [currentLocation, setCurrentLocation] = useState<string>('Main Branch');
-  const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
+  const [currentLocation, setCurrentLocation] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('bakery_live_location');
+      if (saved && !saved.toLowerCase().includes('branch')) {
+        return saved;
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [locationStatus, setLocationStatus] = useState<string>('Detecting live location...');
   const [selectedShopId, setSelectedShopId] = useState<number | null>(() => {
     const saved = localStorage.getItem('bakery_selected_shop_id');
     return saved ? Number(saved) : null;
@@ -174,6 +212,129 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
     setShowNearbyModal(false);
   };
 
+  const cleanAndNormalizePlace = (raw: string): string => {
+    if (!raw) return '';
+    let str = raw.trim();
+    const lower = str.toLowerCase();
+
+    // Normalize common local delivery areas
+    if (lower.includes('valliyur') || lower.includes('valiyoor') || lower.includes('vallioor')) return 'Vallioor';
+    if (lower.includes('kalakkad') || lower.includes('kalakad')) return 'Kalakad';
+    if (lower.includes('padmaneri')) return 'Padmaneri';
+    if (lower.includes('kanganankulam') || lower.includes('kankanakulam') || lower.includes('kankana kulam') || lower.includes('kangana kulam')) return 'Kanganankulam';
+    if (lower.includes('eruvadi') || lower.includes('eavadi')) return 'Eruvadi';
+    if (lower.includes('nanguneri')) return 'Nanguneri';
+    if (lower.includes('vadakankulam') || lower.includes('vadakkankulam')) return 'Vadakankulam';
+    if (lower.includes('kavalkinaru')) return 'Kavalkinaru';
+    if (lower.includes('radhapuram') || lower.includes('rathapuram')) return 'Radhapuram';
+    if (lower.includes('kudankulam')) return 'Kudankulam';
+    if (lower.includes('panagudi')) return 'Panagudi';
+    if (lower.includes('chettikulam')) return 'Chettikulam';
+    if (lower.includes('kallikulam')) return 'Kallikulam';
+
+    // Completely strip any branch / sub branch / administrative labels
+    str = str.replace(/\b(main branch|sub branch|branch|taluk|district|block)\b/gi, '').trim();
+    str = str.replace(/^[,.\s-]+|[,.\s-]+$/g, '');
+    if (!str) return '';
+
+    return str.split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  };
+
+  const detectLiveLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Geolocation is not supported');
+      return;
+    }
+
+    setLocationStatus('Detecting live location...');
+
+    const resolveCoords = async (latitude: number, longitude: number) => {
+      try {
+        let matchedName = '';
+        let minDistance = Infinity;
+
+        // 1. Check known delivery route areas first for instant precise match
+        for (const loc of KNOWN_REGION_LOCATIONS) {
+          const dist = calculateDistance(latitude, longitude, loc.lat, loc.lon);
+          if (dist <= loc.radiusKm * 1000 && dist < minDistance) {
+            minDistance = dist;
+            matchedName = loc.name;
+          }
+        }
+
+        // 2. OpenStreetMap Nominatim reverse geocode (detailed village/town level)
+        if (!matchedName) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const osmRes = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=16&addressdetails=1`,
+              { signal: controller.signal }
+            );
+            clearTimeout(timeoutId);
+            if (osmRes.ok) {
+              const data = await osmRes.json();
+              const addr = data.address || {};
+              const place = addr.village || addr.suburb || addr.town || addr.hamlet || addr.neighbourhood || addr.city_district || addr.municipality || addr.city || addr.county || '';
+              matchedName = cleanAndNormalizePlace(place);
+            }
+          } catch (e) {
+            // Nominatim error or timeout
+          }
+        }
+
+        // 3. BigDataCloud reverse geocode fallback
+        if (!matchedName) {
+          try {
+            const bdcRes = await fetch(
+              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+            );
+            if (bdcRes.ok) {
+              const data = await bdcRes.json();
+              const place = data.locality || data.city || data.principalSubdivision || '';
+              matchedName = cleanAndNormalizePlace(place);
+            }
+          } catch (e) {
+            // BDC fallback error
+          }
+        }
+
+        if (matchedName) {
+          setCurrentLocation(matchedName);
+          localStorage.setItem('bakery_live_location', matchedName);
+          setLocationStatus('Live: ' + matchedName);
+        } else {
+          setLocationStatus('GPS active (tap to edit)');
+        }
+      } catch (err) {
+        console.error('Failed to resolve location:', err);
+        setLocationStatus('Could not resolve area name');
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolveCoords(position.coords.latitude, position.coords.longitude);
+      },
+      (error) => {
+        console.warn('High accuracy GPS error, trying cell/wifi fallback...', error);
+        navigator.geolocation.getCurrentPosition(
+          (fallbackPos) => {
+            resolveCoords(fallbackPos.coords.latitude, fallbackPos.coords.longitude);
+          },
+          (err2) => {
+            console.warn('GPS denied or unavailable:', err2);
+            setLocationStatus('GPS unavailable - enter location');
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
   const fetchShopsAndDetectLocation = async () => {
     let loadedShops: BakeryShop[] = [];
     try {
@@ -184,31 +345,7 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
       console.error('Failed to load shops:', err);
     }
 
-    if (!navigator.geolocation) {
-      setLocationStatus('Geolocation is not supported by your browser');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          setLocationStatus('Fetching area name...');
-          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
-          const data = await res.json();
-          const place = data.locality || data.city || data.principalSubdivision || 'Unknown Location';
-          setCurrentLocation(place);
-          setLocationStatus('Live Location Fetched');
-        } catch (err) {
-          setLocationStatus('Failed to fetch location name');
-        }
-      },
-      (error) => {
-        console.warn('Geolocation error:', error);
-        setLocationStatus('GPS denied or unavailable');
-      },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
+    detectLiveLocation();
   };
 
   const fetchProducts = async () => {
@@ -586,24 +723,35 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
         </div>
 
         {/* Live Location Chip */}
-        <div className="bg-gray-50 px-3.5 py-2 rounded-lg border border-gray-200 flex items-center w-full sm:w-auto">
-          <MapPin className="w-4 h-4 text-blue-600 mr-2 shrink-0" />
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-xs text-gray-500">Location:</span>
-              <input
-                type="text"
-                value={currentLocation}
-                onChange={(e) => {
-                  setCurrentLocation(e.target.value);
-                  setLocationStatus('Manually edited');
-                }}
-                className="text-xs font-bold text-gray-900 border-none bg-transparent focus:ring-0 p-0 truncate w-28 sm:w-36"
-                placeholder="Location"
-              />
+        <div className="bg-gray-50 px-3.5 py-2 rounded-lg border border-gray-200 flex items-center justify-between gap-2 w-full sm:w-auto shadow-2xs">
+          <div className="flex items-center min-w-0">
+            <MapPin className="w-4 h-4 text-blue-600 mr-2 shrink-0" />
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs text-gray-500 font-medium">Location:</span>
+                <input
+                  type="text"
+                  value={currentLocation}
+                  onChange={(e) => {
+                    setCurrentLocation(e.target.value);
+                    localStorage.setItem('bakery_live_location', e.target.value);
+                    setLocationStatus('Manually edited');
+                  }}
+                  className="text-xs font-bold text-gray-900 border-none bg-transparent focus:ring-0 p-0 truncate w-28 sm:w-36"
+                  placeholder="Detecting..."
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 leading-tight truncate max-w-[170px]">{locationStatus}</span>
             </div>
-            <span className="text-[10px] text-gray-400 leading-tight">{locationStatus}</span>
           </div>
+          <button
+            type="button"
+            onClick={detectLiveLocation}
+            title="Refresh GPS Location"
+            className="p-1.5 hover:bg-gray-200 text-gray-500 hover:text-blue-600 rounded-md transition shrink-0"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -798,9 +946,11 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
                         )}
                       </div>
                     )}
-                    <p className="text-gray-600">
-                      <span className="font-bold">Location:</span> {currentLocation}
-                    </p>
+                    {currentLocation && (
+                      <p className="text-gray-600">
+                        <span className="font-bold">Location:</span> {currentLocation}
+                      </p>
+                    )}
                     <p className="text-gray-600">
                       <span className="font-bold">Date:</span> {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -868,8 +1018,8 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
                   {/* Totals Breakdown */}
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between text-gray-700">
-                      <span>Item Total ({billItems.reduce((acc, i) => acc + i.quantity, 0)} items):</span>
-                      <span className="font-medium">₹{totalAmount.toFixed(2)}</span>
+                      <span>Item Total:</span>
+                      <span className="font-medium">{billItems.reduce((acc, i) => acc + i.quantity, 0)} items</span>
                     </div>
                     <div className="flex justify-between font-semibold text-gray-800">
                       <span>Today Total Amount (இன்றைய பில்):</span>
@@ -998,19 +1148,10 @@ export default function BakeryBilling({ isStaff2: propIsStaff2 }: BakeryBillingP
                   type="button"
                   onClick={() => handleSaveBill(false)}
                   disabled={submitting}
-                  className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center transition disabled:opacity-50 text-sm"
+                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center transition disabled:opacity-50 text-sm shadow-sm"
                 >
                   <Save className="mr-1.5 h-4 w-4" />
-                  {submitting ? 'Saving...' : 'Save Only'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveBill(true)}
-                  disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 flex items-center transition disabled:opacity-50 text-sm shadow-md"
-                >
-                  <Printer className="mr-1.5 h-4 w-4" />
-                  {submitting ? 'Saving & Printing...' : 'Save & Print'}
+                  {submitting ? 'Saving...' : 'Save Bill'}
                 </button>
               </div>
             </div>

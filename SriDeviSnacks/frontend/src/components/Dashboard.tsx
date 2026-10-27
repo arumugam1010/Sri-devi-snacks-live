@@ -3,6 +3,7 @@ import { Store, Package, Receipt, TrendingUp, DollarSign, Users, ShoppingCart, A
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import api, { dashboardAPI } from '../services/api';
+import { isShopGstActiveForBill } from '../utils/gstUtils';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -208,31 +209,14 @@ const Dashboard: React.FC = () => {
   }, [todayCollections]);
 
   const [activeView, setActiveView] = useState<'received' | 'pending_issued' | 'returns'>('received');
-  // Configuration for shops that recently got a GST number
-  // Format: 'Shop Name': 'YYYY-MM-DD' (Bills before this date will be hidden from GST bills)
-  const SHOP_GST_CUTOFF_DATES: Record<string, string> = {
-    'நிலா பேக்கரி': '2026-09-05',
-  };
 
   const gstBillsList = React.useMemo(() => {
     return bills.filter(bill => {
       const shop = shops.find(s => s.id === bill.shop_id);
-      const hasGstNumber = shop && shop.gst && shop.gst.trim() !== '';
-      
+      const isGstActive = isShopGstActiveForBill(shop, bill.bill_date);
       // Only include bills where GST was actually applied
       const hasGstApplied = bill.items && bill.items.some((item: any) => (item.sgst || 0) > 0 || (item.cgst || 0) > 0);
-      
-      let isAfterCutoff = true;
-      if (shop && shop.shop_name && SHOP_GST_CUTOFF_DATES[shop.shop_name]) {
-        const cutoffDate = new Date(SHOP_GST_CUTOFF_DATES[shop.shop_name]);
-        cutoffDate.setHours(0, 0, 0, 0);
-        const billDate = new Date(bill.bill_date);
-        if (billDate < cutoffDate) {
-          isAfterCutoff = false;
-        }
-      }
-      
-      return hasGstNumber && hasGstApplied && isAfterCutoff;
+      return isGstActive && hasGstApplied;
     }).sort((a, b) => new Date(b.bill_date).getTime() - new Date(a.bill_date).getTime());
   }, [bills, shops]);
 

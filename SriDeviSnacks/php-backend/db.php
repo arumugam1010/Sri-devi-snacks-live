@@ -99,6 +99,33 @@
                             $pdo->exec("ALTER TABLE suppliers ADD COLUMN address TEXT NULL");
                         }
                     } catch (\Exception $e) {}
+
+                    // Check and add gst_effective_date to shops table
+                    try {
+                        $stmt = $pdo->query("SHOW COLUMNS FROM shops LIKE 'gst_effective_date'");
+                        $column = $stmt->fetch();
+                        if (!$column) {
+                            $pdo->exec("ALTER TABLE shops ADD COLUMN gst_effective_date DATE NULL AFTER gst_number");
+                        }
+                    } catch (\Exception $e) {}
+
+                    // Check and add gst_type to shops table
+                    try {
+                        $stmt = $pdo->query("SHOW COLUMNS FROM shops LIKE 'gst_type'");
+                        $column = $stmt->fetch();
+                        if (!$column) {
+                            $pdo->exec("ALTER TABLE shops ADD COLUMN gst_type VARCHAR(10) NOT NULL DEFAULT 'GST' AFTER gst_number");
+                        }
+                    } catch (\Exception $e) {}
+
+                    // Check and add igst to bill_items table
+                    try {
+                        $stmt = $pdo->query("SHOW COLUMNS FROM bill_items LIKE 'igst'");
+                        $column = $stmt->fetch();
+                        if (!$column) {
+                            $pdo->exec("ALTER TABLE bill_items ADD COLUMN igst DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER cgst");
+                        }
+                    } catch (\Exception $e) {}
                     
                     // Check and create settings table
                     $pdo->exec("CREATE TABLE IF NOT EXISTS settings (

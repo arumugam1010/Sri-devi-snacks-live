@@ -8,6 +8,7 @@
   import { Pagination } from './Pagination';
   import html2canvas from 'html2canvas';
   import jsPDF from 'jspdf';
+  import { isShopGstActiveForBill, getShopGstNumberForBill } from '../utils/gstUtils';
   const Logo = '/Logo.png';
 
 
@@ -25,6 +26,7 @@
     gst?: number;
     sgst?: number;
     cgst?: number;
+    igst?: number;
     hsnCode: string;
     isReturn?: boolean;
   }
@@ -794,20 +796,27 @@
           if (latestPrice !== item.price && !item.isReturn) {
             changed = true;
             const newAmount = item.quantity * latestPrice;
+            const isIgstShop = currentShop?.gst_type === 'IGST';
             let newSgst = 0;
             let newCgst = 0;
+            let newIgst = 0;
             const gstPercent = item.gst !== undefined ? item.gst : (baseProduct ? baseProduct.gst : 0);
             if (gstPercent && item.quantity > 0) {
               const gstAmount = (newAmount * gstPercent) / 100;
-              newSgst = gstAmount / 2;
-              newCgst = gstAmount / 2;
+              if (isIgstShop) {
+                newIgst = gstAmount;
+              } else {
+                newSgst = gstAmount / 2;
+                newCgst = gstAmount / 2;
+              }
             }
             return {
               ...item,
               price: latestPrice,
               amount: newAmount,
               sgst: newSgst,
-              cgst: newCgst
+              cgst: newCgst,
+              igst: newIgst
             };
           }
           return item;
@@ -960,13 +969,22 @@
         const updatedBill = [...currentBill];
         updatedBill[existingItemIndex].quantity += quantity;
         updatedBill[existingItemIndex].amount = updatedBill[existingItemIndex].quantity * updatedBill[existingItemIndex].price;
-        // Recalculate SGST and CGST only for positive quantity items (sales) if shop has GST
+        // Recalculate taxes only for positive quantity items (sales) if shop has GST
+        const isIgstShop = currentShop?.gst_type === 'IGST';
         if (product.gst && updatedBill[existingItemIndex].quantity > 0) {
           const gstAmount = (updatedBill[existingItemIndex].amount * product.gst) / 100;
-          updatedBill[existingItemIndex].sgst = gstAmount / 2;
-          updatedBill[existingItemIndex].cgst = gstAmount / 2;
+          if (isIgstShop) {
+            updatedBill[existingItemIndex].igst = gstAmount;
+            updatedBill[existingItemIndex].sgst = 0;
+            updatedBill[existingItemIndex].cgst = 0;
+          } else {
+            updatedBill[existingItemIndex].igst = 0;
+            updatedBill[existingItemIndex].sgst = gstAmount / 2;
+            updatedBill[existingItemIndex].cgst = gstAmount / 2;
+          }
         } else {
-          // For return items, or if shop has no GST, set SGST and CGST to 0
+          // For return items, or if shop has no GST, set taxes to 0
+          updatedBill[existingItemIndex].igst = 0;
           updatedBill[existingItemIndex].sgst = 0;
           updatedBill[existingItemIndex].cgst = 0;
         }
@@ -974,6 +992,7 @@
       } else {
         // Add new item
         const amount = product.price * quantity;
+        const isIgstShop = currentShop?.gst_type === 'IGST';
         const newItem: BillItem = {
           id: Date.now(),
           product_id: product.product_id,
@@ -986,13 +1005,21 @@
           isReturn: false
         };
 
-        // Calculate SGST and CGST only for positive quantity items (sales) if shop has GST
+        // Calculate taxes only for positive quantity items (sales) if shop has GST
         if (product.gst && quantity > 0) {
           const gstAmount = (amount * product.gst) / 100;
-          newItem.sgst = gstAmount / 2;
-          newItem.cgst = gstAmount / 2;
+          if (isIgstShop) {
+            newItem.igst = gstAmount;
+            newItem.sgst = 0;
+            newItem.cgst = 0;
+          } else {
+            newItem.igst = 0;
+            newItem.sgst = gstAmount / 2;
+            newItem.cgst = gstAmount / 2;
+          }
         } else {
-          // For return items, or if shop has no GST, set SGST and CGST to 0
+          // For return items, or if shop has no GST, set taxes to 0
+          newItem.igst = 0;
           newItem.sgst = 0;
           newItem.cgst = 0;
         }
@@ -1032,19 +1059,25 @@
       }
 
       // Update the item with new quantity, amount, and GST
+      const isIgstShop = currentShop?.gst_type === 'IGST';
       const newAmount = newQuantity * item.price;
       let newSgst = 0;
       let newCgst = 0;
+      let newIgst = 0;
 
       if (product.gst && newQuantity > 0) {
         const gstAmount = (newAmount * product.gst) / 100;
-        newSgst = gstAmount / 2;
-        newCgst = gstAmount / 2;
+        if (isIgstShop) {
+          newIgst = gstAmount;
+        } else {
+          newSgst = gstAmount / 2;
+          newCgst = gstAmount / 2;
+        }
       }
 
       setCurrentBill(currentBill.map(billItem =>
         billItem.id === itemId
-          ? { ...billItem, quantity: newQuantity, amount: newAmount, sgst: newSgst, cgst: newCgst }
+          ? { ...billItem, quantity: newQuantity, amount: newAmount, sgst: newSgst, cgst: newCgst, igst: newIgst }
           : billItem
       ));
       setHasPrinted(false); // Reset print status when quantities are changed
@@ -1060,21 +1093,27 @@
       const product = products.find(p => p.id === item.product_id);
 
       // For return items, quantity should be negative
+      const isIgstShop = currentShop?.gst_type === 'IGST';
       const negativeQuantity = -newQuantity;
       const newAmount = negativeQuantity * item.price;
 
       let newSgst = 0;
       let newCgst = 0;
+      let newIgst = 0;
       if (product && product.gst) {
         const gstAmount = (newAmount * product.gst) / 100;
-        newSgst = gstAmount / 2;
-        newCgst = gstAmount / 2;
+        if (isIgstShop) {
+          newIgst = gstAmount;
+        } else {
+          newSgst = gstAmount / 2;
+          newCgst = gstAmount / 2;
+        }
       }
 
       // Update the return item with new quantity, amount and calculated negative GST
       setCurrentBill(currentBill.map(billItem =>
         billItem.id === itemId
-          ? { ...billItem, quantity: negativeQuantity, amount: newAmount, sgst: newSgst, cgst: newCgst }
+          ? { ...billItem, quantity: negativeQuantity, amount: newAmount, sgst: newSgst, cgst: newCgst, igst: newIgst }
           : billItem
       ));
       setHasPrinted(false); // Reset print status when quantities are changed
@@ -1176,11 +1215,11 @@
       // Calculate final total including returns and taxes
       const returnAmount = currentBill
         .filter(item => item.quantity < 0)
-        .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+        .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
       const billingAmount = currentBill
         .filter(item => item.quantity > 0)
-        .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+        .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
       let finalTotal = getRoundingDetails(billingAmount + returnAmount).finalTotal; // returnAmount is negative
 
@@ -1194,7 +1233,7 @@
       }
 
       const modalTotalAmount = getRoundingDetails(
-        currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0) +
+        currentBill.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0) +
         pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0)
       ).finalTotal;
 
@@ -1251,6 +1290,7 @@
           rate: item.price,
           sgst: item.sgst || 0,
           cgst: item.cgst || 0,
+          igst: item.igst || 0,
           hsnCode: item.hsnCode
         }))
       };
@@ -1454,16 +1494,26 @@
           updatedBill[existingItemIndex].quantity += quantity;
           updatedBill[existingItemIndex].amount = updatedBill[existingItemIndex].quantity * updatedBill[existingItemIndex].price;
 
+          const isIgstShop = currentShop?.gst_type === 'IGST';
           if (product.gst && updatedBill[existingItemIndex].quantity > 0) {
             const gstAmount = (updatedBill[existingItemIndex].amount * product.gst) / 100;
-            updatedBill[existingItemIndex].sgst = gstAmount / 2;
-            updatedBill[existingItemIndex].cgst = gstAmount / 2;
+            if (isIgstShop) {
+              updatedBill[existingItemIndex].igst = gstAmount;
+              updatedBill[existingItemIndex].sgst = 0;
+              updatedBill[existingItemIndex].cgst = 0;
+            } else {
+              updatedBill[existingItemIndex].igst = 0;
+              updatedBill[existingItemIndex].sgst = gstAmount / 2;
+              updatedBill[existingItemIndex].cgst = gstAmount / 2;
+            }
           } else {
+            updatedBill[existingItemIndex].igst = 0;
             updatedBill[existingItemIndex].sgst = 0;
             updatedBill[existingItemIndex].cgst = 0;
           }
         } else {
           const amount = product.price * quantity;
+          const isIgstShop = currentShop?.gst_type === 'IGST';
           const newItem: BillItem = {
             id: Date.now() + product.product_id + Math.random(),
             product_id: product.product_id,
@@ -1478,9 +1528,17 @@
 
           if (product.gst && quantity > 0) {
             const gstAmount = (amount * product.gst) / 100;
-            newItem.sgst = gstAmount / 2;
-            newItem.cgst = gstAmount / 2;
+            if (isIgstShop) {
+              newItem.igst = gstAmount;
+              newItem.sgst = 0;
+              newItem.cgst = 0;
+            } else {
+              newItem.igst = 0;
+              newItem.sgst = gstAmount / 2;
+              newItem.cgst = gstAmount / 2;
+            }
           } else {
+            newItem.igst = 0;
             newItem.sgst = 0;
             newItem.cgst = 0;
           }
@@ -1589,17 +1647,27 @@
             amount: newAmount
           };
 
-          // For return items, calculate negative SGST and CGST
+          // For return items, calculate negative taxes
+          const isIgstShop = currentShop?.gst_type === 'IGST';
           if (product.gst) {
             const gstAmount = (newAmount * product.gst) / 100;
-            updatedBill[existingReturnItemIndex].sgst = gstAmount / 2;
-            updatedBill[existingReturnItemIndex].cgst = gstAmount / 2;
+            if (isIgstShop) {
+              updatedBill[existingReturnItemIndex].igst = gstAmount;
+              updatedBill[existingReturnItemIndex].sgst = 0;
+              updatedBill[existingReturnItemIndex].cgst = 0;
+            } else {
+              updatedBill[existingReturnItemIndex].igst = 0;
+              updatedBill[existingReturnItemIndex].sgst = gstAmount / 2;
+              updatedBill[existingReturnItemIndex].cgst = gstAmount / 2;
+            }
           } else {
+            updatedBill[existingReturnItemIndex].igst = 0;
             updatedBill[existingReturnItemIndex].sgst = 0;
             updatedBill[existingReturnItemIndex].cgst = 0;
           }
         } else {
           // Add return item with negative values
+          const isIgstShop = currentShop?.gst_type === 'IGST';
           const amount = -quantity * product.price; // Negative amount for return items
           const returnItem: BillItem = {
             id: Date.now() + product.product_id + Math.random(),
@@ -1613,12 +1681,20 @@
             isReturn: true
           };
 
-          // For return items, calculate negative SGST and CGST
+          // For return items, calculate negative taxes
           if (product.gst) {
             const gstAmount = (amount * product.gst) / 100;
-            returnItem.sgst = gstAmount / 2;
-            returnItem.cgst = gstAmount / 2;
+            if (isIgstShop) {
+              returnItem.igst = gstAmount;
+              returnItem.sgst = 0;
+              returnItem.cgst = 0;
+            } else {
+              returnItem.igst = 0;
+              returnItem.sgst = gstAmount / 2;
+              returnItem.cgst = gstAmount / 2;
+            }
           } else {
+            returnItem.igst = 0;
             returnItem.sgst = 0;
             returnItem.cgst = 0;
           }
@@ -1644,11 +1720,11 @@
         // Calculate final total including returns and taxes
         const returnAmount = currentBill
           .filter(item => item.quantity < 0)
-          .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+          .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
         const billingAmount = currentBill
           .filter(item => item.quantity > 0)
-          .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+          .reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
         let finalTotal = billingAmount + returnAmount; // returnAmount is negative
 
@@ -1690,6 +1766,7 @@
             rate: item.price,
             sgst: item.sgst || 0,
             cgst: item.cgst || 0,
+            igst: item.igst || 0,
             hsnCode: item.hsnCode
           }))
         };
@@ -1985,14 +2062,16 @@
         const itemTotal = bill.items.reduce((sum: number, item: any) => sum + item.amount, 0);
         const sgst = bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const cgst = bill.items.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const todayTotalUnrounded = itemTotal + sgst + cgst;
+        const igst = bill.items.reduce((sum: number, item: any) => sum + (item.igst || 0), 0);
+        const todayTotalUnrounded = itemTotal + sgst + cgst + igst;
         const { finalTotal: todayFinalTotal, discount } = getRoundingDetails(todayTotalUnrounded);
         const finalTotal = bill.total_amount;
         const previousPending = finalTotal - todayFinalTotal;
 
         const viewShop = allShops.find(s => s.id === bill.shop_id);
         const hasGst = true;
-        const shopGstNo = viewShop?.gst || '';
+        const shopGstNo = getShopGstNumberForBill(viewShop, bill.bill_date);
+        const isIgst = viewShop?.gst_type === 'IGST' || bill.items.some((it: any) => (it.igst || 0) > 0);
 
         win.document.write(`
             <div class="single-bill">
@@ -2016,12 +2095,22 @@
               <div class="company-city">Vallioor, Tirunelveli-627117</div>
               <div class="bill-no"><strong>Bill No:</strong> ${bill.bill_number || bill.billNumber || bill.id}</div>
               <div class="shop-info"><strong>Shop:</strong> ${bill.shop_name}</div>
-              <div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo || 'N/A'}</div>
+              ${shopGstNo ? `<div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo}</div>` : ''}
               <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(bill.bill_date)}</div>
               <div class="dashed-line"></div>
 
               <table class="bill-items">
                 <thead>
+                  ${isIgst ? `
+                  <tr>
+                    <th style="text-align: left; width: 33%;">Product Name</th>
+                    <th style="text-align: right; width: 10%;">QTY</th>
+                    <th style="text-align: right; width: 14%;">Price</th>
+                    <th style="text-align: right; width: 13%;">IGST</th>
+                    <th style="text-align: right; width: 16%;">Price+GST</th>
+                    <th style="text-align: right; width: 14%;">Total</th>
+                  </tr>
+                  ` : `
                   <tr>
                     <th style="text-align: left; width: 26%;">Product Name</th>
                     <th style="text-align: right; width: 9%;">QTY</th>
@@ -2031,6 +2120,7 @@
                     <th style="text-align: right; width: 16%;">Price+GST</th>
                     <th style="text-align: right; width: 14%;">Total</th>
                   </tr>
+                  `}
                 </thead>
                 <tbody>
           `);
@@ -2040,9 +2130,22 @@
           const qty = item.quantity;
           const sgstVal = item.sgst || 0;
           const cgstVal = item.cgst || 0;
-          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
-          const totalInclGst = item.amount + sgstVal + cgstVal;
-          win.document.write(`
+          const igstVal = item.igst || 0;
+          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / qty) : item.price;
+          const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+          if (isIgst) {
+            win.document.write(`
+              <tr>
+                <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                <td style="text-align: right;">${qty}</td>
+                <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                <td style="text-align: right;">${igstVal.toFixed(2)}</td>
+                <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+              </tr>
+            `);
+          } else {
+            win.document.write(`
               <tr>
                 <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
                 <td style="text-align: right;">${qty}</td>
@@ -2053,25 +2156,43 @@
                 <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
               </tr>
             `);
+          }
         });
-
-        // Calculate purchase totals
         const purchasedItems = bill.items.filter((item: any) => item.quantity > 0);
         const purQty = purchasedItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const purSgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const purCgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+        const purIgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.igst || 0), 0);
+        const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
         win.document.write(`
                 <tr style="border: none !important;">
-                  <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                  <td colspan="${isIgst ? 6 : 7}" style="border: none !important; height: 8px; padding: 0;"></td>
                 </tr>
           `);
 
         const returnItems = bill.items.filter((item: any) => item.quantity < 0);
         if (returnItems.length > 0) {
           // Print Purchase Total first if returns exist
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #f0fdf4;">
+                  <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                  <td style="text-align: right;">${purQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+                <tr style="border: none !important;">
+                  <td colspan="6" style="border: none !important; height: 8px; padding: 0;"></td>
+                </tr>
+                <tr style="font-weight: bold; background-color: #f8f9fa;">
+                  <td colspan="6">Return Items</td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #f0fdf4;">
                   <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
                   <td style="text-align: right;">${purQty}</td>
@@ -2087,34 +2208,62 @@
                 <tr style="font-weight: bold; background-color: #f8f9fa;">
                   <td colspan="7">Return Items</td>
                 </tr>
-            `);
+              `);
+          }
 
           returnItems.forEach((item: any) => {
             const qty = Math.abs(item.quantity);
             const sgstVal = item.sgst || 0;
             const cgstVal = item.cgst || 0;
-            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
-            win.document.write(`
-                <tr style="color: #dc2626;">
-                  <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
-                  <td style="text-align: right;">-${qty}</td>
-                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                  <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
-                  <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
-                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                  <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
-                </tr>
-              `);
+            const igstVal = item.igst || 0;
+            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
+            if (isIgst) {
+              win.document.write(`
+                  <tr style="color: #dc2626;">
+                    <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                    <td style="text-align: right;">-${qty}</td>
+                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(igstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                    <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                  </tr>
+                `);
+            } else {
+              win.document.write(`
+                  <tr style="color: #dc2626;">
+                    <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                    <td style="text-align: right;">-${qty}</td>
+                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                    <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                  </tr>
+                `);
+            }
           });
 
           // Return Total
           const retQty = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.quantity), 0);
           const retSgst = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
           const retCgst = returnItems.reduce((sum, item) => sum + Math.abs(item.cgst || 0), 0);
-          const retTotalAmount = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
+          const retIgst = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.igst || 0), 0);
+          const retTotalAmount = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0), 0);
 
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                  <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                  <td style="text-align: right;">${retQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
                   <td class="product-name-cell" style="text-align: left;">Return Total</td>
                   <td style="text-align: right;">${retQty}</td>
@@ -2124,10 +2273,23 @@
                   <td style="text-align: right;"></td>
                   <td style="text-align: right;"></td>
                 </tr>
-            `);
+              `);
+          }
         } else {
           // Just print regular Total
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #f8f9fa;">
+                  <td class="product-name-cell" style="text-align: left;">Total</td>
+                  <td style="text-align: right;">${purQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #f8f9fa;">
                   <td class="product-name-cell" style="text-align: left;">Total</td>
                   <td style="text-align: right;">${purQty}</td>
@@ -2137,7 +2299,8 @@
                   <td style="text-align: right;"></td>
                   <td style="text-align: right;"></td>
                 </tr>
-            `);
+              `);
+          }
         }
 
         win.document.write(`
@@ -2151,18 +2314,18 @@
                   <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + i.amount, 0)).toFixed(2)}</div>
                 </div>
                 <div class="total-row">
-                  <div>GST:</div>
-                  <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                  <div>${isIgst ? 'IGST:' : 'GST:'}</div>
+                  <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0) + (i.igst || 0), 0)).toFixed(2)}</div>
                 </div>
-                ${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 ? `
+                ${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 ? `
                 <div class="total-row" style="color: #dc2626;">
                   <div>Return Amount:</div>
-                  <div>${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                  <div>${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                 </div>
                 ` : ''}
                 <div class="total-row">
                   <div>Today Total Amount (இன்றைய பில்):</div>
-                  <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                  <div>${(itemTotal + sgst + cgst + igst).toFixed(2)}</div>
                 </div>
           `);
 
@@ -2254,18 +2417,58 @@
           (s.shop_name && bill.shop_name && s.shop_name.trim().toLowerCase() === bill.shop_name.trim().toLowerCase()) ||
           (s.shop_name && bill.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === bill.shop_name.replace(/[.\s]/g, '').toLowerCase())
         );
-        const shopGst = (shop && shop.gst && shop.gst.trim())
-          ? shop.gst.trim()
-          : ((bill as any).shop_gst || (bill as any).shop?.gstNumber || (bill as any).shop?.gst || '');
+        const shopGst = getShopGstNumberForBill(shop, bill.bill_date);
 
         const items = bill.items || [];
         const sgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.sgst) || 0), 0).toFixed(2));
         const cgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.cgst) || 0), 0).toFixed(2));
-        const totalGst = Number((sgst + cgst).toFixed(2));
+        const igst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.igst) || 0), 0).toFixed(2));
+        const totalGst = Number((sgst + cgst + igst).toFixed(2));
         const totalAmount = Number(parseFloat((bill.total_amount || 0).toString()).toFixed(2));
-        const taxableAmount = totalGst > 0
-          ? Number((totalAmount - totalGst).toFixed(2))
-          : totalAmount;
+
+        let zeroAmount = 0;
+        let taxableAmount = 0;
+
+        if (items.length > 0) {
+          let zeroSum = 0;
+          let taxableSum = 0;
+
+          items.forEach((item: any) => {
+            const itemGstTax = (Number(item.sgst) || 0) + (Number(item.cgst) || 0) + (Number(item.igst) || 0);
+            const itemGstRate = Number(item.gst) || 0;
+            const itemAmt = Number(item.amount) !== undefined && !isNaN(Number(item.amount))
+              ? Number(item.amount)
+              : (Number(item.quantity) || 0) * (Number(item.price) || 0);
+
+            if (itemGstTax > 0 || itemGstRate > 0) {
+              taxableSum += itemAmt;
+            } else {
+              zeroSum += itemAmt;
+            }
+          });
+
+          if (totalGst === 0) {
+            zeroAmount = totalAmount;
+            taxableAmount = 0;
+          } else if (zeroSum === 0) {
+            zeroAmount = 0;
+            taxableAmount = Number((totalAmount - totalGst).toFixed(2));
+          } else {
+            zeroAmount = Number(zeroSum.toFixed(2));
+            taxableAmount = Number((totalAmount - totalGst - zeroAmount).toFixed(2));
+            if (taxableAmount < 0) {
+              taxableAmount = Number(taxableSum.toFixed(2));
+            }
+          }
+        } else {
+          if (totalGst > 0) {
+            taxableAmount = Number((totalAmount - totalGst).toFixed(2));
+            zeroAmount = 0;
+          } else {
+            taxableAmount = 0;
+            zeroAmount = totalAmount;
+          }
+        }
 
         return {
           'Date': new Date(bill.bill_date).toLocaleDateString(),
@@ -2273,19 +2476,23 @@
           'Shop GST': shopGst || '-',
           'Bill No': bill.bill_number || bill.billNumber || bill.id,
           'Taxable Amount': taxableAmount,
+          '0% Amount': zeroAmount,
           'CGST': cgst,
           'SGST': sgst,
+          'IGST': igst,
           'Total GST': totalGst,
           'Total Amount': totalAmount
         };
       });
 
       // Calculate totals for summary row
-      const totalTaxable = dataForExcel.reduce((sum, r) => sum + r['Taxable Amount'], 0);
-      const totalCgst = dataForExcel.reduce((sum, r) => sum + r['CGST'], 0);
-      const totalSgst = dataForExcel.reduce((sum, r) => sum + r['SGST'], 0);
-      const grandTotalGst = dataForExcel.reduce((sum, r) => sum + r['Total GST'], 0);
-      const grandTotal = dataForExcel.reduce((sum, r) => sum + r['Total Amount'], 0);
+      const totalTaxable = dataForExcel.reduce((sum, r) => sum + (Number(r['Taxable Amount']) || 0), 0);
+      const totalZero = dataForExcel.reduce((sum, r) => sum + (Number(r['0% Amount']) || 0), 0);
+      const totalCgst = dataForExcel.reduce((sum, r) => sum + (Number(r['CGST']) || 0), 0);
+      const totalSgst = dataForExcel.reduce((sum, r) => sum + (Number(r['SGST']) || 0), 0);
+      const totalIgst = dataForExcel.reduce((sum, r) => sum + (Number(r['IGST']) || 0), 0);
+      const grandTotalGst = dataForExcel.reduce((sum, r) => sum + (Number(r['Total GST']) || 0), 0);
+      const grandTotal = dataForExcel.reduce((sum, r) => sum + (Number(r['Total Amount']) || 0), 0);
 
       dataForExcel.push({
         'Date': '',
@@ -2293,8 +2500,10 @@
         'Shop GST': '',
         'Bill No': `${monthBills.length} Bills`,
         'Taxable Amount': Number(totalTaxable.toFixed(2)),
+        '0% Amount': Number(totalZero.toFixed(2)),
         'CGST': Number(totalCgst.toFixed(2)),
         'SGST': Number(totalSgst.toFixed(2)),
+        'IGST': Number(totalIgst.toFixed(2)),
         'Total GST': Number(grandTotalGst.toFixed(2)),
         'Total Amount': Number(grandTotal.toFixed(2))
       });
@@ -2309,8 +2518,10 @@
           { wch: 18 }, // Shop GST
           { wch: 14 }, // Bill No
           { wch: 16 }, // Taxable Amount
+          { wch: 14 }, // 0% Amount
           { wch: 12 }, // CGST
           { wch: 12 }, // SGST
+          { wch: 12 }, // IGST
           { wch: 14 }, // Total GST
           { wch: 16 }  // Total Amount
         ];
@@ -2494,14 +2705,16 @@
         const itemTotal = bill.items.reduce((sum: number, item: any) => sum + item.amount, 0);
         const sgst = bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const cgst = bill.items.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const todayTotalUnrounded = itemTotal + sgst + cgst;
+        const igst = bill.items.reduce((sum: number, item: any) => sum + (item.igst || 0), 0);
+        const todayTotalUnrounded = itemTotal + sgst + cgst + igst;
         const { finalTotal: todayFinalTotal, discount } = getRoundingDetails(todayTotalUnrounded);
         const finalTotal = bill.total_amount;
         const previousPending = finalTotal - todayFinalTotal;
 
         const viewShop = allShops.find(s => s.id === bill.shop_id);
         const hasGst = true;
-        const shopGstNo = viewShop?.gst || '';
+        const shopGstNo = getShopGstNumberForBill(viewShop, bill.bill_date);
+        const isIgst = viewShop?.gst_type === 'IGST' || bill.items.some((it: any) => (it.igst || 0) > 0);
 
         win.document.write(`
             <div class="single-bill">
@@ -2525,12 +2738,22 @@
               <div class="company-city">Vallioor, Tirunelveli-627117</div>
               <div class="bill-no"><strong>Bill No:</strong> ${bill.bill_number || bill.billNumber || bill.id}</div>
               <div class="shop-info"><strong>Shop:</strong> ${bill.shop_name}</div>
-              <div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo || 'N/A'}</div>
+              ${shopGstNo ? `<div class="shop-gst"><strong>Shop GST No:</strong> ${shopGstNo}</div>` : ''}
               <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(bill.bill_date)}</div>
               <div class="dashed-line"></div>
 
               <table class="bill-items">
                 <thead>
+                  ${isIgst ? `
+                  <tr>
+                    <th style="text-align: left; width: 33%;">Product Name</th>
+                    <th style="text-align: right; width: 10%;">QTY</th>
+                    <th style="text-align: right; width: 14%;">Price</th>
+                    <th style="text-align: right; width: 13%;">IGST</th>
+                    <th style="text-align: right; width: 16%;">Price+GST</th>
+                    <th style="text-align: right; width: 14%;">Total</th>
+                  </tr>
+                  ` : `
                   <tr>
                     <th style="text-align: left; width: 26%;">Product Name</th>
                     <th style="text-align: right; width: 9%;">QTY</th>
@@ -2540,6 +2763,7 @@
                     <th style="text-align: right; width: 16%;">Price+GST</th>
                     <th style="text-align: right; width: 14%;">Total</th>
                   </tr>
+                  `}
                 </thead>
                 <tbody>
           `);
@@ -2549,38 +2773,69 @@
           const qty = item.quantity;
           const sgstVal = item.sgst || 0;
           const cgstVal = item.cgst || 0;
-          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
-          const totalInclGst = item.amount + sgstVal + cgstVal;
-          win.document.write(`
-              <tr>
-                <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
-                <td style="text-align: right;">${qty}</td>
-                <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
-                <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
-                <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
-              </tr>
-            `);
+          const igstVal = item.igst || 0;
+          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / qty) : item.price;
+          const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+          if (isIgst) {
+            win.document.write(`
+                <tr>
+                  <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                  <td style="text-align: right;">${qty}</td>
+                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                  <td style="text-align: right;">${igstVal.toFixed(2)}</td>
+                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                  <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
+                <tr>
+                  <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                  <td style="text-align: right;">${qty}</td>
+                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                  <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
+                  <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
+                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                  <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+                </tr>
+              `);
+          }
         });
-
-        // Calculate purchase totals
         const purchasedItems = bill.items.filter((item: any) => item.quantity > 0);
         const purQty = purchasedItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const purSgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
         const purCgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-        const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+        const purIgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.igst || 0), 0);
+        const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
         win.document.write(`
                 <tr style="border: none !important;">
-                  <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                  <td colspan="${isIgst ? 6 : 7}" style="border: none !important; height: 8px; padding: 0;"></td>
                 </tr>
           `);
 
         const returnItems = bill.items.filter((item: any) => item.quantity < 0);
         if (returnItems.length > 0) {
           // Print Purchase Total first if returns exist
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #f0fdf4;">
+                  <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                  <td style="text-align: right;">${purQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+                <tr style="border: none !important;">
+                  <td colspan="6" style="border: none !important; height: 8px; padding: 0;"></td>
+                </tr>
+                <tr style="font-weight: bold; background-color: #f8f9fa;">
+                  <td colspan="6">Return Items</td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #f0fdf4;">
                   <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
                   <td style="text-align: right;">${purQty}</td>
@@ -2596,34 +2851,62 @@
                 <tr style="font-weight: bold; background-color: #f8f9fa;">
                   <td colspan="7">Return Items</td>
                 </tr>
-            `);
+              `);
+          }
 
           returnItems.forEach((item: any) => {
             const qty = Math.abs(item.quantity);
             const sgstVal = item.sgst || 0;
             const cgstVal = item.cgst || 0;
-            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
-            win.document.write(`
-                <tr style="color: #dc2626;">
-                  <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
-                  <td style="text-align: right;">-${qty}</td>
-                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                  <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
-                  <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
-                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                  <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
-                </tr>
-              `);
+            const igstVal = item.igst || 0;
+            const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+            const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
+            if (isIgst) {
+              win.document.write(`
+                  <tr style="color: #dc2626;">
+                    <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                    <td style="text-align: right;">-${qty}</td>
+                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(igstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                    <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                  </tr>
+                `);
+            } else {
+              win.document.write(`
+                  <tr style="color: #dc2626;">
+                    <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                    <td style="text-align: right;">-${qty}</td>
+                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                    <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                  </tr>
+                `);
+            }
           });
 
           // Return Total
           const retQty = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.quantity), 0);
           const retSgst = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
           const retCgst = returnItems.reduce((sum, item) => sum + Math.abs(item.cgst || 0), 0);
-          const retTotalAmount = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
+          const retIgst = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.igst || 0), 0);
+          const retTotalAmount = returnItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0), 0);
 
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                  <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                  <td style="text-align: right;">${retQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
                   <td class="product-name-cell" style="text-align: left;">Return Total</td>
                   <td style="text-align: right;">${retQty}</td>
@@ -2633,10 +2916,23 @@
                   <td style="text-align: right;"></td>
                   <td style="text-align: right;"></td>
                 </tr>
-            `);
+              `);
+          }
         } else {
           // Just print regular Total
-          win.document.write(`
+          if (isIgst) {
+            win.document.write(`
+                <tr style="font-weight: bold; background-color: #f8f9fa;">
+                  <td class="product-name-cell" style="text-align: left;">Total</td>
+                  <td style="text-align: right;">${purQty}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                  <td style="text-align: right;"></td>
+                  <td style="text-align: right;"></td>
+                </tr>
+              `);
+          } else {
+            win.document.write(`
                 <tr style="font-weight: bold; background-color: #f8f9fa;">
                   <td class="product-name-cell" style="text-align: left;">Total</td>
                   <td style="text-align: right;">${purQty}</td>
@@ -2646,7 +2942,8 @@
                   <td style="text-align: right;"></td>
                   <td style="text-align: right;"></td>
                 </tr>
-            `);
+              `);
+          }
         }
 
         win.document.write(`
@@ -2660,18 +2957,18 @@
                   <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + i.amount, 0)).toFixed(2)}</div>
                 </div>
                 <div class="total-row">
-                  <div>GST:</div>
-                  <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                  <div>${isIgst ? 'IGST:' : 'GST:'}</div>
+                  <div>${(bill.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0) + (i.igst || 0), 0)).toFixed(2)}</div>
                 </div>
-                ${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 ? `
+                ${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 ? `
                 <div class="total-row" style="color: #dc2626;">
                   <div>Return Amount:</div>
-                  <div>${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                  <div>${(bill.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                 </div>
                 ` : ''}
                 <div class="total-row">
                   <div>Today Total Amount (இன்றைய பில்):</div>
-                  <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                  <div>${(itemTotal + sgst + cgst + igst).toFixed(2)}</div>
                 </div>
           `);
 
@@ -3317,14 +3614,14 @@
                                 const pending = monthBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
                                 const gstBillAmount = monthBills.reduce((sum, bill) => {
                                   const shop = allShops.find(s => s.id === bill.shop_id);
-                                  if (shop && shop.gst && shop.gst.trim() !== '') {
+                                  if (isShopGstActiveForBill(shop, bill.bill_date)) {
                                     return sum + bill.total_amount;
                                   }
                                   return sum;
                                 }, 0);
                                 const cashBillAmount = monthBills.reduce((sum, bill) => {
                                   const shop = allShops.find(s => s.id === bill.shop_id);
-                                  if (!shop || !shop.gst || shop.gst.trim() === '') {
+                                  if (!isShopGstActiveForBill(shop, bill.bill_date)) {
                                     return sum + bill.total_amount;
                                   }
                                   return sum;
@@ -3899,16 +4196,28 @@
                                           <div class="company-city">Vallioor, Tirunelveli-627117</div>
                                           <div class="bill-no"><strong>Bill No:</strong> ${nextBillNumber}</div>
                                           <div class="shop-info"><strong>Shop:</strong> ${shopName}</div>
-                                          <div class="shop-gst"><strong>Shop GST No:</strong> ${currentShop?.gst || ''}</div>
+                                          ${getShopGstNumberForBill(currentShop, new Date()) ? `<div class="shop-gst"><strong>Shop GST No:</strong> ${getShopGstNumberForBill(currentShop, new Date())}</div>` : ''}
                                           <div class="bill-date"><strong>Date:</strong> ${formatDateWithDay(new Date())}</div>
                                           <div class="dashed-line"></div>
                                         </div>
                                     `);
 
+                                const isIgst = currentShop?.gst_type === 'IGST' || currentBill.some(it => (it.igst || 0) > 0);
+
                                 // Add bill items
                                 win.document.write(`
                                       <table class="bill-items">
                                         <thead>
+                                          ${isIgst ? `
+                                          <tr>
+                                            <th style="text-align: left; width: 33%;">Product Name</th>
+                                            <th style="text-align: right; width: 10%;">QTY</th>
+                                            <th style="text-align: right; width: 14%;">Price</th>
+                                            <th style="text-align: right; width: 13%;">IGST</th>
+                                            <th style="text-align: right; width: 16%;">Price+GST</th>
+                                            <th style="text-align: right; width: 14%;">Total</th>
+                                          </tr>
+                                          ` : `
                                           <tr>
                                             <th style="text-align: left; width: 26%;">Product Name</th>
                                             <th style="text-align: right; width: 9%;">QTY</th>
@@ -3918,6 +4227,7 @@
                                             <th style="text-align: right; width: 16%;">Price+GST</th>
                                             <th style="text-align: right; width: 14%;">Total</th>
                                           </tr>
+                                          `}
                                         </thead>
                                         <tbody>
                                     `);
@@ -3927,9 +4237,22 @@
                                   const qty = item.quantity;
                                   const sgstVal = item.sgst || 0;
                                   const cgstVal = item.cgst || 0;
-                                  const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
-                                  const totalInclGst = item.amount + sgstVal + cgstVal;
-                                  win.document.write(`
+                                  const igstVal = item.igst || 0;
+                                  const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / qty) : item.price;
+                                  const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+                                  if (isIgst) {
+                                    win.document.write(`
+                                        <tr>
+                                          <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                          <td style="text-align: right;">${qty}</td>
+                                          <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                          <td style="text-align: right;">${igstVal.toFixed(2)}</td>
+                                          <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                          <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+                                        </tr>
+                                      `);
+                                  } else {
+                                    win.document.write(`
                                         <tr>
                                           <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
                                           <td style="text-align: right;">${qty}</td>
@@ -3940,6 +4263,7 @@
                                           <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
                                         </tr>
                                       `);
+                                  }
                                 });
 
                                 // Calculate purchase totals
@@ -3947,81 +4271,142 @@
                                 const purQty = purchasedItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
                                 const purSgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
                                 const purCgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-                                const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+                                const purIgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.igst || 0), 0);
+                                const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
 
                                 win.document.write(`
                                     <tr style="border: none !important;">
-                                      <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                                      <td colspan="${isIgst ? 6 : 7}" style="border: none !important; height: 8px; padding: 0;"></td>
                                     </tr>
                                   `);
 
                                 const returnedItems = currentBill.filter((item: any) => item.quantity < 0);
                                 if (returnedItems.length > 0) {
-                                  win.document.write(`
-                                      <tr style="font-weight: bold; background-color: #f0fdf4;">
-                                        <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
-                                        <td style="text-align: right;">${purQty}</td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;">${purSgst.toFixed(2)}</td>
-                                        <td style="text-align: right;">${purCgst.toFixed(2)}</td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                      </tr>
-                                      <tr style="border: none !important;">
-                                        <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
-                                      </tr>
-                                      <tr style="font-weight: bold; background-color: #f8f9fa;">
-                                        <td colspan="7">Return Items</td>
-                                      </tr>
-                                    `);
+                                  if (isIgst) {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #f0fdf4;">
+                                          <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                                          <td style="text-align: right;">${purQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                        <tr style="border: none !important;">
+                                          <td colspan="6" style="border: none !important; height: 8px; padding: 0;"></td>
+                                        </tr>
+                                        <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                          <td colspan="6">Return Items</td>
+                                        </tr>
+                                      `);
+                                  } else {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #f0fdf4;">
+                                          <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                                          <td style="text-align: right;">${purQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;">${purSgst.toFixed(2)}</td>
+                                          <td style="text-align: right;">${purCgst.toFixed(2)}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                        <tr style="border: none !important;">
+                                          <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                                        </tr>
+                                        <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                          <td colspan="7">Return Items</td>
+                                        </tr>
+                                      `);
+                                  }
 
                                   returnedItems.forEach(item => {
                                     const qty = Math.abs(item.quantity);
                                     const sgstVal = item.sgst || 0;
                                     const cgstVal = item.cgst || 0;
-                                    const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-                                    const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
-                                    win.document.write(`
-                                        <tr style="color: #dc2626;">
-                                          <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
-                                          <td style="text-align: right;">-${qty}</td>
-                                          <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                                          <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
-                                          <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
-                                          <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                                          <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
-                                        </tr>
-                                      `);
+                                    const igstVal = item.igst || 0;
+                                    const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+                                    const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
+                                    if (isIgst) {
+                                      win.document.write(`
+                                          <tr style="color: #dc2626;">
+                                            <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                                            <td style="text-align: right;">-${qty}</td>
+                                            <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                            <td style="text-align: right;">-${Math.abs(igstVal).toFixed(2)}</td>
+                                            <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                            <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                                          </tr>
+                                        `);
+                                    } else {
+                                      win.document.write(`
+                                          <tr style="color: #dc2626;">
+                                            <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                                            <td style="text-align: right;">-${qty}</td>
+                                            <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                            <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                                            <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                                            <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                            <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                                          </tr>
+                                        `);
+                                    }
                                   });
 
                                   const retQty = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.quantity), 0);
                                   const retSgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
                                   const retCgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.cgst || 0), 0);
-                                  const retTotalAmount = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
+                                  const retIgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.igst || 0), 0);
+                                  const retTotalAmount = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0), 0);
 
-                                  win.document.write(`
-                                      <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
-                                        <td class="product-name-cell" style="text-align: left;">Return Total</td>
-                                        <td style="text-align: right;">${retQty}</td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                      </tr>
-                                    `);
+                                  if (isIgst) {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                                          <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                                          <td style="text-align: right;">${retQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                      `);
+                                  } else {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                                          <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                                          <td style="text-align: right;">${retQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                      `);
+                                  }
                                 } else {
-                                  win.document.write(`
-                                      <tr style="font-weight: bold; background-color: #f8f9fa;">
-                                        <td class="product-name-cell" style="text-align: left;">Total</td>
-                                        <td style="text-align: right;">${purQty}</td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;">${purSgst.toFixed(2)}</td>
-                                        <td style="text-align: right;">${purCgst.toFixed(2)}</td>
-                                        <td style="text-align: right;"></td>
-                                        <td style="text-align: right;"></td>
-                                      </tr>
-                                    `);
+                                  if (isIgst) {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                          <td class="product-name-cell" style="text-align: left;">Total</td>
+                                          <td style="text-align: right;">${purQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                      `);
+                                  } else {
+                                    win.document.write(`
+                                        <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                          <td class="product-name-cell" style="text-align: left;">Total</td>
+                                          <td style="text-align: right;">${purQty}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;">${purSgst.toFixed(2)}</td>
+                                          <td style="text-align: right;">${purCgst.toFixed(2)}</td>
+                                          <td style="text-align: right;"></td>
+                                          <td style="text-align: right;"></td>
+                                        </tr>
+                                      `);
+                                  }
                                 }
 
                                 win.document.write('</tbody></table>');
@@ -4030,12 +4415,13 @@
                                 const itemTotal = currentBill.reduce((sum, item) => sum + item.amount, 0);
                                 const sgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
                                 const cgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                                const igst = currentBill.reduce((sum, item) => sum + (item.igst || 0), 0);
                                 const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
 
-                                const rawTotal = itemTotal + sgst + cgst + pendingAmount;
+                                const rawTotal = itemTotal + sgst + cgst + igst + pendingAmount;
                                 const { finalTotal, discount } = getRoundingDetails(rawTotal);
 
-                                const gstTotal = sgst + cgst;
+                                const gstTotal = sgst + cgst + igst;
                                 win.document.write(`
                                       <div class="bill-totals">
                                         <div class="double-dark-line"></div>
@@ -4044,13 +4430,13 @@
                                           <div>${(currentBill.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + i.amount, 0)).toFixed(2)}</div>
                                         </div>
                                         <div class="total-row">
-                                          <div>GST:</div>
-                                          <div>${(currentBill.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                                          <div>${isIgst ? 'IGST:' : 'GST:'}</div>
+                                          <div>${(currentBill.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0) + (i.igst || 0), 0)).toFixed(2)}</div>
                                         </div>
-                                        ${(currentBill.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 ? `
+                                        ${(currentBill.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 ? `
                                         <div class="total-row" style="color: #dc2626;">
                                           <div>Return Amount:</div>
-                                          <div>${(currentBill.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                                          <div>${(currentBill.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                                         </div>
                                         ` : ''}
                                         <div class="total-row">
@@ -4234,10 +4620,12 @@
                             )}
                           </p>
 
-                          <p className="text-sm text-gray-700">
-                            <span className="font-bold">Shop GST No:</span>{" "}
-                            <span className="font-bold">{currentShop.gst || "N/A"}</span>
-                          </p>
+                          {getShopGstNumberForBill(currentShop, new Date()) && (
+                            <p className="text-sm text-gray-700">
+                              <span className="font-bold">Shop GST No:</span>{" "}
+                              <span className="font-bold">{getShopGstNumberForBill(currentShop, new Date())}</span>
+                            </p>
+                          )}
 
                           <p className="text-sm text-gray-700">
                             <span className="font-bold">Date:</span> <span className="font-bold">{formatDateWithDay(new Date())}</span>
@@ -4249,166 +4637,207 @@
                     </div>
 
                     {/* Bill Items */}
-                    <div className="mb-6 overflow-x-auto">
-                      <table className="w-full text-sm border-collapse border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-100 font-bold border-b border-gray-300">
-                            <th className="p-2 text-left border-r border-gray-300">Product Name</th>
-                            <th className="p-2 text-right border-r border-gray-300">QTY</th>
-                            <th className="p-2 text-right border-r border-gray-300">Price</th>
-                            <th className="p-2 text-right border-r border-gray-300">SGST</th>
-                            <th className="p-2 text-right border-r border-gray-300">CGST</th>
-                            <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
-                            <th className="p-2 text-right border-r border-gray-300">Total</th>
-                            <th className="p-2 text-center">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {/* Regular Items */}
-                          {currentBill.filter(item => !item.isReturn).map((item) => {
-                            const sgstVal = item.sgst || 0;
-                            const cgstVal = item.cgst || 0;
-                            const unitPriceInclGst = item.quantity > 0 ? (item.price + (sgstVal + cgstVal) / item.quantity) : item.price;
-                            const totalInclGst = item.amount + sgstVal + cgstVal;
-
-                            return (
-                              <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
-                                <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
-                                <td className="p-2 text-right border-r border-gray-300">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity === 0 ? '' : item.quantity}
-                                    onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
-                                    disabled={isPayPendingMode}
-                                  />
-                                </td>
-                                <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
-                                <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
-                                <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
-                                <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
-                                <td className="p-2 text-right border-r border-gray-300">{totalInclGst.toFixed(2)}</td>
-                                <td className="p-2 text-center">
-                                  <button
-                                    onClick={() => handleRemoveItem(item.id)}
-                                    className="text-red-600 hover:text-red-800 p-1"
-                                    title="Remove item"
-                                    disabled={isPayPendingMode}
-                                  >
-                                    <Trash2 className="h-4 w-4 mx-auto" />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-
-                          {(() => {
-                            const purchasedItems = currentBill.filter(item => !item.isReturn);
-                            const returnedItems = currentBill.filter(item => item.isReturn);
-
-                            const purQty = purchasedItems.reduce((sum, item) => sum + item.quantity, 0);
-                            const purSgst = purchasedItems.reduce((sum, item) => sum + (item.sgst || 0), 0);
-                            const purCgst = purchasedItems.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                            const purTotalAmount = purchasedItems.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
-
-                            return (
-                              <>
-                                {/* Purchase Total or Total */}
-                                <tr style={{ border: 'none' }}>
-                                  <td colSpan={8} style={{ border: 'none', height: '8px', padding: 0 }}></td>
-                                </tr>
-                                <tr className={`font-bold border-t border-b border-gray-300 ${returnedItems.length > 0 ? 'bg-green-50' : 'bg-gray-100'}`}>
-                                  <td className="p-2 text-left border-r border-gray-300">{returnedItems.length > 0 ? 'Purchase Total' : 'Total'}</td>
-                                  <td className="p-2 text-right border-r border-gray-300">{purQty}</td>
-                                  <td className="p-2 text-right border-r border-gray-300"></td>
-                                  <td className="p-2 text-right border-r border-gray-300">{purSgst.toFixed(2)}</td>
-                                  <td className="p-2 text-right border-r border-gray-300">{purCgst.toFixed(2)}</td>
-                                  <td className="p-2 text-right border-r border-gray-300"></td>
-                                  <td className="p-2 text-right border-r border-gray-300"></td>
-                                  <td className="p-2 border-l border-gray-300"></td>
-                                </tr>
-
-                                {returnedItems.length > 0 && (
+                    {(() => {
+                      const isCurrentShopIgst = currentShop?.gst_type === 'IGST' || currentBill.some(it => (it.igst || 0) > 0);
+                      return (
+                        <div className="mb-6 overflow-x-auto">
+                          <table className="w-full text-sm border-collapse border border-gray-300">
+                            <thead>
+                              <tr className="bg-gray-100 font-bold border-b border-gray-300">
+                                <th className="p-2 text-left border-r border-gray-300">Product Name</th>
+                                <th className="p-2 text-right border-r border-gray-300">QTY</th>
+                                <th className="p-2 text-right border-r border-gray-300">Price</th>
+                                {isCurrentShopIgst ? (
+                                  <th className="p-2 text-right border-r border-gray-300">IGST</th>
+                                ) : (
                                   <>
-                                    <tr style={{ border: 'none' }}>
-                                      <td colSpan={8} style={{ border: 'none', height: '8px', padding: 0 }}></td>
-                                    </tr>
-                                    <tr className="bg-gray-50 font-bold border-t border-b border-gray-300">
-                                      <td colSpan={8} className="p-2 text-left text-red-600">Return Items</td>
-                                    </tr>
-                                    {returnedItems.map((item) => {
-                                      const qty = Math.abs(item.quantity);
-                                      const sgstVal = item.sgst || 0;
-                                      const cgstVal = item.cgst || 0;
-                                      const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-                                      const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
-
-                                      return (
-                                        <tr key={`return-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50 text-red-600">
-                                          <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
-                                          <td className="p-2 text-right border-r border-gray-300">
-                                            <input
-                                              type="number"
-                                              min="1"
-                                              value={item.quantity === 0 ? '' : Math.abs(item.quantity)}
-                                              onChange={(e) => handleReturnItemQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right text-red-600"
-                                              disabled={isPayPendingMode}
-                                            />
-                                          </td>
-                                          <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
-                                          <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
-                                          <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
-                                          <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
-                                          <td className="p-2 text-right border-r border-gray-300">-{totalInclGst.toFixed(2)}</td>
-                                          <td className="p-2 text-center">
-                                            <button
-                                              onClick={() => handleRemoveItem(item.id)}
-                                              className="text-red-600 hover:text-red-800 p-1"
-                                              title="Remove return item"
-                                              disabled={isPayPendingMode}
-                                            >
-                                              <Trash2 className="h-4 w-4 mx-auto" />
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                    {(() => {
-                                      const retQty = returnedItems.reduce((sum, item) => sum + Math.abs(item.quantity), 0);
-                                      const retSgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.sgst || 0), 0);
-                                      const retCgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.cgst || 0), 0);
-                                      const retTotalAmount = returnedItems.reduce((sum, item) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
-                                      return (
-                                        <tr className="font-bold bg-red-50 border-b border-gray-300 text-red-600">
-                                          <td className="p-2 text-left border-r border-gray-300">Return Total</td>
-                                          <td className="p-2 text-right border-r border-gray-300">{retQty}</td>
-                                          <td className="p-2 text-right border-r border-gray-300"></td>
-                                          <td className="p-2 text-right border-r border-gray-300"></td>
-                                          <td className="p-2 text-right border-r border-gray-300"></td>
-                                          <td className="p-2 text-right border-r border-gray-300"></td>
-                                          <td className="p-2 text-right border-r border-gray-300"></td>
-                                          <td className="p-2 border-l border-gray-300"></td>
-                                        </tr>
-                                      )
-                                    })()}
+                                    <th className="p-2 text-right border-r border-gray-300">SGST</th>
+                                    <th className="p-2 text-right border-r border-gray-300">CGST</th>
                                   </>
                                 )}
-                              </>
-                            );
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
+                                <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
+                                <th className="p-2 text-right border-r border-gray-300">Total</th>
+                                <th className="p-2 text-center">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* Regular Items */}
+                              {currentBill.filter(item => !item.isReturn).map((item) => {
+                                const sgstVal = item.sgst || 0;
+                                const cgstVal = item.cgst || 0;
+                                const igstVal = item.igst || 0;
+                                const unitPriceInclGst = item.quantity > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / item.quantity) : item.price;
+                                const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+
+                                return (
+                                  <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
+                                    <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                                    <td className="p-2 text-right border-r border-gray-300">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={item.quantity === 0 ? '' : item.quantity}
+                                        onChange={(e) => handleQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                                        className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                                        disabled={isPayPendingMode}
+                                      />
+                                    </td>
+                                    <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                                    {isCurrentShopIgst ? (
+                                      <td className="p-2 text-right border-r border-gray-300">{igstVal.toFixed(2)}</td>
+                                    ) : (
+                                      <>
+                                        <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
+                                        <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
+                                      </>
+                                    )}
+                                    <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                                    <td className="p-2 text-right border-r border-gray-300">{totalInclGst.toFixed(2)}</td>
+                                    <td className="p-2 text-center">
+                                      <button
+                                        onClick={() => handleRemoveItem(item.id)}
+                                        className="text-red-600 hover:text-red-800 p-1"
+                                        title="Remove item"
+                                        disabled={isPayPendingMode}
+                                      >
+                                        <Trash2 className="h-4 w-4 mx-auto" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                              {(() => {
+                                const purchasedItems = currentBill.filter(item => !item.isReturn);
+                                const returnedItems = currentBill.filter(item => item.isReturn);
+
+                                const purQty = purchasedItems.reduce((sum, item) => sum + item.quantity, 0);
+                                const purSgst = purchasedItems.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                                const purCgst = purchasedItems.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                                const purIgst = purchasedItems.reduce((sum, item) => sum + (item.igst || 0), 0);
+                                const purTotalAmount = purchasedItems.reduce((sum, item) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0);
+
+                                return (
+                                  <>
+                                    {/* Purchase Total or Total */}
+                                    <tr style={{ border: 'none' }}>
+                                      <td colSpan={isCurrentShopIgst ? 7 : 8} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                                    </tr>
+                                    <tr className={`font-bold border-t border-b border-gray-300 ${returnedItems.length > 0 ? 'bg-green-50' : 'bg-gray-100'}`}>
+                                      <td className="p-2 text-left border-r border-gray-300">{returnedItems.length > 0 ? 'Purchase Total' : 'Total'}</td>
+                                      <td className="p-2 text-right border-r border-gray-300">{purQty}</td>
+                                      <td className="p-2 text-right border-r border-gray-300"></td>
+                                      {isCurrentShopIgst ? (
+                                        <td className="p-2 text-right border-r border-gray-300">{purIgst.toFixed(2)}</td>
+                                      ) : (
+                                        <>
+                                          <td className="p-2 text-right border-r border-gray-300">{purSgst.toFixed(2)}</td>
+                                          <td className="p-2 text-right border-r border-gray-300">{purCgst.toFixed(2)}</td>
+                                        </>
+                                      )}
+                                      <td className="p-2 text-right border-r border-gray-300"></td>
+                                      <td className="p-2 text-right border-r border-gray-300"></td>
+                                      <td className="p-2 border-l border-gray-300"></td>
+                                    </tr>
+
+                                    {returnedItems.length > 0 && (
+                                      <>
+                                        <tr style={{ border: 'none' }}>
+                                          <td colSpan={isCurrentShopIgst ? 7 : 8} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                                        </tr>
+                                        <tr className="bg-gray-50 font-bold border-t border-b border-gray-300">
+                                          <td colSpan={isCurrentShopIgst ? 7 : 8} className="p-2 text-left text-red-600">Return Items</td>
+                                        </tr>
+                                        {returnedItems.map((item) => {
+                                          const qty = Math.abs(item.quantity);
+                                          const sgstVal = item.sgst || 0;
+                                          const cgstVal = item.cgst || 0;
+                                          const igstVal = item.igst || 0;
+                                          const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+                                          const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
+
+                                          return (
+                                            <tr key={`return-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50 text-red-600">
+                                              <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                                              <td className="p-2 text-right border-r border-gray-300">
+                                                <input
+                                                  type="number"
+                                                  min="1"
+                                                  value={item.quantity === 0 ? '' : Math.abs(item.quantity)}
+                                                  onChange={(e) => handleReturnItemQuantityChange(item.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                                                  className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right text-red-600"
+                                                  disabled={isPayPendingMode}
+                                                />
+                                              </td>
+                                              <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                                              {isCurrentShopIgst ? (
+                                                <td className="p-2 text-right border-r border-gray-300">-{Math.abs(igstVal).toFixed(2)}</td>
+                                              ) : (
+                                                <>
+                                                  <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
+                                                  <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
+                                                </>
+                                              )}
+                                              <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                                              <td className="p-2 text-right border-r border-gray-300">-{totalInclGst.toFixed(2)}</td>
+                                              <td className="p-2 text-center">
+                                                <button
+                                                  onClick={() => handleRemoveItem(item.id)}
+                                                  className="text-red-600 hover:text-red-800 p-1"
+                                                  title="Remove return item"
+                                                  disabled={isPayPendingMode}
+                                                >
+                                                  <Trash2 className="h-4 w-4 mx-auto" />
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                        {(() => {
+                                          const retQty = returnedItems.reduce((sum, item) => sum + Math.abs(item.quantity), 0);
+                                          const retSgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.sgst || 0), 0);
+                                          const retCgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.cgst || 0), 0);
+                                          const retIgst = returnedItems.reduce((sum, item) => sum + Math.abs(item.igst || 0), 0);
+                                          const retTotalAmount = returnedItems.reduce((sum, item) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0), 0);
+                                          return (
+                                            <tr className="font-bold bg-red-50 border-b border-gray-300 text-red-600">
+                                              <td className="p-2 text-left border-r border-gray-300">Return Total</td>
+                                              <td className="p-2 text-right border-r border-gray-300">{retQty}</td>
+                                              <td className="p-2 text-right border-r border-gray-300"></td>
+                                              {isCurrentShopIgst ? (
+                                                <td className="p-2 text-right border-r border-gray-300"></td>
+                                              ) : (
+                                                <>
+                                                  <td className="p-2 text-right border-r border-gray-300"></td>
+                                                  <td className="p-2 text-right border-r border-gray-300"></td>
+                                                </>
+                                              )}
+                                              <td className="p-2 text-right border-r border-gray-300"></td>
+                                              <td className="p-2 text-right border-r border-gray-300"></td>
+                                              <td className="p-2 border-l border-gray-300"></td>
+                                            </tr>
+                                          )
+                                        })()}
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
 
                     {/* Calculations */}
                     <div className="ml-auto w-64">
                       {(() => {
+                        const isCurrentShopIgst = currentShop?.gst_type === 'IGST' || currentBill.some(it => (it.igst || 0) > 0);
                         const itemTotal = currentBill.reduce((sum, item) => sum + item.amount, 0);
                         const sgst = currentBill.reduce((sum, item) => sum + (item.sgst || 0), 0);
                         const cgst = currentBill.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                        const gstTotal = sgst + cgst;
+                        const igst = currentBill.reduce((sum, item) => sum + (item.igst || 0), 0);
+                        const gstTotal = sgst + cgst + igst;
                         const todayTotalAmount = itemTotal + gstTotal;
                         const pendingAmount = pendingBills.reduce((sum, bill) => sum + bill.pending_amount, 0);
 
@@ -4423,14 +4852,14 @@
                             </div>
 
                             <div className="flex justify-between py-1">
-                              <div>GST:</div>
-                              <div>{(currentBill.filter(i => i.quantity > 0).reduce((s, i) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                              <div>{isCurrentShopIgst ? 'IGST:' : 'GST:'}</div>
+                              <div>{(currentBill.filter(i => i.quantity > 0).reduce((s, i) => s + (i.sgst || 0) + (i.cgst || 0) + (i.igst || 0), 0)).toFixed(2)}</div>
                             </div>
 
-                            {(currentBill.filter(i => i.quantity < 0).reduce((s, i) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 && (
+                            {(currentBill.filter(i => i.quantity < 0).reduce((s, i) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 && (
                               <div className="flex justify-between py-1 text-red-600">
                                 <div>Return Amount:</div>
-                                <div>{(currentBill.filter(i => i.quantity < 0).reduce((s, i) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                                <div>{(currentBill.filter(i => i.quantity < 0).reduce((s, i) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                               </div>
                             )}
 
@@ -4776,9 +5205,7 @@
                       (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
                       (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
                     );
-                    const viewShopGst = (viewShop && viewShop.gst && viewShop.gst.trim())
-                      ? viewShop.gst.trim()
-                      : ((selectedBillForView as any).shop_gst || (selectedBillForView as any).shop?.gstNumber || (selectedBillForView as any).shop?.gst || '');
+                    const viewShopGst = getShopGstNumberForBill(viewShop, selectedBillForView.bill_date);
 
                     return (
                       <div className="mb-4">
@@ -4799,62 +5226,137 @@
                   })()}
 
                   {/* Bill Items */}
-                  <div className="mb-6 overflow-x-auto">
-                    <table className="w-full text-sm border-collapse border border-gray-300">
-                      <thead>
-                        <tr className="bg-gray-100 font-bold border-b border-gray-300">
-                          <th className="p-2 text-left border-r border-gray-300">Product Name</th>
-                          <th className="p-2 text-right border-r border-gray-300">QTY</th>
-                          <th className="p-2 text-right border-r border-gray-300">Price</th>
-                          <th className="p-2 text-right border-r border-gray-300">SGST</th>
-                          <th className="p-2 text-right border-r border-gray-300">CGST</th>
-                          <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
-                          <th className="p-2 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Regular Items */}
-                        {selectedBillForView.items.filter(item => item.quantity > 0).map((item) => {
-                          const qty = item.quantity;
-                          const sgstVal = item.sgst || 0;
-                          const cgstVal = item.cgst || 0;
-                          const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
-                          const totalInclGst = item.amount + sgstVal + cgstVal;
+                  {(() => {
+                    const viewShop = allShops.find(s =>
+                      (selectedBillForView.shop_id && Number(s.id) === Number(selectedBillForView.shop_id)) ||
+                      (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
+                      (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
+                    );
+                    const viewShopGst = getShopGstNumberForBill(viewShop, selectedBillForView.bill_date);
+                    const isInterstate = Boolean(viewShopGst) && !String(viewShopGst).trim().startsWith('33');
+                    const isViewShopIgst = viewShop?.gst_type === 'IGST' || (viewShop as any)?.gstType === 'IGST' || isInterstate || selectedBillForView.items.some((it: any) => (it.igst || 0) > 0);
 
-                          return (
-                            <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
-                              <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
-                              <td className="p-2 text-right border-r border-gray-300">{qty}</td>
-                              <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
-                              <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
-                              <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
-                              <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
-                              <td className="p-2 text-right">{totalInclGst.toFixed(2)}</td>
+                    const getItemGstRate = (item: any) => {
+                      if (item.gst !== undefined && Number(item.gst) > 0) return Number(item.gst);
+                      const pId = item.product_id || (item as any).productId;
+                      const pName = (item.product_name || (item as any).productName || '').trim().toLowerCase();
+                      const prod = products.find(p => (pId && Number(p.id) === Number(pId)) || (pName && p.product_name && p.product_name.trim().toLowerCase() === pName));
+                      if (prod && Number(prod.gst) > 0) return Number(prod.gst);
+                      return 5;
+                    };
+
+                    return (
+                      <div className="mb-6 overflow-x-auto">
+                        <table className="w-full text-sm border-collapse border border-gray-300">
+                          <thead>
+                            <tr className="bg-gray-100 font-bold border-b border-gray-300">
+                              <th className="p-2 text-left border-r border-gray-300">Product Name</th>
+                              <th className="p-2 text-right border-r border-gray-300">QTY</th>
+                              <th className="p-2 text-right border-r border-gray-300">Price</th>
+                              {isViewShopIgst ? (
+                                <th className="p-2 text-right border-r border-gray-300">IGST</th>
+                              ) : (
+                                <>
+                                  <th className="p-2 text-right border-r border-gray-300">SGST</th>
+                                  <th className="p-2 text-right border-r border-gray-300">CGST</th>
+                                </>
+                              )}
+                              <th className="p-2 text-right border-r border-gray-300">Price+GST</th>
+                              <th className="p-2 text-right">Total</th>
                             </tr>
-                          );
-                        })}
+                          </thead>
+                          <tbody>
+                            {/* Regular Items */}
+                            {selectedBillForView.items.filter(item => item.quantity > 0).map((item) => {
+                              const qty = item.quantity;
+                              const gstRate = getItemGstRate(item);
+
+                              let sgstVal = Number(item.sgst) || 0;
+                              let cgstVal = Number(item.cgst) || 0;
+                              let igstVal = Number(item.igst) || 0;
+
+                              if (isViewShopIgst) {
+                                if (igstVal === 0) {
+                                  if (sgstVal > 0 || cgstVal > 0) {
+                                    igstVal = sgstVal + cgstVal;
+                                  } else if (gstRate > 0) {
+                                    igstVal = (item.amount * gstRate) / 100;
+                                  }
+                                }
+                                sgstVal = 0;
+                                cgstVal = 0;
+                              }
+
+                              const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / qty) : item.price;
+                              const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+
+                              return (
+                                <tr key={`item-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50">
+                                  <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
+                                  <td className="p-2 text-right border-r border-gray-300">{qty}</td>
+                                  <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
+                                  {isViewShopIgst ? (
+                                    <td className="p-2 text-right border-r border-gray-300">{igstVal.toFixed(2)}</td>
+                                  ) : (
+                                    <>
+                                      <td className="p-2 text-right border-r border-gray-300">{sgstVal.toFixed(2)}</td>
+                                      <td className="p-2 text-right border-r border-gray-300">{cgstVal.toFixed(2)}</td>
+                                    </>
+                                  )}
+                                  <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
+                                  <td className="p-2 text-right">{totalInclGst.toFixed(2)}</td>
+                                </tr>
+                              );
+                            })}
 
                         {(() => {
                           const purchasedItems = selectedBillForView.items.filter((item: any) => item.quantity > 0);
                           const returnedItems = selectedBillForView.items.filter((item: any) => item.quantity < 0);
 
                           const purQty = purchasedItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
-                          const purSgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
-                          const purCgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-                          const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+                          const purSgst = isViewShopIgst ? 0 : purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
+                          const purCgst = isViewShopIgst ? 0 : purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
+                          const purIgst = purchasedItems.reduce((sum: number, item: any) => {
+                            let itemIgst = Number(item.igst) || 0;
+                            if (isViewShopIgst && itemIgst === 0) {
+                              const gstRate = getItemGstRate(item);
+                              if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                                itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                              } else if (gstRate > 0) {
+                                itemIgst = (item.amount * gstRate) / 100;
+                              }
+                            }
+                            return sum + itemIgst;
+                          }, 0);
+                          const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => {
+                            let itemTax = (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0);
+                            if (isViewShopIgst && itemTax === 0) {
+                              const gstRate = getItemGstRate(item);
+                              if (gstRate > 0) {
+                                itemTax = (item.amount * gstRate) / 100;
+                              }
+                            }
+                            return sum + item.amount + itemTax;
+                          }, 0);
 
                           return (
                             <>
                               {/* Purchase Total or Total */}
                               <tr style={{ border: 'none' }}>
-                                <td colSpan={7} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                                <td colSpan={isViewShopIgst ? 6 : 7} style={{ border: 'none', height: '8px', padding: 0 }}></td>
                               </tr>
                               <tr className={`font-bold border-t border-b border-gray-300 ${returnedItems.length > 0 ? 'bg-green-50' : 'bg-gray-100'}`}>
                                 <td className="p-2 text-left border-r border-gray-300">{returnedItems.length > 0 ? 'Purchase Total' : 'Total'}</td>
                                 <td className="p-2 text-right border-r border-gray-300">{purQty}</td>
                                 <td className="p-2 text-right border-r border-gray-300"></td>
-                                <td className="p-2 text-right border-r border-gray-300">{purSgst.toFixed(2)}</td>
-                                <td className="p-2 text-right border-r border-gray-300">{purCgst.toFixed(2)}</td>
+                                {isViewShopIgst ? (
+                                  <td className="p-2 text-right border-r border-gray-300">{purIgst.toFixed(2)}</td>
+                                ) : (
+                                  <>
+                                    <td className="p-2 text-right border-r border-gray-300">{purSgst.toFixed(2)}</td>
+                                    <td className="p-2 text-right border-r border-gray-300">{purCgst.toFixed(2)}</td>
+                                  </>
+                                )}
                                 <td className="p-2 text-right border-r border-gray-300"></td>
                                 <td className="p-2 text-right"></td>
                               </tr>
@@ -4862,25 +5364,47 @@
                               {returnedItems.length > 0 && (
                                 <>
                                   <tr style={{ border: 'none' }}>
-                                    <td colSpan={7} style={{ border: 'none', height: '8px', padding: 0 }}></td>
+                                    <td colSpan={isViewShopIgst ? 6 : 7} style={{ border: 'none', height: '8px', padding: 0 }}></td>
                                   </tr>
                                   <tr className="bg-gray-50 font-bold border-t border-b border-gray-300">
-                                    <td colSpan={7} className="p-2 text-left text-red-600">Return Items</td>
+                                    <td colSpan={isViewShopIgst ? 6 : 7} className="p-2 text-left text-red-600">Return Items</td>
                                   </tr>
                                   {returnedItems.map((item: any) => {
                                     const qty = Math.abs(item.quantity);
-                                    const sgstVal = item.sgst || 0;
-                                    const cgstVal = item.cgst || 0;
-                                    const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-                                    const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
+                                    const gstRate = getItemGstRate(item);
+
+                                    let sgstVal = Number(item.sgst) || 0;
+                                    let cgstVal = Number(item.cgst) || 0;
+                                    let igstVal = Number(item.igst) || 0;
+
+                                    if (isViewShopIgst) {
+                                      if (igstVal === 0) {
+                                        if (sgstVal > 0 || cgstVal > 0) {
+                                          igstVal = sgstVal + cgstVal;
+                                        } else if (gstRate > 0) {
+                                          igstVal = (item.amount * gstRate) / 100;
+                                        }
+                                      }
+                                      sgstVal = 0;
+                                      cgstVal = 0;
+                                    }
+
+                                    const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+                                    const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
 
                                     return (
                                       <tr key={`return-${item.id}`} className="border-b border-gray-300 hover:bg-gray-50 text-red-600">
                                         <td className="p-2 text-left border-r border-gray-300">{item.product_name}</td>
                                         <td className="p-2 text-right border-r border-gray-300">-{qty}</td>
                                         <td className="p-2 text-right border-r border-gray-300">{item.price.toFixed(2)}</td>
-                                        <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
-                                        <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
+                                        {isViewShopIgst ? (
+                                          <td className="p-2 text-right border-r border-gray-300">-{Math.abs(igstVal).toFixed(2)}</td>
+                                        ) : (
+                                          <>
+                                            <td className="p-2 text-right border-r border-gray-300">-{Math.abs(sgstVal).toFixed(2)}</td>
+                                            <td className="p-2 text-right border-r border-gray-300">-{Math.abs(cgstVal).toFixed(2)}</td>
+                                          </>
+                                        )}
                                         <td className="p-2 text-right border-r border-gray-300">{unitPriceInclGst.toFixed(2)}</td>
                                         <td className="p-2 text-right">-{totalInclGst.toFixed(2)}</td>
                                       </tr>
@@ -4888,16 +5412,43 @@
                                   })}
                                   {(() => {
                                     const retQty = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.quantity), 0);
-                                    const retSgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
-                                    const retCgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.cgst || 0), 0);
-                                    const retTotalAmount = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
+                                    const retSgst = isViewShopIgst ? 0 : returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
+                                    const retCgst = isViewShopIgst ? 0 : returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.cgst || 0), 0);
+                                    const retIgst = returnedItems.reduce((sum: number, item: any) => {
+                                      let itemIgst = Number(item.igst) || 0;
+                                      if (isViewShopIgst && itemIgst === 0) {
+                                        const gstRate = getItemGstRate(item);
+                                        if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                                          itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                                        } else if (gstRate > 0) {
+                                          itemIgst = Math.abs((item.amount * gstRate) / 100);
+                                        }
+                                      }
+                                      return sum + Math.abs(itemIgst);
+                                    }, 0);
+                                    const retTotalAmount = returnedItems.reduce((sum: number, item: any) => {
+                                      let itemTax = Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0);
+                                      if (isViewShopIgst && itemTax === 0) {
+                                        const gstRate = getItemGstRate(item);
+                                        if (gstRate > 0) {
+                                          itemTax = Math.abs((item.amount * gstRate) / 100);
+                                        }
+                                      }
+                                      return sum + Math.abs(item.amount) + itemTax;
+                                    }, 0);
                                     return (
                                       <tr className="font-bold bg-red-50 border-b border-gray-300 text-red-600">
                                         <td className="p-2 text-left border-r border-gray-300">Return Total</td>
                                         <td className="p-2 text-right border-r border-gray-300">{retQty}</td>
                                         <td className="p-2 text-right border-r border-gray-300"></td>
-                                        <td className="p-2 text-right border-r border-gray-300"></td>
-                                        <td className="p-2 text-right border-r border-gray-300"></td>
+                                        {isViewShopIgst ? (
+                                          <td className="p-2 text-right border-r border-gray-300"></td>
+                                        ) : (
+                                          <>
+                                            <td className="p-2 text-right border-r border-gray-300"></td>
+                                            <td className="p-2 text-right border-r border-gray-300"></td>
+                                          </>
+                                        )}
                                         <td className="p-2 text-right border-r border-gray-300"></td>
                                         <td className="p-2 text-right"></td>
                                       </tr>
@@ -4911,18 +5462,52 @@
                       </tbody>
                     </table>
                   </div>
+                );
+              })()}
 
                   {/* Calculations */}
                   <div className="w-64 ml-auto">
                     {(() => {
+                      const viewShop = allShops.find(s =>
+                        (selectedBillForView.shop_id && Number(s.id) === Number(selectedBillForView.shop_id)) ||
+                        (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
+                        (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
+                      );
+                      const viewShopGst = getShopGstNumberForBill(viewShop, selectedBillForView.bill_date);
+                      const isInterstate = Boolean(viewShopGst) && !String(viewShopGst).trim().startsWith('33');
+                      const isViewShopIgst = viewShop?.gst_type === 'IGST' || (viewShop as any)?.gstType === 'IGST' || isInterstate || selectedBillForView.items.some((it: any) => (it.igst || 0) > 0);
+
+                      const getItemGstRate = (item: any) => {
+                        if (item.gst !== undefined && Number(item.gst) > 0) return Number(item.gst);
+                        const pId = item.product_id || (item as any).productId;
+                        const pName = (item.product_name || (item as any).productName || '').trim().toLowerCase();
+                        const prod = products.find(p => (pId && Number(p.id) === Number(pId)) || (pName && p.product_name && p.product_name.trim().toLowerCase() === pName));
+                        if (prod && Number(prod.gst) > 0) return Number(prod.gst);
+                        return 5;
+                      };
+
                       const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
-                      const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
-                      const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                      const todayTotalUnrounded = itemTotal + sgst + cgst;
+                      const sgst = isViewShopIgst ? 0 : selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                      const cgst = isViewShopIgst ? 0 : selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                      const igst = selectedBillForView.items.reduce((sum, item) => {
+                        let itemIgst = Number(item.igst) || 0;
+                        if (isViewShopIgst && itemIgst === 0) {
+                          const gstRate = getItemGstRate(item);
+                          if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                            itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                          } else if (gstRate > 0) {
+                            itemIgst = (item.amount * gstRate) / 100;
+                          }
+                        }
+                        return sum + itemIgst;
+                      }, 0);
+                      const gstTotal = sgst + cgst + igst;
+                      const todayTotalUnrounded = itemTotal + gstTotal;
                       const { finalTotal: todayFinalTotal, discount } = getRoundingDetails(todayTotalUnrounded);
-                      const finalTotal = selectedBillForView.total_amount;
-                      const previousPending = finalTotal - todayFinalTotal;
-                      const gstTotal = sgst + cgst;
+                      const finalTotal = Math.max(selectedBillForView.total_amount, todayFinalTotal);
+                      const previousPending = Math.max(0, finalTotal - todayFinalTotal);
+                      const calculatedPending = Math.max(0, finalTotal - (selectedBillForView.received_amount || 0));
+                      const displayPending = Math.max(selectedBillForView.pending_amount || 0, calculatedPending);
 
                       return (
                         <>
@@ -4932,14 +5517,21 @@
                           </div>
 
                           <div className="flex justify-between py-1">
-                            <div>GST:</div>
-                            <div>{(selectedBillForView.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                            <div>{isViewShopIgst ? 'IGST:' : 'GST:'}</div>
+                            <div>{(selectedBillForView.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => {
+                              let tax = (Number(i.sgst) || 0) + (Number(i.cgst) || 0) + (Number(i.igst) || 0);
+                              if (isViewShopIgst && tax === 0) {
+                                const gstRate = getItemGstRate(i);
+                                if (gstRate > 0) tax = (i.amount * gstRate) / 100;
+                              }
+                              return s + tax;
+                            }, 0)).toFixed(2)}</div>
                           </div>
 
-                          {(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 && (
+                          {(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 && (
                             <div className="flex justify-between py-1 text-red-600">
                               <div>Return Amount:</div>
-                              <div>{(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                              <div>{(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                             </div>
                           )}
 
@@ -4983,8 +5575,8 @@
 
                           <div className="flex justify-between py-1">
                             <div>Pending Amount:</div>
-                            <div className={selectedBillForView.pending_amount > 0 ? "text-red-600 font-medium" : ""}>
-                              {selectedBillForView.pending_amount.toFixed(2)}
+                            <div className={displayPending > 0 ? "text-red-600 font-medium" : ""}>
+                              {displayPending.toFixed(2)}
                             </div>
                           </div>
 
@@ -5062,9 +5654,7 @@
                             (s.shop_name && selectedBillForView.shop_name && s.shop_name.trim().toLowerCase() === selectedBillForView.shop_name.trim().toLowerCase()) ||
                             (s.shop_name && selectedBillForView.shop_name && s.shop_name.replace(/[.\s]/g, '').toLowerCase() === selectedBillForView.shop_name.replace(/[.\s]/g, '').toLowerCase())
                           );
-                          const shopGstNo = (viewShop && viewShop.gst && viewShop.gst.trim())
-                            ? viewShop.gst.trim()
-                            : ((selectedBillForView as any).shop_gst || (selectedBillForView as any).shop?.gstNumber || (selectedBillForView as any).shop?.gst || '');
+                          const shopGstNo = getShopGstNumberForBill(viewShop, selectedBillForView.bill_date);
 
                           win.document.write(`
                               <html>
@@ -5219,10 +5809,32 @@
                                 </div>
                             `);
 
+                          const isInterstate = Boolean(shopGstNo) && !String(shopGstNo).trim().startsWith('33');
+                          const isIgst = viewShop?.gst_type === 'IGST' || (viewShop as any)?.gstType === 'IGST' || isInterstate || selectedBillForView.items.some((it: any) => (it.igst || 0) > 0);
+
+                          const getItemGstRate = (item: any) => {
+                            if (item.gst !== undefined && Number(item.gst) > 0) return Number(item.gst);
+                            const pId = item.product_id || (item as any).productId;
+                            const pName = (item.product_name || (item as any).productName || '').trim().toLowerCase();
+                            const prod = products.find(p => (pId && Number(p.id) === Number(pId)) || (pName && p.product_name && p.product_name.trim().toLowerCase() === pName));
+                            if (prod && Number(prod.gst) > 0) return Number(prod.gst);
+                            return 5;
+                          };
+
                           // Add bill items
                           win.document.write(`
                               <table class="bill-items">
                                 <thead>
+                                  ${isIgst ? `
+                                  <tr>
+                                    <th style="text-align: left; width: 33%;">Product Name</th>
+                                    <th style="text-align: right; width: 10%;">QTY</th>
+                                    <th style="text-align: right; width: 14%;">Price</th>
+                                    <th style="text-align: right; width: 13%;">IGST</th>
+                                    <th style="text-align: right; width: 16%;">Price+GST</th>
+                                    <th style="text-align: right; width: 14%;">Total</th>
+                                  </tr>
+                                  ` : `
                                   <tr>
                                     <th style="text-align: left; width: 26%;">Product Name</th>
                                     <th style="text-align: right; width: 9%;">QTY</th>
@@ -5232,6 +5844,7 @@
                                     <th style="text-align: right; width: 16%;">Price+GST</th>
                                     <th style="text-align: right; width: 14%;">Total</th>
                                   </tr>
+                                  `}
                                 </thead>
                                 <tbody>
                             `);
@@ -5239,115 +5852,272 @@
                           // Regular items
                           selectedBillForView.items.filter(item => item.quantity > 0).forEach(item => {
                             const qty = item.quantity;
-                            const sgstVal = item.sgst || 0;
-                            const cgstVal = item.cgst || 0;
-                            const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal) / qty) : item.price;
-                            const totalInclGst = item.amount + sgstVal + cgstVal;
-                            win.document.write(`
-                                <tr>
-                                  <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
-                                  <td style="text-align: right;">${qty}</td>
-                                  <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                                  <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
-                                  <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
-                                  <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                                  <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
-                                </tr>
-                              `);
+                            const gstRate = getItemGstRate(item);
+
+                            let sgstVal = Number(item.sgst) || 0;
+                            let cgstVal = Number(item.cgst) || 0;
+                            let igstVal = Number(item.igst) || 0;
+
+                            if (isIgst) {
+                              if (igstVal === 0) {
+                                if (sgstVal > 0 || cgstVal > 0) {
+                                  igstVal = sgstVal + cgstVal;
+                                } else if (gstRate > 0) {
+                                  igstVal = (item.amount * gstRate) / 100;
+                                }
+                              }
+                              sgstVal = 0;
+                              cgstVal = 0;
+                            }
+
+                            const unitPriceInclGst = qty > 0 ? (item.price + (sgstVal + cgstVal + igstVal) / qty) : item.price;
+                            const totalInclGst = item.amount + sgstVal + cgstVal + igstVal;
+                            if (isIgst) {
+                              win.document.write(`
+                                  <tr>
+                                    <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                    <td style="text-align: right;">${qty}</td>
+                                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                    <td style="text-align: right;">${igstVal.toFixed(2)}</td>
+                                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                    <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+                                  </tr>
+                                `);
+                            } else {
+                              win.document.write(`
+                                  <tr>
+                                    <td class="product-name-cell" style="text-align: left;">${item.product_name}</td>
+                                    <td style="text-align: right;">${qty}</td>
+                                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                    <td style="text-align: right;">${sgstVal.toFixed(2)}</td>
+                                    <td style="text-align: right;">${cgstVal.toFixed(2)}</td>
+                                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                    <td style="text-align: right;">${totalInclGst.toFixed(2)}</td>
+                                  </tr>
+                                `);
+                            }
                           });
 
                           // Calculate purchase totals
                           const purchasedItems = selectedBillForView.items.filter((item: any) => item.quantity > 0);
                           const purQty = purchasedItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
-                          const purSgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
-                          const purCgst = purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
-                          const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => sum + item.amount + (item.sgst || 0) + (item.cgst || 0), 0);
+                          const purSgst = isIgst ? 0 : purchasedItems.reduce((sum: number, item: any) => sum + (item.sgst || 0), 0);
+                          const purCgst = isIgst ? 0 : purchasedItems.reduce((sum: number, item: any) => sum + (item.cgst || 0), 0);
+                          const purIgst = purchasedItems.reduce((sum: number, item: any) => {
+                            let itemIgst = Number(item.igst) || 0;
+                            if (isIgst && itemIgst === 0) {
+                              const gstRate = getItemGstRate(item);
+                              if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                                itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                              } else if (gstRate > 0) {
+                                itemIgst = (item.amount * gstRate) / 100;
+                              }
+                            }
+                            return sum + itemIgst;
+                          }, 0);
+                          const purTotalAmount = purchasedItems.reduce((sum: number, item: any) => {
+                            let itemTax = (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0);
+                            if (isIgst && itemTax === 0) {
+                              const gstRate = getItemGstRate(item);
+                              if (gstRate > 0) {
+                                itemTax = (item.amount * gstRate) / 100;
+                              }
+                            }
+                            return sum + item.amount + itemTax;
+                          }, 0);
 
                           win.document.write(`
                               <tr style="border: none !important;">
-                                <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                                <td colspan="${isIgst ? 6 : 7}" style="border: none !important; height: 8px; padding: 0;"></td>
                               </tr>
                             `);
 
                           const returnedItems = selectedBillForView.items.filter((item: any) => item.quantity < 0);
                           if (returnedItems.length > 0) {
-                            win.document.write(`
-                                <tr style="font-weight: bold; background-color: #f0fdf4;">
-                                  <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
-                                  <td style="text-align: right;">${purQty}</td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;">${purSgst.toFixed(2)}</td>
-                                  <td style="text-align: right;">${purCgst.toFixed(2)}</td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                </tr>
-                                <tr style="border: none !important;">
-                                  <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
-                                </tr>
-                                <tr style="font-weight: bold; background-color: #f8f9fa;">
-                                  <td colspan="7">Return Items</td>
-                                </tr>
-                              `);
+                            if (isIgst) {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #f0fdf4;">
+                                    <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                                    <td style="text-align: right;">${purQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                  <tr style="border: none !important;">
+                                    <td colspan="6" style="border: none !important; height: 8px; padding: 0;"></td>
+                                  </tr>
+                                  <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                    <td colspan="6">Return Items</td>
+                                  </tr>
+                                `);
+                            } else {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #f0fdf4;">
+                                    <td class="product-name-cell" style="text-align: left;">Purchase Total</td>
+                                    <td style="text-align: right;">${purQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;">${purSgst.toFixed(2)}</td>
+                                    <td style="text-align: right;">${purCgst.toFixed(2)}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                  <tr style="border: none !important;">
+                                    <td colspan="7" style="border: none !important; height: 8px; padding: 0;"></td>
+                                  </tr>
+                                  <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                    <td colspan="7">Return Items</td>
+                                  </tr>
+                                `);
+                            }
 
                             returnedItems.forEach((item: any) => {
                               const qty = Math.abs(item.quantity);
-                              const sgstVal = item.sgst || 0;
-                              const cgstVal = item.cgst || 0;
-                              const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal) / qty) : item.price;
-                              const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal);
-                              win.document.write(`
-                                  <tr style="color: #dc2626;">
-                                    <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
-                                    <td style="text-align: right;">-${qty}</td>
-                                    <td style="text-align: right;">${item.price.toFixed(2)}</td>
-                                    <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
-                                    <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
-                                    <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
-                                    <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
-                                  </tr>
-                                `);
+                              const gstRate = getItemGstRate(item);
+
+                              let sgstVal = Number(item.sgst) || 0;
+                              let cgstVal = Number(item.cgst) || 0;
+                              let igstVal = Number(item.igst) || 0;
+
+                              if (isIgst) {
+                                if (igstVal === 0) {
+                                  if (sgstVal > 0 || cgstVal > 0) {
+                                    igstVal = sgstVal + cgstVal;
+                                  } else if (gstRate > 0) {
+                                    igstVal = (item.amount * gstRate) / 100;
+                                  }
+                                }
+                                sgstVal = 0;
+                                cgstVal = 0;
+                              }
+
+                              const unitPriceInclGst = qty > 0 ? (item.price + Math.abs(sgstVal + cgstVal + igstVal) / qty) : item.price;
+                              const totalInclGst = Math.abs(item.amount + sgstVal + cgstVal + igstVal);
+                              if (isIgst) {
+                                win.document.write(`
+                                    <tr style="color: #dc2626;">
+                                      <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                                      <td style="text-align: right;">-${qty}</td>
+                                      <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                      <td style="text-align: right;">-${Math.abs(igstVal).toFixed(2)}</td>
+                                      <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                      <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                                    </tr>
+                                  `);
+                              } else {
+                                win.document.write(`
+                                    <tr style="color: #dc2626;">
+                                      <td class="product-name-cell" style="text-align: left;">${item.product_name} (Return)</td>
+                                      <td style="text-align: right;">-${qty}</td>
+                                      <td style="text-align: right;">${item.price.toFixed(2)}</td>
+                                      <td style="text-align: right;">-${Math.abs(sgstVal).toFixed(2)}</td>
+                                      <td style="text-align: right;">-${Math.abs(cgstVal).toFixed(2)}</td>
+                                      <td style="text-align: right;">${unitPriceInclGst.toFixed(2)}</td>
+                                      <td style="text-align: right;">-${totalInclGst.toFixed(2)}</td>
+                                    </tr>
+                                  `);
+                              }
                             });
 
                             const retQty = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.quantity), 0);
-                            const retSgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
-                            const retCgst = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.cgst || 0), 0);
-                            const retTotalAmount = returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.amount) + Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0), 0);
+                            const retSgst = isIgst ? 0 : returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.sgst || 0), 0);
+                            const retCgst = isIgst ? 0 : returnedItems.reduce((sum: number, item: any) => sum + Math.abs(item.cgst || 0), 0);
+                            const retIgst = returnedItems.reduce((sum: number, item: any) => {
+                              let itemIgst = Number(item.igst) || 0;
+                              if (isIgst && itemIgst === 0) {
+                                const gstRate = getItemGstRate(item);
+                                if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                                  itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                                } else if (gstRate > 0) {
+                                  itemIgst = Math.abs((item.amount * gstRate) / 100);
+                                }
+                              }
+                              return sum + Math.abs(itemIgst);
+                            }, 0);
+                            const retTotalAmount = returnedItems.reduce((sum: number, item: any) => {
+                              let itemTax = Math.abs(item.sgst || 0) + Math.abs(item.cgst || 0) + Math.abs(item.igst || 0);
+                              if (isIgst && itemTax === 0) {
+                                const gstRate = getItemGstRate(item);
+                                if (gstRate > 0) {
+                                  itemTax = Math.abs((item.amount * gstRate) / 100);
+                                }
+                              }
+                              return sum + Math.abs(item.amount) + itemTax;
+                            }, 0);
 
-                            win.document.write(`
-                                <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
-                                  <td class="product-name-cell" style="text-align: left;">Return Total</td>
-                                  <td style="text-align: right;">${retQty}</td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                </tr>
-                              `);
+                            if (isIgst) {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                                    <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                                    <td style="text-align: right;">${retQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                `);
+                            } else {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #fef2f2; color: #dc2626;">
+                                    <td class="product-name-cell" style="text-align: left;">Return Total</td>
+                                    <td style="text-align: right;">${retQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                `);
+                            }
                           } else {
-                            win.document.write(`
-                                <tr style="font-weight: bold; background-color: #f8f9fa;">
-                                  <td class="product-name-cell" style="text-align: left;">Total</td>
-                                  <td style="text-align: right;">${purQty}</td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;">${purSgst.toFixed(2)}</td>
-                                  <td style="text-align: right;">${purCgst.toFixed(2)}</td>
-                                  <td style="text-align: right;"></td>
-                                  <td style="text-align: right;"></td>
-                                </tr>
-                              `);
+                            if (isIgst) {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                    <td class="product-name-cell" style="text-align: left;">Total</td>
+                                    <td style="text-align: right;">${purQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;">${purIgst.toFixed(2)}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                `);
+                            } else {
+                              win.document.write(`
+                                  <tr style="font-weight: bold; background-color: #f8f9fa;">
+                                    <td class="product-name-cell" style="text-align: left;">Total</td>
+                                    <td style="text-align: right;">${purQty}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;">${purSgst.toFixed(2)}</td>
+                                    <td style="text-align: right;">${purCgst.toFixed(2)}</td>
+                                    <td style="text-align: right;"></td>
+                                    <td style="text-align: right;"></td>
+                                  </tr>
+                                `);
+                            }
                           }
 
                           win.document.write('</tbody></table>');
 
                           // Add calculations
                           const itemTotal = selectedBillForView.items.reduce((sum, item) => sum + item.amount, 0);
-                          const sgst = selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
-                          const cgst = selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
-                          const todayTotalUnrounded = itemTotal + sgst + cgst;
+                          const sgst = isIgst ? 0 : selectedBillForView.items.reduce((sum, item) => sum + (item.sgst || 0), 0);
+                          const cgst = isIgst ? 0 : selectedBillForView.items.reduce((sum, item) => sum + (item.cgst || 0), 0);
+                          const igst = selectedBillForView.items.reduce((sum, item) => {
+                            let itemIgst = Number(item.igst) || 0;
+                            if (isIgst && itemIgst === 0) {
+                              const gstRate = getItemGstRate(item);
+                              if ((Number(item.sgst) || 0) > 0 || (Number(item.cgst) || 0) > 0) {
+                                itemIgst = (Number(item.sgst) || 0) + (Number(item.cgst) || 0);
+                              } else if (gstRate > 0) {
+                                itemIgst = (item.amount * gstRate) / 100;
+                              }
+                            }
+                            return sum + itemIgst;
+                          }, 0);
+                          const todayTotalUnrounded = itemTotal + sgst + cgst + igst;
                           const { finalTotal: todayFinalTotal, discount } = getRoundingDetails(todayTotalUnrounded);
-                          const finalTotal = selectedBillForView.total_amount;
-                          const previousPending = finalTotal - todayFinalTotal;
+                          const finalTotal = Math.max(selectedBillForView.total_amount, todayFinalTotal);
+                          const previousPending = Math.max(0, finalTotal - todayFinalTotal);
 
                           win.document.write(`
                               <div class="bill-totals">
@@ -5357,18 +6127,25 @@
                                     <div>${(selectedBillForView.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + i.amount, 0)).toFixed(2)}</div>
                                   </div>
                                   <div class="total-row">
-                                    <div>GST:</div>
-                                    <div>${(selectedBillForView.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => s + (i.sgst || 0) + (i.cgst || 0), 0)).toFixed(2)}</div>
+                                    <div>${isIgst ? 'IGST:' : 'GST:'}</div>
+                                    <div>${(selectedBillForView.items.filter((i: any) => i.quantity > 0).reduce((s: number, i: any) => {
+                                      let tax = (Number(i.sgst) || 0) + (Number(i.cgst) || 0) + (Number(i.igst) || 0);
+                                      if (isIgst && tax === 0) {
+                                        const gstRate = getItemGstRate(i);
+                                        if (gstRate > 0) tax = (i.amount * gstRate) / 100;
+                                      }
+                                      return s + tax;
+                                    }, 0)).toFixed(2)}</div>
                                   </div>
-                                  ${(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)) > 0 ? `
+                                  ${(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)) > 0 ? `
                                   <div class="total-row" style="color: #dc2626;">
                                     <div>Return Amount:</div>
-                                    <div>${(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0), 0)).toFixed(2)}</div>
+                                    <div>${(selectedBillForView.items.filter((i: any) => i.quantity < 0).reduce((s: number, i: any) => s + Math.abs(i.amount) + Math.abs(i.sgst || 0) + Math.abs(i.cgst || 0) + Math.abs(i.igst || 0), 0)).toFixed(2)}</div>
                                   </div>
                                   ` : ''}
                                   <div class="total-row">
                                     <div>Today Total Amount (இன்றைய பில்):</div>
-                                    <div>${(itemTotal + sgst + cgst).toFixed(2)}</div>
+                                    <div>${(itemTotal + sgst + cgst + igst).toFixed(2)}</div>
                                   </div>
                             `);
 

@@ -111,7 +111,7 @@
         $billId = (int)$billRow['id'];
         
         // Fetch Shop
-        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt FROM shops WHERE id = :id");
+        $stmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt FROM shops WHERE id = :id");
         $stmt->execute(['id' => $billRow['shop_id']]);
         $shop = $stmt->fetch();
         if ($shop) {
@@ -127,7 +127,7 @@
         }
         
         // Fetch Bill Items with Product details
-        $stmt = $db->prepare("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.hsn_code as hsnCode, bi.createdAt,
+        $stmt = $db->prepare("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.igst, bi.hsn_code as hsnCode, bi.createdAt,
                                     p.product_name as productName, p.unit, p.hsn_code as p_hsnCode, p.gst as p_gst, p.price as p_price
                             FROM bill_items bi
                             JOIN products p ON bi.product_id = p.id
@@ -135,17 +135,59 @@
         $stmt->execute(['bill_id' => $billId]);
         $items = $stmt->fetchAll();
         
+        $isShopIgst = false;
+        if (!empty($shop)) {
+            $gstType = $shop['gstType'] ?? $shop['gst_type'] ?? '';
+            $gstNum = $shop['gstNumber'] ?? $shop['gst_number'] ?? '';
+            if (strtoupper($gstType) === 'IGST' && !empty($gstNum)) {
+                $isShopIgst = true;
+            }
+        }
+
         $formattedItems = [];
+        $hasIgstCorrection = false;
+        $totalItemsAmt = 0;
+        $totalTaxAmt = 0;
+
         foreach ($items as $item) {
+            $amt = (float)$item['amount'];
+            $qty = (float)$item['quantity'];
+            $pGst = (float)($item['p_gst'] ?? 0);
+            $igstVal = (float)($item['igst'] ?? 0);
+            $sgstVal = (float)($item['sgst'] ?? 0);
+            $cgstVal = (float)($item['cgst'] ?? 0);
+
+            if ($isShopIgst && $igstVal == 0 && $qty > 0) {
+                if ($sgstVal > 0 || $cgstVal > 0) {
+                    $igstVal = $sgstVal + $cgstVal;
+                    $sgstVal = 0.00;
+                    $cgstVal = 0.00;
+                    $hasIgstCorrection = true;
+                } else if ($pGst > 0) {
+                    $igstVal = round(($amt * $pGst) / 100, 2);
+                    $sgstVal = 0.00;
+                    $cgstVal = 0.00;
+                    $hasIgstCorrection = true;
+                }
+                if ($hasIgstCorrection) {
+                    $upItemStmt = $db->prepare("UPDATE bill_items SET igst = :igst, sgst = 0, cgst = 0 WHERE id = :id");
+                    $upItemStmt->execute(['igst' => $igstVal, 'id' => $item['id']]);
+                }
+            }
+
+            $totalItemsAmt += $amt;
+            $totalTaxAmt += ($isShopIgst ? $igstVal : ($sgstVal + $cgstVal));
+
             $formattedItems[] = [
                 'id' => (int)$item['id'],
                 'billId' => (int)$item['billId'],
                 'productId' => (int)$item['productId'],
-                'quantity' => (float)$item['quantity'],
+                'quantity' => $qty,
                 'rate' => (float)$item['rate'],
-                'amount' => (float)$item['amount'],
-                'sgst' => (float)$item['sgst'],
-                'cgst' => (float)$item['cgst'],
+                'amount' => $amt,
+                'sgst' => $sgstVal,
+                'cgst' => $cgstVal,
+                'igst' => $igstVal,
                 'hsnCode' => $item['hsnCode'],
                 'createdAt' => $item['createdAt'],
                 'product' => [
@@ -153,10 +195,34 @@
                     'productName' => $item['productName'],
                     'unit' => $item['unit'],
                     'hsnCode' => $item['p_hsnCode'],
-                    'gst' => (float)$item['p_gst'],
+                    'gst' => $pGst,
                     'price' => (float)$item['p_price']
                 ]
             ];
+        }
+
+        if ($hasIgstCorrection) {
+            $rawTot = $totalItemsAmt + $totalTaxAmt;
+            $frac = round(fmod(abs($rawTot), 1), 2);
+            if ($frac >= 0.10 && $frac <= 0.90) {
+                $calcTotal = floor(abs($rawTot));
+            } else {
+                $calcTotal = round(abs($rawTot));
+            }
+            if ($calcTotal > (float)$billRow['total_amount']) {
+                $newPending = max(0, $calcTotal - (float)$billRow['received_amount']);
+                $newStatus = $newPending <= 0 ? 'COMPLETED' : 'PENDING';
+                $upBillStmt = $db->prepare("UPDATE bills SET total_amount = :tot, pending_amount = :pen, status = :st WHERE id = :id");
+                $upBillStmt->execute([
+                    'tot' => $calcTotal,
+                    'pen' => $newPending,
+                    'st' => $newStatus,
+                    'id' => $billId
+                ]);
+                $billRow['total_amount'] = $calcTotal;
+                $billRow['pending_amount'] = $newPending;
+                $billRow['status'] = $newStatus;
+            }
         }
         
         // Fetch Cash and GPay amounts from bill_payments
@@ -282,7 +348,7 @@
                     $shopChunks = array_chunk($shopIds, 500);
                     foreach ($shopChunks as $chunk) {
                         $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                        $shopStmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, status, createdAt, updatedAt FROM shops WHERE id IN ($placeholders)");
+                        $shopStmt = $db->prepare("SELECT id, shop_name as shopName, address, contact, email, gst_number as gstNumber, COALESCE(gst_type, 'GST') as gstType, gst_effective_date as gstEffectiveDate, status, createdAt, updatedAt FROM shops WHERE id IN ($placeholders)");
                         $shopStmt->execute($chunk);
                         foreach ($shopStmt->fetchAll() as $s) {
                             $s['id'] = (int)$s['id'];
@@ -312,7 +378,7 @@
                     $billIdChunks = array_chunk($billIds, 500);
                     foreach ($billIdChunks as $chunk) {
                         $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                        $itemStmt = $db->prepare("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.hsn_code as hsnCode, bi.createdAt,
+                        $itemStmt = $db->prepare("SELECT bi.id, bi.bill_id as billId, bi.product_id as productId, bi.quantity, bi.rate, bi.amount, bi.sgst, bi.cgst, bi.igst, bi.hsn_code as hsnCode, bi.createdAt,
                                                          p.product_name as productName, p.unit, p.hsn_code as p_hsnCode, p.gst as p_gst, p.price as p_price
                                                   FROM bill_items bi
                                                   JOIN products p ON bi.product_id = p.id
@@ -329,6 +395,7 @@
                                 'amount' => (float)$item['amount'],
                                 'sgst' => (float)$item['sgst'],
                                 'cgst' => (float)$item['cgst'],
+                                'igst' => (float)($item['igst'] ?? 0.00),
                                 'hsnCode' => $item['hsnCode'],
                                 'createdAt' => $item['createdAt'],
                                 'product' => [
@@ -372,6 +439,77 @@
                     $shopId = (int)$billRow['shop_id'];
                     $userId = (int)$billRow['user_id'];
                     $pays = $paymentsMap[$billId] ?? ['cash' => 0, 'gpay' => 0];
+                    $bItems = $itemsMap[$billId] ?? [];
+                    $shopObj = $shopsMap[$shopId] ?? null;
+
+                    $isShopIgst = false;
+                    if ($shopObj) {
+                        $gstType = $shopObj['gstType'] ?? $shopObj['gst_type'] ?? '';
+                        $gstNum = $shopObj['gstNumber'] ?? $shopObj['gst_number'] ?? '';
+                        if (strtoupper($gstType) === 'IGST' && !empty($gstNum)) {
+                            $isShopIgst = true;
+                        }
+                    }
+
+                    $totalAmount = (float)$billRow['total_amount'];
+                    $receivedAmount = (float)$billRow['received_amount'];
+                    $pendingAmount = (float)$billRow['pending_amount'];
+                    $status = $billRow['status'];
+
+                    if ($isShopIgst && !empty($bItems)) {
+                        $hasUpdate = false;
+                        $totalItemsAmt = 0;
+                        $totalTaxAmt = 0;
+
+                        foreach ($bItems as &$it) {
+                            $amt = (float)$it['amount'];
+                            $qty = (float)$it['quantity'];
+                            $pGst = (float)($it['product']['gst'] ?? 0);
+                            
+                            if ($it['igst'] == 0 && $qty > 0) {
+                                if ($it['sgst'] > 0 || $it['cgst'] > 0) {
+                                    $it['igst'] = (float)$it['sgst'] + (float)$it['cgst'];
+                                    $it['sgst'] = 0.00;
+                                    $it['cgst'] = 0.00;
+                                    $hasUpdate = true;
+                                } else if ($pGst > 0) {
+                                    $it['igst'] = round(($amt * $pGst) / 100, 2);
+                                    $it['sgst'] = 0.00;
+                                    $it['cgst'] = 0.00;
+                                    $hasUpdate = true;
+                                }
+                                if ($hasUpdate) {
+                                    $upStmt = $db->prepare("UPDATE bill_items SET igst = :igst, sgst = 0, cgst = 0 WHERE id = :id");
+                                    $upStmt->execute(['igst' => $it['igst'], 'id' => $it['id']]);
+                                }
+                            }
+                            $totalItemsAmt += $amt;
+                            $totalTaxAmt += (float)$it['igst'];
+                        }
+                        unset($it);
+
+                        if ($hasUpdate || ($totalItemsAmt + $totalTaxAmt > $totalAmount)) {
+                            $rawTot = $totalItemsAmt + $totalTaxAmt;
+                            $frac = round(fmod(abs($rawTot), 1), 2);
+                            if ($frac >= 0.10 && $frac <= 0.90) {
+                                $calcTotal = floor(abs($rawTot));
+                            } else {
+                                $calcTotal = round(abs($rawTot));
+                            }
+                            if ($calcTotal > $totalAmount) {
+                                $totalAmount = $calcTotal;
+                                $pendingAmount = max(0, $totalAmount - $receivedAmount);
+                                $status = $pendingAmount <= 0 ? 'COMPLETED' : 'PENDING';
+                                $upBStmt = $db->prepare("UPDATE bills SET total_amount = :tot, pending_amount = :pen, status = :st WHERE id = :id");
+                                $upBStmt->execute([
+                                    'tot' => $totalAmount,
+                                    'pen' => $pendingAmount,
+                                    'st' => $status,
+                                    'id' => $billId
+                                ]);
+                            }
+                        }
+                    }
 
                     $bills[] = [
                         'id' => $billId,
@@ -379,10 +517,10 @@
                         'shopId' => $shopId,
                         'userId' => $userId,
                         'billDate' => $billRow['bill_date'],
-                        'totalAmount' => (float)$billRow['total_amount'],
-                        'receivedAmount' => (float)$billRow['received_amount'],
-                        'pendingAmount' => (float)$billRow['pending_amount'],
-                        'status' => $billRow['status'],
+                        'totalAmount' => $totalAmount,
+                        'receivedAmount' => $receivedAmount,
+                        'pendingAmount' => $pendingAmount,
+                        'status' => $status,
                         'notes' => $billRow['notes'],
                         'payment_mode' => $billRow['payment_mode'] ?? null,
                         'cash_amount' => $pays['cash'],
@@ -390,9 +528,9 @@
                         'signature' => $billRow['signature'],
                         'createdAt' => $billRow['createdAt'],
                         'updatedAt' => $billRow['updatedAt'],
-                        'shop' => $shopsMap[$shopId] ?? null,
+                        'shop' => $shopObj,
                         'user' => $usersMap[$userId] ?? null,
-                        'billItems' => $itemsMap[$billId] ?? []
+                        'billItems' => $bItems
                     ];
                 }
             }
@@ -469,13 +607,14 @@
             $db->beginTransaction();
             
             // Check if shop exists
-            $shopStmt = $db->prepare("SELECT id, shop_name FROM shops WHERE id = :id LIMIT 1");
+            $shopStmt = $db->prepare("SELECT id, shop_name, gst_type, gst_number FROM shops WHERE id = :id LIMIT 1");
             $shopStmt->execute(['id' => $shopId]);
             $shop = $shopStmt->fetch();
             if (!$shop) {
                 $db->rollBack();
                 sendResponse(false, 'Shop not found', null, 404);
             }
+            $isShopIgst = (($shop['gst_type'] ?? '') === 'IGST') && !empty($shop['gst_number']);
             
             // Format bill date
             $billDate = $billDateVal ? date('Y-m-d H:i:s', strtotime($billDateVal)) : date('Y-m-d H:i:s');
@@ -484,11 +623,13 @@
             $billNumber = 'TEMP-' . time() . '-' . rand(1000, 9999);
             
             // Get product rates for calculating amount
-            $productStmt = $db->query("SELECT id, price, hsn_code FROM products");
+            $productStmt = $db->query("SELECT id, price, hsn_code, gst FROM products");
             $products = $productStmt->fetchAll();
             $productMap = [];
+            $productGstMap = [];
             foreach ($products as $p) {
                 $productMap[$p['id']] = $p['price'];
+                $productGstMap[$p['id']] = (float)($p['gst'] ?? 0);
             }
             
             $items = $body['items'] ?? [];
@@ -505,9 +646,24 @@
                 // Calculate tax
                 $sgst = isset($item['sgst']) ? (float)$item['sgst'] : 0.00;
                 $cgst = isset($item['cgst']) ? (float)$item['cgst'] : 0.00;
+                $igst = isset($item['igst']) ? (float)$item['igst'] : 0.00;
+
+                // Failsafe: if shop is an IGST shop and igst is 0
+                if ($isShopIgst && $igst == 0.00) {
+                    if ($sgst > 0.00 || $cgst > 0.00) {
+                        $igst = round($sgst + $cgst, 2);
+                        $sgst = 0.00;
+                        $cgst = 0.00;
+                    } elseif ($qty > 0 && isset($productGstMap[$prodId]) && $productGstMap[$prodId] > 0) {
+                        $amountTemp = round($qty * $rate, 2);
+                        $igst = round(($amountTemp * $productGstMap[$prodId]) / 100, 2);
+                        $sgst = 0.00;
+                        $cgst = 0.00;
+                    }
+                }
                 
                 $amount = round($qty * $rate, 2);
-                $totalAmount += $amount + $sgst + $cgst;
+                $totalAmount += $amount + $sgst + $cgst + $igst;
                 
                 $billItems[] = [
                     'productId' => $prodId,
@@ -516,6 +672,7 @@
                     'amount' => $amount,
                     'sgst' => $sgst,
                     'cgst' => $cgst,
+                    'igst' => $igst,
                     'hsnCode' => $item['hsnCode'] ?? $item['hsn_code'] ?? ($productMap[$prodId] ?? '')
                 ];
             }
@@ -555,8 +712,8 @@
             
             // Insert Items & Update Stocks
             if (!$isPaymentBill) {
-                $itemInsertStmt = $db->prepare("INSERT INTO bill_items (bill_id, product_id, quantity, rate, amount, sgst, cgst, hsn_code, createdAt) 
-                                                VALUES (:bill_id, :product_id, :quantity, :rate, :amount, :sgst, :cgst, :hsn_code, NOW())");
+                $itemInsertStmt = $db->prepare("INSERT INTO bill_items (bill_id, product_id, quantity, rate, amount, sgst, cgst, igst, hsn_code, createdAt) 
+                                                VALUES (:bill_id, :product_id, :quantity, :rate, :amount, :sgst, :cgst, :igst, :hsn_code, NOW())");
                                                 
                 foreach ($billItems as $item) {
                     $itemInsertStmt->execute([
@@ -567,6 +724,7 @@
                         'amount' => $item['amount'],
                         'sgst' => $item['sgst'],
                         'cgst' => $item['cgst'],
+                        'igst' => $item['igst'],
                         'hsn_code' => $item['hsnCode']
                     ]);
                     

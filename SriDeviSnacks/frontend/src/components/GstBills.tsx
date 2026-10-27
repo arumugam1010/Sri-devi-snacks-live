@@ -2,38 +2,21 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Receipt, Download, Eye, X, ArrowLeft, ShoppingCart } from 'lucide-react';
 import { utils, writeFile } from 'xlsx';
+import { isShopGstActiveForBill, getShopGstNumberForBill } from '../utils/gstUtils';
 
 const GstBills: React.FC = () => {
   const { bills, shops } = useAppContext();
   const [selectedMonth, setSelectedMonth] = useState<{ financialYear: string; monthName: string } | null>(null);
   const [selectedBillForView, setSelectedBillForView] = useState<any>(null);
 
-  // Configuration for shops that recently got a GST number
-  // Format: 'Shop Name': 'YYYY-MM-DD' (Bills before this date will be hidden from GST bills)
-  const SHOP_GST_CUTOFF_DATES: Record<string, string> = {
-    'நிலா பேக்கரி': '2026-09-05',
-  };
-
   // All GST bills
   const allGstBills = useMemo(() => {
     return bills.filter(bill => {
       const shop = shops.find(s => s.id === bill.shop_id);
-      const hasGstNumber = shop && shop.gst && shop.gst.trim() !== '';
-      
-      // Only include bills where GST was actually applied
-      const hasGstApplied = bill.items && bill.items.some((item: any) => (item.sgst || 0) > 0 || (item.cgst || 0) > 0);
-      
-      let isAfterCutoff = true;
-      if (shop && shop.shop_name && SHOP_GST_CUTOFF_DATES[shop.shop_name]) {
-        const cutoffDate = new Date(SHOP_GST_CUTOFF_DATES[shop.shop_name]);
-        cutoffDate.setHours(0, 0, 0, 0);
-        const billDate = new Date(bill.bill_date);
-        if (billDate < cutoffDate) {
-          isAfterCutoff = false;
-        }
-      }
-      
-      return hasGstNumber && hasGstApplied && isAfterCutoff;
+      const isGstActive = isShopGstActiveForBill(shop, bill.bill_date);
+      // Only include bills where GST is active for that bill date and tax items applied
+      const hasGstApplied = bill.items && bill.items.some((item: any) => (item.sgst || 0) > 0 || (item.cgst || 0) > 0 || (item.igst || 0) > 0);
+      return isGstActive && hasGstApplied;
     }).sort((a, b) => new Date(b.bill_date).getTime() - new Date(a.bill_date).getTime());
   }, [bills, shops]);
 
@@ -79,7 +62,7 @@ const GstBills: React.FC = () => {
 
   const totalGstTaxAmount = useMemo(() => {
     return currentMonthBills.reduce((sum, bill) => {
-      return sum + (bill.items ? bill.items.reduce((itemSum: number, item: any) => itemSum + (item.sgst || 0) + (item.cgst || 0), 0) : 0);
+      return sum + (bill.items ? bill.items.reduce((itemSum: number, item: any) => itemSum + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0) : 0);
     }, 0);
   }, [currentMonthBills]);
 
@@ -89,26 +72,76 @@ const GstBills: React.FC = () => {
       const items = bill.items || [];
       const sgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.sgst) || 0), 0).toFixed(2));
       const cgst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.cgst) || 0), 0).toFixed(2));
-      const tax = Number((sgst + cgst).toFixed(2));
+      const igst = Number(items.reduce((sum: number, item: any) => sum + (Number(item.igst) || 0), 0).toFixed(2));
+      const tax = Number((sgst + cgst + igst).toFixed(2));
       const totalAmount = Number(parseFloat((bill.total_amount || 0).toString()).toFixed(2));
-      const taxableAmount = tax > 0 ? Number((totalAmount - tax).toFixed(2)) : totalAmount;
+
+      let zeroAmount = 0;
+      let taxableAmount = 0;
+
+      if (items.length > 0) {
+        let zeroSum = 0;
+        let taxableSum = 0;
+
+        items.forEach((item: any) => {
+          const itemGstTax = (Number(item.sgst) || 0) + (Number(item.cgst) || 0) + (Number(item.igst) || 0);
+          const itemGstRate = Number(item.gst) || 0;
+          const itemAmt = Number(item.amount) !== undefined && !isNaN(Number(item.amount))
+            ? Number(item.amount)
+            : (Number(item.quantity) || 0) * (Number(item.price) || 0);
+
+          if (itemGstTax > 0 || itemGstRate > 0) {
+            taxableSum += itemAmt;
+          } else {
+            zeroSum += itemAmt;
+          }
+        });
+
+        if (tax === 0) {
+          zeroAmount = totalAmount;
+          taxableAmount = 0;
+        } else if (zeroSum === 0) {
+          zeroAmount = 0;
+          taxableAmount = Number((totalAmount - tax).toFixed(2));
+        } else {
+          zeroAmount = Number(zeroSum.toFixed(2));
+          taxableAmount = Number((totalAmount - tax - zeroAmount).toFixed(2));
+          if (taxableAmount < 0) {
+            taxableAmount = Number(taxableSum.toFixed(2));
+          }
+        }
+      } else {
+        if (tax > 0) {
+          taxableAmount = Number((totalAmount - tax).toFixed(2));
+          zeroAmount = 0;
+        } else {
+          taxableAmount = 0;
+          zeroAmount = totalAmount;
+        }
+      }
 
       return {
         Date: new Date(bill.bill_date).toLocaleDateString(),
         'Shop Name': bill.shop_name,
-        'Shop GST': shop?.gst || '-',
+        'Shop GST': getShopGstNumberForBill(shop, bill.bill_date) || '-',
         'Bill No': bill.bill_number || bill.billNumber || bill.id,
         'Taxable Amount': taxableAmount,
+        '0% Amount': zeroAmount,
         'CGST': cgst,
         'SGST': sgst,
+        'IGST': igst,
         'Total GST': tax,
         'Total Amount': totalAmount
       };
     });
 
-    const totalTaxable = exportData.reduce((sum, r) => sum + r['Taxable Amount'], 0);
-    const totalCgst = exportData.reduce((sum, r) => sum + r['CGST'], 0);
-    const totalSgst = exportData.reduce((sum, r) => sum + r['SGST'], 0);
+    const totalTaxable = exportData.reduce((sum, r) => sum + (Number(r['Taxable Amount']) || 0), 0);
+    const totalZero = exportData.reduce((sum, r) => sum + (Number(r['0% Amount']) || 0), 0);
+    const totalCgst = exportData.reduce((sum, r) => sum + (Number(r['CGST']) || 0), 0);
+    const totalSgst = exportData.reduce((sum, r) => sum + (Number(r['SGST']) || 0), 0);
+    const totalIgst = exportData.reduce((sum, r) => sum + (Number(r['IGST']) || 0), 0);
+    const grandTotalGst = exportData.reduce((sum, r) => sum + (Number(r['Total GST']) || 0), 0);
+    const grandTotal = exportData.reduce((sum, r) => sum + (Number(r['Total Amount']) || 0), 0);
 
     const ws = utils.json_to_sheet(exportData);
     
@@ -118,10 +151,12 @@ const GstBills: React.FC = () => {
       'Shop GST': '',
       'Bill No': `${currentMonthBills.length} Bills`,
       'Taxable Amount': Number(totalTaxable.toFixed(2)),
+      '0% Amount': Number(totalZero.toFixed(2)),
       'CGST': Number(totalCgst.toFixed(2)),
       'SGST': Number(totalSgst.toFixed(2)),
-      'Total GST': totalGstTaxAmount,
-      'Total Amount': totalGstBillAmount
+      'IGST': Number(totalIgst.toFixed(2)),
+      'Total GST': Number(grandTotalGst.toFixed(2)),
+      'Total Amount': Number(grandTotal.toFixed(2))
     }], { skipHeader: true, origin: -1 });
 
     ws['!cols'] = [
@@ -130,8 +165,10 @@ const GstBills: React.FC = () => {
       { wch: 18 }, // Shop GST
       { wch: 14 }, // Bill No
       { wch: 16 }, // Taxable Amount
+      { wch: 14 }, // 0% Amount
       { wch: 12 }, // CGST
       { wch: 12 }, // SGST
+      { wch: 12 }, // IGST
       { wch: 14 }, // Total GST
       { wch: 16 }  // Total Amount
     ];
@@ -244,7 +281,7 @@ const GstBills: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shop GST</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill No</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax (SGST+CGST)</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tax (GST / IGST)</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -254,12 +291,12 @@ const GstBills: React.FC = () => {
                 ) : (
                   currentMonthBills.map((bill) => {
                      const shop = shops.find(s => s.id === bill.shop_id);
-                     const tax = bill.items ? bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0) + (item.cgst || 0), 0) : 0;
+                     const tax = bill.items ? bill.items.reduce((sum: number, item: any) => sum + (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0), 0) : 0;
                      return (
                        <tr key={bill.id} className="hover:bg-gray-50">
                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(bill.bill_date).toLocaleDateString()}</td>
                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bill.shop_name}</td>
-                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{shop?.gst || '-'}</td>
+                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{getShopGstNumberForBill(shop, bill.bill_date) || '-'}</td>
                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{bill.bill_number || bill.billNumber || bill.id}</td>
                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">₹{bill.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">₹{tax.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
@@ -314,7 +351,7 @@ const GstBills: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-gray-500">Shop GST:</span>
-                  <div className="font-semibold text-gray-900">{shops.find(s => s.id === selectedBillForView.shop_id)?.gst || '-'}</div>
+                  <div className="font-semibold text-gray-900">{getShopGstNumberForBill(shops.find(s => s.id === selectedBillForView.shop_id), selectedBillForView.bill_date) || '-'}</div>
                 </div>
                 <div>
                   <span className="text-gray-500">Payment Status:</span>
@@ -336,7 +373,7 @@ const GstBills: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {selectedBillForView.items && selectedBillForView.items.map((item: any, idx: number) => {
-                      const itemTax = (item.sgst || 0) + (item.cgst || 0);
+                      const itemTax = (item.sgst || 0) + (item.cgst || 0) + (item.igst || 0);
                       return (
                         <tr key={idx}>
                           <td className="px-4 py-2 text-sm text-gray-900">{item.product_name}</td>

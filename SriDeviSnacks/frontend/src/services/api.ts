@@ -149,6 +149,8 @@ export const billsAPI = {
       rate: number;
       sgst?: number;
       cgst?: number;
+      igst?: number;
+      hsnCode?: string;
     }>;
   }) => {
     return authenticatedFetch(`${API_BASE_URL}/bills`, {
@@ -295,6 +297,8 @@ export const shopsAPI = {
     contact: string;
     email?: string;
     gstNumber?: string;
+    gstType?: 'GST' | 'IGST';
+    gstEffectiveDate?: string;
   }) => {
     return authenticatedFetch(`${API_BASE_URL}/shops`, {
       method: 'POST',
@@ -308,6 +312,8 @@ export const shopsAPI = {
     contact?: string;
     email?: string;
     gstNumber?: string;
+    gstType?: 'GST' | 'IGST';
+    gstEffectiveDate?: string;
     status?: string;
   }) => {
     return authenticatedFetch(`${API_BASE_URL}/shops/${id}`, {
