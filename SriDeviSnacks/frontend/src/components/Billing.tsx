@@ -3354,7 +3354,7 @@
               </button> */}
               </div>
             )}
-            {userRole !== 'ACCOUNTS' && (
+            {/* {userRole !== 'ACCOUNTS' && (
               <button
                 onClick={handleShowReturns}
                 disabled={!selectedShop || isPayPendingMode}
@@ -3363,7 +3363,7 @@
                 <RotateCcw className="h-5 w-5 mr-2" />
                 Returns
               </button>
-            )}
+            )} */}
             {/* 
             {userRole !== 'ACCOUNTS' && (
               <button

@@ -132,11 +132,17 @@ const PurchaseBills: React.FC = () => {
   const updateFileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Row Upload State
+  const [targetBillForUpload, setTargetBillForUpload] = useState<number | null>(null);
+  const [uploadingBillId, setUploadingBillId] = useState<number | null>(null);
+  const [rowUploadMessage, setRowUploadMessage] = useState<string | null>(null);
+  const rowFileInputRef = useRef<HTMLInputElement>(null);
+
   // Scanner Modal State
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [scannerTarget, setScannerTarget] = useState<'new' | 'update'>('new');
+  const [scannerTarget, setScannerTarget] = useState<'new' | 'update' | 'row'>('new');
 
-  const openScanner = (target: 'new' | 'update' = 'new') => {
+  const openScanner = (target: 'new' | 'update' | 'row' = 'new') => {
     setScannerTarget(target);
     setScannerOpen(true);
   };
@@ -521,51 +527,90 @@ const PurchaseBills: React.FC = () => {
     }
   };
 
-  const uploadBillImageFile = async (file: File) => {
-    if (!selectedBillForView) return;
+  const uploadBillImage = async (billId: number, file: File) => {
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
     try {
+      setUploadingBillId(billId);
+      setRowUploadMessage(isPdf ? 'Converting PDF...' : 'Uploading...');
       setUpdatingImage(true);
-      setUpdateMessage('Processing file...');
+      setUpdateMessage(isPdf ? 'Converting all PDF pages to image...' : 'Uploading bill image...');
       
       let fileToSend: File = file;
       if (isPdf) {
-        setUpdateMessage('Converting all PDF pages to image...');
         fileToSend = await convertPdfToImage(file, {
           scale: 2,
-          onProgress: (cur, tot) => setUpdateMessage(`Converting PDF: Page ${cur} of ${tot}...`)
+          onProgress: (cur, tot) => {
+            const msg = `Converting PDF: Page ${cur} of ${tot}...`;
+            setRowUploadMessage(msg);
+            setUpdateMessage(msg);
+          }
         });
       }
 
-      setUpdateMessage('Uploading new bill image...');
+      setRowUploadMessage('Uploading image...');
+      setUpdateMessage('Uploading bill image...');
       const formData = new FormData();
       formData.append('bill_image', fileToSend);
 
-      const res = await api.post(`/purchase-bills/${selectedBillForView.id}`, formData, {
+      const res = await api.post(`/purchase-bills/${billId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
       if (res.data.success) {
         const newImagePath = res.data.data.image_path;
-        setSelectedBillForView(prev => prev ? { ...prev, image_path: newImagePath } : null);
-        setUpdateMessage('✓ Bill image updated with all pages!');
+
+        // Update local bills list immediately
+        setBills(prev => prev.map(b => b.id === billId ? { ...b, image_path: newImagePath } : b));
+
+        // Update groupedBills immediately so the table reflects the new image instantly
+        setGroupedBills(prev => {
+          const newGrouped: Record<string, Record<string, PurchaseBill[]>> = {};
+          for (const fy in prev) {
+            newGrouped[fy] = {};
+            for (const month in prev[fy]) {
+              newGrouped[fy][month] = prev[fy][month].map(b => 
+                b.id === billId ? { ...b, image_path: newImagePath } : b
+              );
+            }
+          }
+          return newGrouped;
+        });
+
+        if (selectedBillForView && selectedBillForView.id === billId) {
+          setSelectedBillForView(prev => prev ? { ...prev, image_path: newImagePath } : null);
+        }
+
+        setSuccess('Bill image uploaded successfully!');
+        setTimeout(() => setSuccess(''), 4000);
+
+        // Sync with backend
         fetchData();
-        setTimeout(() => setUpdateMessage(null), 4000);
       }
     } catch (err: any) {
-      console.error('Failed to update bill image:', err);
-      alert(err.response?.data?.message || 'Failed to update bill image. Please try again.');
-      setUpdateMessage(null);
+      console.error('Failed to upload bill image:', err);
+      alert(err.response?.data?.message || 'Failed to upload bill image. Please try again.');
+      setError(err.response?.data?.message || 'Failed to upload bill image.');
+      setTimeout(() => setError(''), 5000);
     } finally {
+      setUploadingBillId(null);
+      setRowUploadMessage(null);
       setUpdatingImage(false);
+      setUpdateMessage(null);
+      setTargetBillForUpload(null);
+      if (rowFileInputRef.current) rowFileInputRef.current.value = '';
       if (updateFileInputRef.current) updateFileInputRef.current.value = '';
     }
   };
 
+  const uploadBillImageFile = async (file: File) => {
+    if (!selectedBillForView) return;
+    await uploadBillImage(selectedBillForView.id, file);
+  };
+
   const handleUpdateBillImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedBillForView || !e.target.files || !e.target.files[0]) return;
-    await uploadBillImageFile(e.target.files[0]);
+    await uploadBillImage(selectedBillForView.id, e.target.files[0]);
   };
 
   const handleScannerCaptureOk = (file: File) => {
@@ -576,8 +621,24 @@ const PurchaseBills: React.FC = () => {
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
     } else if (scannerTarget === 'update' && selectedBillForView) {
-      uploadBillImageFile(file);
+      uploadBillImage(selectedBillForView.id, file);
+    } else if (scannerTarget === 'row' && targetBillForUpload) {
+      uploadBillImage(targetBillForUpload, file);
     }
+  };
+
+  const handleTriggerRowUpload = (billId: number) => {
+    setTargetBillForUpload(billId);
+    if (rowFileInputRef.current) {
+      rowFileInputRef.current.value = '';
+      rowFileInputRef.current.click();
+    }
+  };
+
+  const handleTriggerRowScan = (billId: number) => {
+    setTargetBillForUpload(billId);
+    setScannerTarget('row');
+    setScannerOpen(true);
   };
 
   const handleDeleteBill = async (billId: number) => {
@@ -1400,7 +1461,14 @@ const PurchaseBills: React.FC = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                            {bill.bill_number}
+                            <button
+                              type="button"
+                              onClick={() => handleViewBill(bill.id)}
+                              className="text-gray-700 hover:text-indigo-600 hover:underline font-mono text-left cursor-pointer font-medium"
+                              title="Click to view bill details"
+                            >
+                              {bill.bill_number}
+                            </button>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
@@ -1417,13 +1485,38 @@ const PurchaseBills: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
                             {bill.image_path ? (
                               <button 
+                                type="button"
                                 onClick={() => handleViewBill(bill.id)}
-                                className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-full cursor-pointer transition-colors"
+                                className="inline-flex items-center text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-full cursor-pointer transition-colors font-medium text-xs shadow-sm hover:shadow"
                               >
                                 <ImageIcon className="w-4 h-4 mr-1" /> View
                               </button>
+                            ) : uploadingBillId === bill.id ? (
+                              <span className="inline-flex items-center text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full shadow-sm animate-pulse">
+                                <div className="animate-spin rounded-full h-3 w-3 border-2 border-indigo-600 border-t-transparent mr-1.5" />
+                                {rowUploadMessage || 'Uploading...'}
+                              </span>
                             ) : (
-                              <span className="text-gray-400 italic">No image</span>
+                              <div className="inline-flex items-center justify-center gap-1.5">
+                                <button 
+                                  type="button"
+                                  onClick={() => handleTriggerRowUpload(bill.id)}
+                                  disabled={uploadingBillId !== null}
+                                  className="inline-flex items-center text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-full cursor-pointer transition-all shadow-sm hover:shadow text-xs font-semibold disabled:opacity-50"
+                                  title="Upload Bill Image or PDF"
+                                >
+                                  <Upload className="w-3.5 h-3.5 mr-1" /> Upload Image
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => handleTriggerRowScan(bill.id)}
+                                  disabled={uploadingBillId !== null}
+                                  className="inline-flex items-center text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 p-1 rounded-full cursor-pointer transition-all shadow-sm hover:shadow text-xs font-semibold disabled:opacity-50"
+                                  title="Scan Bill with Camera"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -1868,7 +1961,26 @@ const PurchaseBills: React.FC = () => {
         isOpen={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onCaptureOk={handleScannerCaptureOk}
-        title={scannerTarget === 'new' ? 'Scan Purchase Bill' : `Scan Bill: ${selectedBillForView?.bill_number || ''}`}
+        title={
+          scannerTarget === 'new'
+            ? 'Scan Purchase Bill'
+            : scannerTarget === 'update'
+            ? `Scan Bill: ${selectedBillForView?.bill_number || ''}`
+            : `Scan Bill: ${bills.find(b => b.id === targetBillForUpload)?.bill_number || ''}`
+        }
+      />
+
+      {/* Hidden file input for table row direct uploads */}
+      <input 
+        type="file"
+        ref={rowFileInputRef}
+        accept="image/*,.pdf"
+        className="sr-only"
+        onChange={async (e) => {
+          if (!targetBillForUpload || !e.target.files || !e.target.files[0]) return;
+          const file = e.target.files[0];
+          await uploadBillImage(targetBillForUpload, file);
+        }}
       />
 
     </div>
